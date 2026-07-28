@@ -224,5 +224,4 @@ describe('RustVmExecutor', () => {
             expect(mockHogvmNode.executeSync).toHaveBeenCalledTimes(1)
         })
     })
-
 })
