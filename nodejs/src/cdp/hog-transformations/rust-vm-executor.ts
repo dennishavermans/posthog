@@ -7,13 +7,26 @@ import { logger } from '~/common/utils/logger'
 import { CyclotronJobInvocationHogFunction, CyclotronJobInvocationResult } from '../types'
 import { createAddLogFunction, sanitizeLogMessage } from '../utils'
 import { createInvocationResult } from '../utils/invocation-utils'
-import { HogvmNodeModule, RUST_MAX_STEPS, isUnsupportedByRustVm, loadHogvmNodeModule } from './rust-vm'
+import {
+    HogvmNodeModule,
+    MARSHAL_ERROR_PREFIX,
+    RUST_MAX_STEPS,
+    RustExecResult,
+    isUnsupportedByRustVm,
+    loadHogvmNodeModule,
+} from './rust-vm'
+import { RustVmBatchScheduler } from './rust-vm-batch-scheduler'
 
 /**
  * Executes transformation invocations on the Rust HogVM (via the `@posthog/hogvm-node` napi
  * addon) as the primary executor, producing the same `CyclotronJobInvocationResult` shape the
  * Node executor does. Programs are registered with the addon once per bytecode version, so the
  * per-event cost is the globals crossing rather than re-marshalling and re-decoding bytecode.
+ *
+ * Two execution paths: `execute` runs one invocation synchronously on the JS thread
+ * (`executeRegisteredSync`); `executeBatched` enqueues into a {@link RustVmBatchScheduler} that
+ * coalesces same-program invocations into one `executeBatch` FFI crossing per tick, executed off
+ * the JS event loop.
  *
  * Invocations the Rust VM can't run — the addon isn't built, or the program calls a host function
  * the binding doesn't implement — return null so the caller falls back to the Node VM.
@@ -46,6 +59,8 @@ export const rustVmProgramRegistrations = new Counter({
 export const MAX_REGISTERED_PROGRAMS = 500
 
 export class RustVmExecutor {
+    private scheduler: RustVmBatchScheduler
+
     /**
      * Registered-program handles, keyed by hog function id. `updatedAt` is the version guard: a
      * function whose bytecode was edited must not keep executing the handle registered for its
@@ -63,6 +78,14 @@ export class RustVmExecutor {
     private handles: LRUCache<string, { updatedAt: string; handle: number }>
 
     constructor(private options: { mmdbPath: string }) {
+        this.scheduler = new RustVmBatchScheduler((program, events) => {
+            const module_ = this.getModule()
+            if (!module_) {
+                // Unreachable in practice: executeBatched checks the module before enqueueing.
+                return Promise.reject(new Error('Rust HogVM native module unavailable'))
+            }
+            return module_.executeBatch(program, events, { parallel: true, maxSteps: RUST_MAX_STEPS })
+        })
         this.handles = new LRUCache({
             max: MAX_REGISTERED_PROGRAMS,
             dispose: (entry) => this.getModule()?.releaseProgram?.(entry.handle),
@@ -144,7 +167,7 @@ export class RustVmExecutor {
      * Runs through `executeRegisteredSync` on the JS thread — the same threading model as the
      * Node VM's exec, minus the work. Executions are sub-millisecond and bounded by the step
      * budget, so a libuv thread-hop per invocation would cost more than the execution it
-     * offloads; batching many events into one async call is the follow-up if that changes.
+     * offloads; `executeBatched` is the async batched alternative.
      *
      * The program is registered (marshalled, validated, token-decoded) once per bytecode version
      * rather than per event — see `handleFor`.
@@ -182,6 +205,46 @@ export class RustVmExecutor {
             return this.fallback('fallback_exception', invocation, sensitiveValues, error)
         }
 
+        return this.toInvocationResult(rust, invocation, sensitiveValues)
+    }
+
+    /**
+     * Execute one transformation invocation via the batching scheduler: same-program invocations
+     * in flight during the same tick share one `executeBatch` call, off the JS event loop.
+     * Returns null when the Node VM must run it instead — same fallback contract as `execute`,
+     * with a batch event that failed JS→JSON conversion (`marshal_error:`) treated like the sync
+     * path's boundary throw: that event alone falls back, having never executed.
+     */
+    public async executeBatched(
+        invocation: CyclotronJobInvocationHogFunction,
+        sensitiveValues: string[]
+    ): Promise<CyclotronJobInvocationResult<CyclotronJobInvocationHogFunction> | null> {
+        const module_ = this.getModule()
+        if (!module_) {
+            rustVmExecution.inc({ outcome: 'fallback_unavailable' })
+            return null
+        }
+
+        let rust: RustExecResult
+        try {
+            rust = await this.scheduler.execute(invocation.hogFunction.bytecode, invocation.state.globals)
+        } catch (error) {
+            // A rejected batch never delivered results, so nothing executed — safe to fall back.
+            return this.fallback('fallback_exception', invocation, sensitiveValues, error)
+        }
+
+        if (rust.error?.startsWith(MARSHAL_ERROR_PREFIX)) {
+            return this.fallback('fallback_exception', invocation, sensitiveValues, rust.error)
+        }
+
+        return this.toInvocationResult(rust, invocation, sensitiveValues)
+    }
+
+    private toInvocationResult(
+        rust: RustExecResult,
+        invocation: CyclotronJobInvocationHogFunction,
+        sensitiveValues: string[]
+    ): CyclotronJobInvocationResult<CyclotronJobInvocationHogFunction> | null {
         if (rust.error && isUnsupportedByRustVm(rust.error)) {
             return this.fallback('fallback_unsupported', invocation, sensitiveValues, rust.error)
         }
