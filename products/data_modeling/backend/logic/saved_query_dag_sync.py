@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING, TypedDict
 
+from django.db import IntegrityError, transaction
+
 import structlog
 
 from posthog.hogql.database.database import Database
@@ -76,8 +78,13 @@ def resolve_dependency_to_node(
         raise UnknownParentError(dependency_name, "")
     # ephemeral view
     if isinstance(table, HogQLSavedQuery):
-        saved_query = DataWarehouseSavedQuery.objects.get(team=team, name=dependency_name, deleted=False)
-        return Node.objects.get(team=team, dag=dag, saved_query=saved_query, name=dependency_name)
+        try:
+            saved_query = DataWarehouseSavedQuery.objects.get(team=team, name=dependency_name, deleted=False)
+            return Node.objects.get(team=team, dag=dag, saved_query=saved_query, name=dependency_name)
+        except (DataWarehouseSavedQuery.DoesNotExist, Node.DoesNotExist):
+            # a concurrent sync can delete/recreate the dependency's row between HogQL resolving
+            # the name and us looking it up here; treat that race as unresolvable, not a crash.
+            raise UnknownParentError(dependency_name, "")
 
     # table in s3
     if isinstance(table, HogQLDataWarehouseTable):
@@ -87,7 +94,10 @@ def resolve_dependency_to_node(
             )
             # matview
             if matview_saved_query is not None:
-                return Node.objects.get(team=team, dag=dag, saved_query=matview_saved_query, name=dependency_name)
+                try:
+                    return Node.objects.get(team=team, dag=dag, saved_query=matview_saved_query, name=dependency_name)
+                except Node.DoesNotExist:
+                    raise UnknownParentError(dependency_name, "")
             # warehouse table
             warehouse_table = (
                 DataWarehouseTable.objects.filter(team=team, id=table.table_id).exclude(deleted=True).first()
@@ -123,6 +133,33 @@ class ManagedDAGError(Exception):
     """Raised when a user-initiated sync targets a system-managed DAG (e.g. Revenue Analytics)."""
 
     pass
+
+
+def _rollback_created_node(node: Node, created: bool) -> None:
+    """Undo a Node this call just created, if it's still safe to do so.
+
+    Only ever deletes a node this call created via get_or_create — a node that already
+    existed (and so may be shared by other views) is never touched here, no matter how
+    the rest of the sync fails. Also refuses to delete a node that gained a dependent
+    while we were still resolving the query, mirroring the guard
+    datawarehouse_managed_viewset.py applies before dropping a stale node. A concurrent
+    sync can still attach that dependent between our check and the DELETE, so the check
+    and delete run under a row lock, and a resulting IntegrityError is treated as "someone
+    else has claimed this node" rather than allowed to abort the whole sync.
+    """
+    if not created:
+        return
+    try:
+        with transaction.atomic():
+            locked = Node.objects.select_for_update().filter(pk=node.pk).first()
+            if locked is not None and not locked.outgoing_edges.exists():
+                locked.delete()
+    except IntegrityError:
+        logger.warning(
+            "Skipped rollback delete of DAG node claimed by a concurrent sync",
+            node_id=str(node.pk),
+            team_id=node.team_id,
+        )
 
 
 def sync_saved_query_to_dag(
@@ -166,7 +203,7 @@ def sync_saved_query_to_dag(
 
     node_type = node_type_for(saved_query)
 
-    target, _ = Node.objects.get_or_create(
+    target, created = Node.objects.get_or_create(
         team=team,
         saved_query=saved_query,
         dag=dag,
@@ -195,7 +232,7 @@ def sync_saved_query_to_dag(
                 properties=extra_properties,
             )
     except Exception:
-        target.delete()
+        _rollback_created_node(target, created)
         raise
 
     # resolution succeeded, so an edge-less adoption marker no longer describes this node
