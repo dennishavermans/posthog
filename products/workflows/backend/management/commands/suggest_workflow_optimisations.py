@@ -45,10 +45,10 @@ class Command(BaseCommand):
         live_run: bool = options["live_run"]
         force: bool = options["force"]
 
-        flows = HogFlow.objects.filter(team_id=team_id).exclude(status=HogFlow.State.ARCHIVED)
+        queryset = HogFlow.objects.filter(team_id=team_id).exclude(status=HogFlow.State.ARCHIVED)
         if options["workflow_id"]:
-            flows = flows.filter(id=options["workflow_id"])
-        flows = list(flows)
+            queryset = queryset.filter(id=options["workflow_id"])
+        flows = list(queryset)
         if not flows:
             raise CommandError("No workflows found for that team.")
 

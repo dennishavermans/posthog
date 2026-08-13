@@ -97,8 +97,10 @@ class TestWorkflowProposals(APIBaseTest):
         assert flow.version == 1
         # The staged draft is a whole-content snapshot (live as the base, the proposal on top), which
         # is what publish's plain copy needs — a partial draft would drop the rest of the workflow.
-        assert set(flow.draft.keys()) == set(DRAFT_CONTENT_FIELDS)
-        assert flow.draft["actions"][1]["config"]["inputs"]["url"]["value"] == "https://proposed.example.com"
+        draft = flow.draft
+        assert draft is not None
+        assert set(draft.keys()) == set(DRAFT_CONTENT_FIELDS)
+        assert draft["actions"][1]["config"]["inputs"]["url"]["value"] == "https://proposed.example.com"
 
     def test_publish_marks_the_approved_proposal_applied(self, _mock_flag):
         flow_id = self._create_active_flow()

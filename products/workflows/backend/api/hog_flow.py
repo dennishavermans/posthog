@@ -2632,7 +2632,7 @@ class WorkflowProposalCreateSerializer(serializers.Serializer):
         help_text="Workflow version this was authored against. Defaults to the current live version.",
     )
     source_type = serializers.ChoiceField(
-        choices=WorkflowProposal.SourceType,
+        choices=WorkflowProposal.SourceType.choices,
         help_text="What kind of producer authored this proposal.",
     )
     source_id = serializers.CharField(
