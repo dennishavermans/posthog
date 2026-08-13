@@ -22,6 +22,24 @@ class TestAppMetrics2Timezone(ClickhouseTestMixin, BaseTest):
 
     @parameterized.expand(
         [
+            ("instance_id", {"instance_id": "54321"}),  # the fixture's default instance
+            ("name", {"name": ["succeeded"]}),
+            ("kind", {"kind": ["success"]}),
+        ]
+    )
+    def test_totals_optional_filters_are_bound(self, _name: str, filters: dict):
+        # Each of these renders a placeholder into the SQL, so an unbound one raises KeyError before
+        # the query runs — a 500 on `/metrics/totals?name=…` for every hog function and hog flow.
+        self._seed(datetime(2026, 6, 8, 12, 0, 0, tzinfo=UTC))
+
+        result = fetch_app_metric_totals(
+            team_id=self.team.pk, app_source="hog_function", app_source_id="fn-1", **filters
+        )
+
+        assert result.totals == {"success": 1}
+
+    @parameterized.expand(
+        [
             ("America/Los_Angeles",),  # -07:00 (PDT in June)
             ("Asia/Kolkata",),  # +05:30 (half-hour offset)
             ("Pacific/Auckland",),  # +12:00 (wraps to the previous UTC day)

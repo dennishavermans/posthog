@@ -90,6 +90,9 @@ On `HogFlowViewSet`, so the operations generate as `hog_flows_proposals_*` and b
 
 The create endpoint takes no in-app-session state: an MCP caller with a personal API key can post a proposal with provenance and nothing else.
 
+Two of these are exposed as MCP tools in `products/workflows/mcp/tools.yaml`, both gated on the same flag: `workflows-propose-change` (create) and `workflows-list-proposals` (so an agent can see what was already rejected before proposing it again).
+**Approve and reject are deliberately not MCP tools.** An agent can propose; only a person resolves.
+
 ### Approve reuses the restore pattern
 
 Approve is `restore_revision` with an agent-authored snapshot in place of a historical one:
@@ -112,13 +115,19 @@ Approve is `restore_revision` with an agent-authored snapshot in place of a hist
 
 ## Stub generator (labelled stub, not the brain)
 
-`hogli manage suggest_workflow_optimisations --team-id N [--workflow-id UUID] [--window 7d] [--dry-run]`
+`python manage.py suggest_workflow_optimisations --team-id N [--workflow-id UUID] [--window -7d] [--live-run] [--force]`
 
 One heuristic, and it is honest about being one:
-read the live version's `email_sent` and `email_opened` from the versioned series per email step, and when a step's open rate is under the threshold, propose a subject-line rewrite on that step with the rate as evidence.
-When no step qualifies it prints why and exits.
+read the live version's `email_sent` and `email_opened` from the versioned series per email step, and when a step's open rate is under target over enough sends, propose a shorter subject line on that step with the rate as evidence.
+When no step qualifies it prints why and exits. Default is a dry run; `--live-run` writes.
+`--force` proposes without evidence for demos against an empty metrics store, and records `forced: true` in the evidence so nobody mistakes it for a measured claim.
+
+Its `source_id` is `stub:<flow>:v<version>:<step>:<date>`, so re-running the command on the same day resolves to the proposal it already made, but a newly published version can be proposed against again.
 
 The real replacement is an Autonomy Scout: scheduled, prompted, reasoning over the same metrics, calling the same create endpoint over MCP.
+
+Reading the versioned series turned up a live bug in the shared helper: `fetch_app_metric_totals` rendered its `instance_id` / `name` / `kind` placeholders into the SQL but never bound them, so every caller that passed one got a `KeyError` (a 500 on `GET .../metrics/totals?name=…` for hog functions and hog flows alike).
+Fixed here, with a regression case in `posthog/api/test/test_app_metrics2.py`.
 
 ## Where A/B is stubbed
 
