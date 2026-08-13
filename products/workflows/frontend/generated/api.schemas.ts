@@ -1046,22 +1046,6 @@ export type WorkflowProposalCreateApiContent = { [key: string]: unknown }
  */
 export type WorkflowProposalCreateApiEvidence = { [key: string]: unknown }
 
-/**
- * * `scout` - scout
- * * `responder` - responder
- * * `human` - human
- * * `stub` - stub
- */
-export type WorkflowProposalCreateSourceTypeEnumApi =
-    (typeof WorkflowProposalCreateSourceTypeEnumApi)[keyof typeof WorkflowProposalCreateSourceTypeEnumApi]
-
-export const WorkflowProposalCreateSourceTypeEnumApi = {
-    Scout: 'scout',
-    Responder: 'responder',
-    Human: 'human',
-    Stub: 'stub',
-} as const
-
 export interface WorkflowProposalCreateApi {
     /**
      * Short summary of the proposed change.
@@ -1078,11 +1062,11 @@ export interface WorkflowProposalCreateApi {
     base_version?: number
     /** What kind of producer authored this proposal.
      *
-     * * `scout` - scout
-     * * `responder` - responder
-     * * `human` - human
-     * * `stub` - stub */
-    source_type: WorkflowProposalCreateSourceTypeEnumApi
+     * * `scout` - Scout
+     * * `responder` - Responder
+     * * `human` - Human
+     * * `stub` - Stub generator */
+    source_type: WorkflowProposalSourceTypeEnumApi
     /**
      * Stable id of the producing agent run or finding. Posting the same one twice returns the existing proposal instead of creating a duplicate.
      * @maxLength 200

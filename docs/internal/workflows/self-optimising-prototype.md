@@ -22,7 +22,7 @@ metrics ──▶ [Scout / stub generator] ──▶ WorkflowProposal (suggested
 ```
 
 The suggestion engine is **not** built here.
-The real brain is a **PostHog Autonomy Scout** (RFC #1141), owned by another team.
+The real brain is a **Scout**: the proactive, scheduled agent primitive in `products/signals/` (`SignalScoutConfig` = one row per team per scout skill, with a prompt and a cadence), owned by another team.
 This prototype ships the seam it will call plus a labelled stub generator so the loop is demoable end to end.
 
 ## What was already true (verified, not rebuilt)

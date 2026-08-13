@@ -64,6 +64,11 @@ export const WORKFLOWS_MCP_TOOLS: McpToolSummary[] = [
             "List a workflow's individual invocations (one execution per person/event), each collapsed to its final outcome — status, error_kind/error_message, distinct_id, person_id, timings. This is the per-recipient failure view: filter status=failed to see who it failed for and why. Filter by distinct_id and time range. Distinct from workflows-list-batch-jobs (the dispatch ledger, which has no per-person outcome) — drill from a failed invocation into workflows-logs for the step-by-step trace.",
     },
     {
+        name: 'workflows-list-proposals',
+        description:
+            "List the suggested changes on a workflow, newest first, with the evidence and rationale behind each and whether a human approved, rejected or applied it. Read this before proposing a change so you don't repeat a suggestion someone already rejected.",
+    },
+    {
         name: 'workflows-list-revisions',
         description:
             "List a workflow's revision history, newest first. Every live-content change (publish, direct edit) appends a version; each entry shows version, when, and by whom. Fetch a version's content with workflows-get-revision; roll back with workflows-restore-revision.",
@@ -82,6 +87,11 @@ export const WORKFLOWS_MCP_TOOLS: McpToolSummary[] = [
         name: 'workflows-patch-graph',
         description:
             "Surgically edit a workflow's graph by sending a small, ordered list of operations instead of resending every action and edge. Prefer this over workflows-update for any graph change — to tweak one node's config use update_action with a deep-merge patch (e.g. change just an email subject), and use add_action / remove_action / add_edge / remove_edge / replace_action_edges for structural changes. Reference nodes and edges by id. Operations apply atomically: the graph is read, the ops applied in order, the result fully validated (dangling edges, branch indexes, single trigger), and saved only if valid — otherwise nothing changes. On an active workflow, patches stage a draft instead of changing what's running: the first patch copies the live graph into the draft, later patches compose onto it, and nothing reaches real people until workflows-publish. The full updated workflow is returned, so you don't need to re-fetch before the next edit. When adding or editing a conditional_branch, each condition needs a 'filters' wrapper: {filters:{properties:[...]}}, not {properties:[...]} on the condition. Re-test the changed path with workflows-test-run after patching.",
+    },
+    {
+        name: 'workflows-propose-change',
+        description:
+            'Suggest a change to a workflow for a human to review. Send only the content fields you want to change (usually actions), the evidence behind the suggestion, and a rationale a person can judge without re-deriving your numbers. This changes nothing on its own: a person approves the suggestion, which stages it as a draft, and publishes that draft to make it live. Pass a stable source_id for your run or finding so retrying returns the suggestion you already made instead of creating a second one. There is no tool to approve a suggestion, by design - only a person resolves one.',
     },
     {
         name: 'workflows-publish',

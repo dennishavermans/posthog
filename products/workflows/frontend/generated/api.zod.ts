@@ -2135,9 +2135,9 @@ export const HogFlowsProposalsCreateBody = /* @__PURE__ */ zod.object({
         .describe('Workflow version this was authored against. Defaults to the current live version.'),
     source_type: zod
         .enum(['scout', 'responder', 'human', 'stub'])
-        .describe('\* `scout` - scout\n\* `responder` - responder\n\* `human` - human\n\* `stub` - stub')
+        .describe('\* `scout` - Scout\n\* `responder` - Responder\n\* `human` - Human\n\* `stub` - Stub generator')
         .describe(
-            'What kind of producer authored this proposal.\n\n\* `scout` - scout\n\* `responder` - responder\n\* `human` - human\n\* `stub` - stub'
+            'What kind of producer authored this proposal.\n\n\* `scout` - Scout\n\* `responder` - Responder\n\* `human` - Human\n\* `stub` - Stub generator'
         ),
     source_id: zod
         .string()

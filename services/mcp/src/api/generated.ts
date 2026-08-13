@@ -79048,22 +79048,6 @@ export namespace Schemas {
      */
     export type WorkflowProposalCreateEvidence = { [key: string]: unknown };
 
-    /**
-     * * `scout` - scout
-     * * `responder` - responder
-     * * `human` - human
-     * * `stub` - stub
-     */
-    export type WorkflowProposalCreateSourceTypeEnum = typeof WorkflowProposalCreateSourceTypeEnum[keyof typeof WorkflowProposalCreateSourceTypeEnum];
-
-
-    export const WorkflowProposalCreateSourceTypeEnum = {
-      Scout: 'scout',
-      Responder: 'responder',
-      Human: 'human',
-      Stub: 'stub',
-    } as const;
-
     export interface WorkflowProposalCreate {
       /**
          * Short summary of the proposed change.
@@ -79080,11 +79064,11 @@ export namespace Schemas {
       base_version?: number;
       /** What kind of producer authored this proposal.
        *
-       * * `scout` - scout
-       * * `responder` - responder
-       * * `human` - human
-       * * `stub` - stub */
-      source_type: WorkflowProposalCreateSourceTypeEnum;
+       * * `scout` - Scout
+       * * `responder` - Responder
+       * * `human` - Human
+       * * `stub` - Stub generator */
+      source_type: WorkflowProposalSourceTypeEnum;
       /**
          * Stable id of the producing agent run or finding. Posting the same one twice returns the existing proposal instead of creating a duplicate.
          * @maxLength 200

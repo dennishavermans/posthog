@@ -1,10 +1,20 @@
 import { expectLogic } from 'kea-test-utils'
 
+import { LemonDialog } from 'lib/lemon-ui/LemonDialog'
+
 import { useMocks } from '~/mocks/jest'
 import { initKeaTests } from '~/test/init'
 
 import { workflowLogic } from './workflowLogic'
 import { workflowProposalsLogic } from './workflowProposalsLogic'
+
+jest.mock('lib/lemon-ui/LemonDialog', () => ({ LemonDialog: { open: jest.fn() } }))
+
+// Approve opens a confirm dialog, so the test has to click its primary button to get any further.
+const confirmTheDialog = (): void => {
+    const call = (LemonDialog.open as jest.Mock).mock.calls.at(-1)
+    call[0].primaryButton.onClick()
+}
 
 const WORKFLOW_ID = 'wf-proposals-1'
 const PROPOSAL_ID = 'proposal-1'
@@ -38,6 +48,7 @@ describe('workflowProposalsLogic', () => {
     beforeEach(() => {
         approveBodies = []
         approveStatus = 200
+        ;(LemonDialog.open as jest.Mock).mockClear()
         useMocks({
             get: {
                 '/api/environments/:team_id/hog_flows/:id/': {
@@ -82,8 +93,10 @@ describe('workflowProposalsLogic', () => {
         flowLogic.mount()
         await expectLogic(flowLogic).toDispatchActions(['loadWorkflowSuccess'])
 
+        logic.actions.approveProposal(PROPOSAL_ID)
+        await expectLogic(logic).toFinishAllListeners()
         await expectLogic(logic, () => {
-            logic.actions.approveProposal(PROPOSAL_ID)
+            confirmTheDialog()
         }).toDispatchActions([flowLogic.actionTypes.loadWorkflow])
 
         expect(approveBodies).toEqual([{ overwrite: true, expected_draft_updated_at: DRAFT_STAMP }])
