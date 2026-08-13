@@ -53430,6 +53430,120 @@ export namespace Schemas {
       results: WizardSessionDTO[];
     }
 
+    /**
+     * * `suggested` - Suggested
+     * * `approved` - Approved
+     * * `rejected` - Rejected
+     * * `applied` - Applied
+     */
+    export type WorkflowProposalStatusEnum = typeof WorkflowProposalStatusEnum[keyof typeof WorkflowProposalStatusEnum];
+
+
+    export const WorkflowProposalStatusEnum = {
+      Suggested: 'suggested',
+      Approved: 'approved',
+      Rejected: 'rejected',
+      Applied: 'applied',
+    } as const;
+
+    /**
+     * * `web` - Web
+     * * `api` - API
+     * * `mcp` - MCP
+     * * `self_driving` - Self-driving
+     */
+    export type WorkflowProposalCreatedViaEnum = typeof WorkflowProposalCreatedViaEnum[keyof typeof WorkflowProposalCreatedViaEnum];
+
+
+    export const WorkflowProposalCreatedViaEnum = {
+      Web: 'web',
+      Api: 'api',
+      Mcp: 'mcp',
+      SelfDriving: 'self_driving',
+    } as const;
+
+    /**
+     * * `scout` - Scout
+     * * `responder` - Responder
+     * * `human` - Human
+     * * `stub` - Stub generator
+     */
+    export type WorkflowProposalSourceTypeEnum = typeof WorkflowProposalSourceTypeEnum[keyof typeof WorkflowProposalSourceTypeEnum];
+
+
+    export const WorkflowProposalSourceTypeEnum = {
+      Scout: 'scout',
+      Responder: 'responder',
+      Human: 'human',
+      Stub: 'stub',
+    } as const;
+
+    /**
+     * Only the content fields the proposal changes. Valid keys are the workflow's content fields: actions, edges, trigger, trigger_masking, conversion, exit_condition, abort_action, variables. Each value has the same shape as on the workflow itself.
+     */
+    export type WorkflowProposalContent = { [key: string]: unknown };
+
+    /**
+     * The numbers behind the proposal. Conventional keys: metric, current_value, target_value, window, query, app_source_id.
+     */
+    export type WorkflowProposalEvidence = { [key: string]: unknown };
+
+    export interface WorkflowProposal {
+      readonly id: string;
+      /** Short summary of the proposed change. */
+      readonly title: string;
+      /** Why the producer thinks this change is worth making. */
+      readonly rationale: string;
+      /** Only the content fields the proposal changes. Valid keys are the workflow's content fields: actions, edges, trigger, trigger_masking, conversion, exit_condition, abort_action, variables. Each value has the same shape as on the workflow itself. */
+      readonly content: WorkflowProposalContent;
+      /** The numbers behind the proposal. Conventional keys: metric, current_value, target_value, window, query, app_source_id. */
+      readonly evidence: WorkflowProposalEvidence;
+      /** Live workflow version this was authored against. Drives a staleness warning, not a block. */
+      readonly base_version: number;
+      /** Whether the live workflow has moved on to a newer version since this was proposed. */
+      readonly is_stale: boolean;
+      readonly status: WorkflowProposalStatusEnum;
+      /** How the proposal was created. Derived from the request, never set by the caller.
+       *
+       * * `web` - Web
+       * * `api` - API
+       * * `mcp` - MCP
+       * * `self_driving` - Self-driving */
+      readonly created_via: WorkflowProposalCreatedViaEnum;
+      /** What kind of producer authored the proposal.
+       *
+       * * `scout` - Scout
+       * * `responder` - Responder
+       * * `human` - Human
+       * * `stub` - Stub generator */
+      readonly source_type: WorkflowProposalSourceTypeEnum;
+      /**
+         * Stable id of the producing agent run or finding, e.g. 'run:<run id>:finding:<finding id>'.
+         * @nullable
+         */
+      readonly source_id: string | null;
+      readonly created_by: UserBasic | null;
+      readonly created_at: string;
+      /** @nullable */
+      readonly resolved_at: string | null;
+      readonly resolved_by: UserBasic | null;
+      readonly resolution_note: string;
+      /**
+         * Workflow version the approved change went live as.
+         * @nullable
+         */
+      readonly applied_version: number | null;
+    }
+
+    export interface PaginatedWorkflowProposalList {
+      count: number;
+      /** @nullable */
+      next?: string | null;
+      /** @nullable */
+      previous?: string | null;
+      results: WorkflowProposal[];
+    }
+
     export interface PassRateBucket {
       /** Bucket start, aligned to success_rate_series_granularity (top of hour, midnight, or Monday). */
       bucket_start: string;
@@ -78914,6 +79028,79 @@ export namespace Schemas {
       estimated_cost_usd: number | null;
     }
 
+    export interface WorkflowProposalApproveRequest {
+      /** Replace the open staged draft with this proposal's content. Without it, approving while a draft is open returns 409. */
+      overwrite?: boolean;
+      /**
+         * The draft_updated_at of the staged draft this overwrite was confirmed against. A draft with a different stamp returns 409 instead of being overwritten. Omit to overwrite unconditionally.
+         * @nullable
+         */
+      expected_draft_updated_at?: string | null;
+    }
+
+    /**
+     * Only the workflow content fields this proposal changes. Approving merges them over the live content to build the staged draft, so unrelated parts of the workflow stay as they are.
+     */
+    export type WorkflowProposalCreateContent = { [key: string]: unknown };
+
+    /**
+     * The metric numbers behind the proposal, so a human can judge it without re-deriving them.
+     */
+    export type WorkflowProposalCreateEvidence = { [key: string]: unknown };
+
+    /**
+     * * `scout` - scout
+     * * `responder` - responder
+     * * `human` - human
+     * * `stub` - stub
+     */
+    export type WorkflowProposalCreateSourceTypeEnum = typeof WorkflowProposalCreateSourceTypeEnum[keyof typeof WorkflowProposalCreateSourceTypeEnum];
+
+
+    export const WorkflowProposalCreateSourceTypeEnum = {
+      Scout: 'scout',
+      Responder: 'responder',
+      Human: 'human',
+      Stub: 'stub',
+    } as const;
+
+    export interface WorkflowProposalCreate {
+      /**
+         * Short summary of the proposed change.
+         * @maxLength 200
+         */
+      title: string;
+      /** Why this change is worth making, in prose a human reads. */
+      rationale: string;
+      /** Only the workflow content fields this proposal changes. Approving merges them over the live content to build the staged draft, so unrelated parts of the workflow stay as they are. */
+      content: WorkflowProposalCreateContent;
+      /** The metric numbers behind the proposal, so a human can judge it without re-deriving them. */
+      evidence?: WorkflowProposalCreateEvidence;
+      /** Workflow version this was authored against. Defaults to the current live version. */
+      base_version?: number;
+      /** What kind of producer authored this proposal.
+       *
+       * * `scout` - scout
+       * * `responder` - responder
+       * * `human` - human
+       * * `stub` - stub */
+      source_type: WorkflowProposalCreateSourceTypeEnum;
+      /**
+         * Stable id of the producing agent run or finding. Posting the same one twice returns the existing proposal instead of creating a duplicate.
+         * @maxLength 200
+         * @nullable
+         */
+      source_id?: string | null;
+    }
+
+    export interface WorkflowProposalRejectRequest {
+      /**
+         * Why the proposal was rejected. Read back by whoever tunes the agent that produced it.
+         * @maxLength 1000
+         */
+      resolution_note?: string;
+    }
+
     export interface WorkflowRunActivityPoint {
       /** GitHub Actions run id. */
       run_id: number;
@@ -85692,6 +85879,31 @@ export namespace Schemas {
       Hour: 'hour',
       Day: 'day',
       Week: 'week',
+    } as const;
+
+    export type HogFlowsProposalsListParams = {
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number;
+    /**
+     * The initial index from which to return the results.
+     */
+    offset?: number;
+    /**
+     * Only return proposals in this status (suggested, approved, rejected, applied).
+     */
+    status?: HogFlowsProposalsListStatus;
+    };
+
+    export type HogFlowsProposalsListStatus = typeof HogFlowsProposalsListStatus[keyof typeof HogFlowsProposalsListStatus];
+
+
+    export const HogFlowsProposalsListStatus = {
+      Applied: 'applied',
+      Approved: 'approved',
+      Rejected: 'rejected',
+      Suggested: 'suggested',
     } as const;
 
     export type HogFlowsRevisionsListParams = {

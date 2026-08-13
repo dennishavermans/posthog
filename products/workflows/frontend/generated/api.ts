@@ -33,6 +33,7 @@ import type {
     HogFlowsMetricsGlobalRetrieveParams,
     HogFlowsMetricsRetrieveParams,
     HogFlowsMetricsTotalsRetrieveParams,
+    HogFlowsProposalsListParams,
     HogFlowsReputationRetrieveParams,
     HogFlowsRevisionsListParams,
     HogInvocationRerunRequestApi,
@@ -43,12 +44,17 @@ import type {
     PaginatedHogFlowMinimalListApi,
     PaginatedHogFlowRevisionBasicListApi,
     PaginatedHogFlowTemplateListApi,
+    PaginatedWorkflowProposalListApi,
     PatchedHogFlowActionEmailUpdateApi,
     PatchedHogFlowApi,
     PatchedHogFlowGraphUpdateApi,
     PatchedHogFlowScheduleApi,
     PatchedHogFlowTemplateApi,
     TeamEmailReputationResponseApi,
+    WorkflowProposalApi,
+    WorkflowProposalApproveRequestApi,
+    WorkflowProposalCreateApi,
+    WorkflowProposalRejectRequestApi,
     WorkflowStatsRowApi,
 } from './api.schemas'
 
@@ -634,6 +640,118 @@ export const hogFlowsMetricsTotalsRetrieve = async (
     return apiMutator<AppMetricsTotalsResponseApi>(getHogFlowsMetricsTotalsRetrieveUrl(projectId, id, params), {
         ...options,
         method: 'GET',
+    })
+}
+
+export const getHogFlowsProposalsListUrl = (projectId: string, id: string, params?: HogFlowsProposalsListParams) => {
+    const normalizedParams = new URLSearchParams()
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? 'null' : String(value))
+        }
+    })
+
+    const stringifiedParams = normalizedParams.toString()
+
+    return stringifiedParams.length > 0
+        ? `/api/projects/${projectId}/hog_flows/${id}/proposals/?${stringifiedParams}`
+        : `/api/projects/${projectId}/hog_flows/${id}/proposals/`
+}
+
+/**
+ * Agent-authored changes to this workflow, awaiting a human's decision.
+ *
+ * Creating one stages nothing: a proposal only reaches the workflow's draft once a human
+ * approves it, and only reaches the live config once someone publishes that draft.
+ */
+export const hogFlowsProposalsList = async (
+    projectId: string,
+    id: string,
+    params?: HogFlowsProposalsListParams,
+    options?: RequestInit
+): Promise<PaginatedWorkflowProposalListApi> => {
+    return apiMutator<PaginatedWorkflowProposalListApi>(getHogFlowsProposalsListUrl(projectId, id, params), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getHogFlowsProposalsCreateUrl = (projectId: string, id: string) => {
+    return `/api/projects/${projectId}/hog_flows/${id}/proposals/`
+}
+
+/**
+ * Agent-authored changes to this workflow, awaiting a human's decision.
+ *
+ * Creating one stages nothing: a proposal only reaches the workflow's draft once a human
+ * approves it, and only reaches the live config once someone publishes that draft.
+ */
+export const hogFlowsProposalsCreate = async (
+    projectId: string,
+    id: string,
+    workflowProposalCreateApi: WorkflowProposalCreateApi,
+    options?: RequestInit
+): Promise<WorkflowProposalApi> => {
+    return apiMutator<WorkflowProposalApi>(getHogFlowsProposalsCreateUrl(projectId, id), {
+        ...options,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(workflowProposalCreateApi),
+    })
+}
+
+export const getHogFlowsProposalsRetrieveUrl = (projectId: string, id: string, proposalId: string) => {
+    return `/api/projects/${projectId}/hog_flows/${id}/proposals/${proposalId}/`
+}
+
+export const hogFlowsProposalsRetrieve = async (
+    projectId: string,
+    id: string,
+    proposalId: string,
+    options?: RequestInit
+): Promise<WorkflowProposalApi> => {
+    return apiMutator<WorkflowProposalApi>(getHogFlowsProposalsRetrieveUrl(projectId, id, proposalId), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getHogFlowsProposalsApproveCreateUrl = (projectId: string, id: string, proposalId: string) => {
+    return `/api/projects/${projectId}/hog_flows/${id}/proposals/${proposalId}/approve/`
+}
+
+export const hogFlowsProposalsApproveCreate = async (
+    projectId: string,
+    id: string,
+    proposalId: string,
+    workflowProposalApproveRequestApi?: WorkflowProposalApproveRequestApi,
+    options?: RequestInit
+): Promise<WorkflowProposalApi> => {
+    return apiMutator<WorkflowProposalApi>(getHogFlowsProposalsApproveCreateUrl(projectId, id, proposalId), {
+        ...options,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(workflowProposalApproveRequestApi),
+    })
+}
+
+export const getHogFlowsProposalsRejectCreateUrl = (projectId: string, id: string, proposalId: string) => {
+    return `/api/projects/${projectId}/hog_flows/${id}/proposals/${proposalId}/reject/`
+}
+
+export const hogFlowsProposalsRejectCreate = async (
+    projectId: string,
+    id: string,
+    proposalId: string,
+    workflowProposalRejectRequestApi?: WorkflowProposalRejectRequestApi,
+    options?: RequestInit
+): Promise<WorkflowProposalApi> => {
+    return apiMutator<WorkflowProposalApi>(getHogFlowsProposalsRejectCreateUrl(projectId, id, proposalId), {
+        ...options,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(workflowProposalRejectRequestApi),
     })
 }
 
