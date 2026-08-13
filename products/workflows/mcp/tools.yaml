@@ -69,6 +69,21 @@ tools:
     hog-flows-partial-update:
         operation: hog_flows_partial_update
         enabled: false
+    hog-flows-proposals-approve-create:
+        operation: hog_flows_proposals_approve_create
+        enabled: false
+    hog-flows-proposals-create:
+        operation: hog_flows_proposals_create
+        enabled: false
+    hog-flows-proposals-list:
+        operation: hog_flows_proposals_list
+        enabled: false
+    hog-flows-proposals-reject-create:
+        operation: hog_flows_proposals_reject_create
+        enabled: false
+    hog-flows-proposals-retrieve:
+        operation: hog_flows_proposals_retrieve
+        enabled: false
     hog-flows-publish-create:
         operation: hog_flows_publish_create
         enabled: false
@@ -278,6 +293,22 @@ tools:
             failure view: filter status=failed to see who it failed for and why. Filter by distinct_id and time range.
             Distinct from workflows-list-batch-jobs (the dispatch ledger, which has no per-person outcome) — drill from
             a failed invocation into workflows-logs for the step-by-step trace.
+    workflows-list-proposals:
+        operation: hog_flows_proposals_list
+        enabled: true
+        scopes:
+            - hog_flow:read
+        annotations:
+            readOnly: true
+            destructive: false
+            idempotent: true
+        list: true
+        feature_flag: self-optimising-workflows
+        title: List workflow suggestions
+        description: >
+            List the suggested changes on a workflow, newest first, with the evidence and rationale behind each and
+            whether a human approved, rejected or applied it. Read this before proposing a change so you don't repeat a
+            suggestion someone already rejected.
     workflows-list-revisions:
         operation: hog_flows_revisions_list
         enabled: true
@@ -352,6 +383,24 @@ tools:
             edit. When adding or editing a conditional_branch, each condition needs a 'filters' wrapper:
             {filters:{properties:[...]}}, not {properties:[...]} on the condition. Re-test the changed path with
             workflows-test-run after patching.
+    workflows-propose-change:
+        operation: hog_flows_proposals_create
+        enabled: true
+        scopes:
+            - hog_flow:write
+        annotations:
+            readOnly: false
+            destructive: false
+            idempotent: true
+        feature_flag: self-optimising-workflows
+        title: Suggest a workflow change
+        description: >
+            Suggest a change to a workflow for a human to review. Send only the content fields you want to change
+            (usually actions), the evidence behind the suggestion, and a rationale a person can judge without re-deriving
+            your numbers. This changes nothing on its own: a person approves the suggestion, which stages it as a draft,
+            and publishes that draft to make it live. Pass a stable source_id for your run or finding so retrying
+            returns the suggestion you already made instead of creating a second one. There is no tool to approve a
+            suggestion, by design - only a person resolves one.
     workflows-publish:
         operation: hog_flows_publish_create
         enabled: true

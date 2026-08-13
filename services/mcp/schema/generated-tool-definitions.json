@@ -11292,6 +11292,21 @@
             "readOnlyHint": true
         }
     },
+    "workflows-list-proposals": {
+        "description": "List the suggested changes on a workflow, newest first, with the evidence and rationale behind each and whether a human approved, rejected or applied it. Read this before proposing a change so you don't repeat a suggestion someone already rejected.",
+        "category": "Workflows",
+        "feature": "workflows",
+        "summary": "List workflow suggestions",
+        "title": "List workflow suggestions",
+        "required_scopes": ["hog_flow:read"],
+        "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": true
+        },
+        "feature_flag": "self-optimising-workflows"
+    },
     "workflows-list-revisions": {
         "description": "List a workflow's revision history, newest first. Every live-content change (publish, direct edit) appends a version; each entry shows version, when, and by whom. Fetch a version's content with workflows-get-revision; roll back with workflows-restore-revision.",
         "category": "Workflows",
@@ -11361,6 +11376,21 @@
             "openWorldHint": true,
             "readOnlyHint": false
         }
+    },
+    "workflows-propose-change": {
+        "description": "Suggest a change to a workflow for a human to review. Send only the content fields you want to change (usually actions), the evidence behind the suggestion, and a rationale a person can judge without re-deriving your numbers. This changes nothing on its own: a person approves the suggestion, which stages it as a draft, and publishes that draft to make it live. Pass a stable source_id for your run or finding so retrying returns the suggestion you already made instead of creating a second one. There is no tool to approve a suggestion, by design - only a person resolves one.",
+        "category": "Workflows",
+        "feature": "workflows",
+        "summary": "Suggest a workflow change",
+        "title": "Suggest a workflow change",
+        "required_scopes": ["hog_flow:write"],
+        "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": false
+        },
+        "feature_flag": "self-optimising-workflows"
     },
     "workflows-publish": {
         "description": "Apply a workflow's staged draft to its live config. Two-step: call without confirm first — it returns in_flight_runs, a confirm_token, and an impact summary (per deleted step: about how many people are parked there and whether they move to a surviving step or exit; variables that may render empty for runs that never executed their new producer; schedules overriding removed variables), changing nothing. Echo the impact to the user and get their go-ahead, then call again with confirm=true and that confirm_token. A 409 means the draft changed since the preview and a 400 means the token expired — preview again and re-confirm either way. Publish revalidates the draft fully and recompiles it, so an invalid draft is rejected with the reason and the live config stays untouched. Test the draft first with workflows-test-run (use_draft=true). Shortened delays apply to parked runs via a spread sweep: runs already waking soon keep their original time, and wakes moved earlier by the sweep trickle in from a few minutes after publish rather than all at once - so runs still parked shortly after publishing are normal, not a sign of a failed publish.",
