@@ -149,6 +149,24 @@ class TestWorkflowProposals(APIBaseTest):
         assert again.json()["id"] == first["id"]
         assert WorkflowProposal.objects.for_team(self.team.id).filter(hog_flow_id=flow_id).count() == 1
 
+    def test_a_partial_action_list_is_refused(self, _mock_flag):
+        flow_id = self._create_active_flow()
+        # `actions` replaces the live list, so a caller that sends only the step it edited would stage a
+        # draft with the trigger deleted — and the human reviewing the suggestion cannot see what is gone.
+        response = self.client.post(
+            f"/api/projects/{self.team.id}/hog_flows/{flow_id}/proposals/",
+            {
+                "title": "Only the step I touched",
+                "rationale": "A truncated action list must not reach a draft.",
+                "content": {"actions": [_webhook_action(url="https://proposed.example.com")]},
+                "source_type": "scout",
+            },
+            format="json",
+        )
+        assert response.status_code == 400, response.json()
+        assert "replace the whole list" in str(response.json())
+        assert WorkflowProposal.objects.for_team(self.team.id).filter(hog_flow_id=flow_id).count() == 0
+
     @parameterized.expand([("approve",), ("reject",)])
     def test_resolving_twice_is_refused(self, _mock_flag, action: str):
         flow_id = self._create_active_flow()

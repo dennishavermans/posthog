@@ -2683,6 +2683,13 @@ class WorkflowProposalRejectRequestSerializer(serializers.Serializer):
     )
 
 
+def _flatten_graph_errors(error: serializers.ValidationError) -> list[str]:
+    detail = error.detail
+    if isinstance(detail, dict):
+        return [str(message) for messages in detail.values() for message in messages]
+    return [str(message) for message in detail]
+
+
 class ProposalAlreadyResolvedError(exceptions.APIException):
     status_code = status.HTTP_409_CONFLICT
     default_detail = "This suggestion has already been resolved. Reload to see where it ended up."
@@ -3811,6 +3818,28 @@ class HogFlowViewSet(
         # plaintext like a revision snapshot, so strip them rather than silently persisting them.
         content = strip_content_secrets(dict(params["content"]))
         source_id = params.get("source_id") or None
+
+        # `actions` and `edges` replace the live list wholesale rather than merging per step, so a
+        # caller that sends only the step it edited would stage a draft with the rest of the workflow
+        # deleted — and the human reviewing the suggestion cannot see what is missing. Validate the
+        # merged graph now, at authoring time, where the error can name the mistake.
+        if "actions" in content or "edges" in content:
+            merged = {**snapshot_flow_content(instance), **content}
+            try:
+                # Warnings (the return value) are fine to ignore here; only the raised errors mean the
+                # graph could not run.
+                validate_graph(merged.get("actions") or [], merged.get("edges") or [], merged.get("abort_action"))
+            except serializers.ValidationError as error:
+                raise exceptions.ValidationError(
+                    {
+                        "content": [
+                            "The proposed change does not describe a runnable workflow. Note that actions and "
+                            "edges replace the whole list rather than merging per step, so send the full set "
+                            "with your edit applied.",
+                            *_flatten_graph_errors(error),
+                        ]
+                    }
+                )
 
         if source_id:
             # Idempotent by source: an MCP retry or a re-emitted finding resolves to the proposal it

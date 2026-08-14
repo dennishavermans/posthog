@@ -109,9 +109,16 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
             null as PaginatedWorkflowProposalListApi | null,
             {
                 loadProposals: async () => {
-                    return await hogFlowsProposalsList(String(values.currentTeamIdStrict), props.id, {
-                        status: 'suggested',
-                    })
+                    try {
+                        return await hogFlowsProposalsList(String(values.currentTeamIdStrict), props.id, {
+                            status: 'suggested',
+                        })
+                    } catch {
+                        // A panel nobody asked for must not shout. The endpoint 404s wherever the flag is
+                        // off, and the loader's default failure toast would put "Load proposals failed" in
+                        // front of every user the backend rollout hasn't reached.
+                        return { count: 0, results: [] }
+                    }
                 },
             },
         ],
