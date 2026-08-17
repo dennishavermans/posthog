@@ -832,9 +832,7 @@ describe('Tool Filtering - Feature Flags', () => {
             expect.arrayContaining([
                 'logs-alerting',
                 'logs-anomalies',
-                'logs-patterns-view',
                 'llm-analytics-datasets',
-                'replay-video-based-summarization',
                 'tracing',
                 'visual-review',
                 'user-interviews',
@@ -857,13 +855,14 @@ describe('Tool Filtering - Feature Flags', () => {
                 'loops',
                 'review-hog',
                 'warehouse-person-properties',
+                'billing-alerts',
                 'streamlit-apps',
                 'posthog-connect',
                 'experiment-behavior-comparison',
                 'self-optimising-workflows',
             ])
         )
-        expect(flags).toHaveLength(31)
+        expect(flags).toHaveLength(30)
     })
 
     it('every loops tool is gated on the loops flag', () => {
