@@ -3906,8 +3906,10 @@ class HogFlowViewSet(
         if parsed is None:
             raise exceptions.NotFound("No such suggestion for this workflow.")
         try:
+            # team_id is explicit rather than left to the fail-closed manager's request scope: this is
+            # the lookup every mutation resolves through, so it states the tenant boundary in the query.
             return WorkflowProposal.objects.select_related("created_by", "resolved_by", "hog_flow").get(
-                hog_flow_id=hog_flow.pk, id=parsed
+                team_id=self.team_id, hog_flow_id=hog_flow.pk, id=parsed
             )
         except WorkflowProposal.DoesNotExist:
             raise exceptions.NotFound("No such suggestion for this workflow.")
