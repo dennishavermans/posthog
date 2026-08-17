@@ -4,6 +4,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from posthog.api.app_metrics2 import fetch_app_metric_totals
+from posthog.dataclasses import frozen
 from posthog.models.scoping import team_scope
 from posthog.utils import relative_date_parse_with_delta_mapping
 
@@ -14,6 +15,23 @@ HOG_FLOW_VERSION_APP_SOURCE = "hog_flow_version"
 OPEN_RATE_TARGET = 0.2
 MIN_SENDS_FOR_EVIDENCE = 20
 SHORT_SUBJECT_CHARS = 45
+
+
+@frozen
+class _SubjectCandidate:
+    """An email step whose subject line the stub wants to shorten, and the numbers behind it."""
+
+    action_id: str
+    current_subject: str
+    proposed_subject: str
+    sends: int
+    opens: int
+    # True when the step was picked by --force rather than by its own metrics.
+    without_evidence: bool
+
+    @property
+    def open_rate(self) -> Optional[float]:
+        return (self.opens / self.sends) if self.sends else None
 
 
 class Command(BaseCommand):
@@ -60,18 +78,21 @@ class Command(BaseCommand):
             candidate = self._pick_candidate(flow, after, force)
             if candidate is None:
                 continue
-            action_id, subject, new_subject, sent, opened, forced = candidate
-            open_rate = (opened / sent) if sent else None
+            rate = candidate.open_rate
             self.stdout.write(
-                f"  {flow.name} v{flow.version} step {action_id}: "
-                f"{'no metrics (forced)' if forced else f'open rate {open_rate:.1%} of {sent} sends'}"
+                f"  {flow.name} v{flow.version} step {candidate.action_id}: "
+                + (
+                    "no metrics (forced)"
+                    if candidate.without_evidence
+                    else f"open rate {rate:.1%} of {candidate.sends} sends"
+                )
             )
-            self.stdout.write(f"    subject: {subject!r} -> {new_subject!r}")
+            self.stdout.write(f"    subject: {candidate.current_subject!r} -> {candidate.proposed_subject!r}")
             if not live_run:
                 continue
 
             with team_scope(team_id):
-                proposal = self._build_proposal(flow, action_id, new_subject, open_rate, sent, opened, window, forced)
+                proposal = self._build_proposal(flow, candidate, window)
                 # Idempotent by source id, so re-running the command re-resolves to the proposal it
                 # already made instead of stacking duplicates in someone's queue.
                 if WorkflowProposal.objects.filter(hog_flow=flow, source_id=proposal.source_id).exists():
@@ -83,7 +104,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Done. {written} proposal(s) written.")
 
-    def _pick_candidate(self, flow: HogFlow, after: Any, force: bool) -> Optional[tuple[str, str, str, int, int, bool]]:
+    def _pick_candidate(self, flow: HogFlow, after: Any, force: bool) -> Optional[_SubjectCandidate]:
         for action in flow.actions or []:
             if not isinstance(action, dict) or action.get("type") != "function_email":
                 continue
@@ -113,69 +134,72 @@ class Command(BaseCommand):
             if new_subject == subject:
                 self.stdout.write(f"  {flow.name} step {action_id}: subject is already short, nothing to propose")
                 continue
-            return str(action_id), subject, new_subject, sent, opened, not enough_evidence
+            return _SubjectCandidate(
+                action_id=str(action_id),
+                current_subject=subject,
+                proposed_subject=new_subject,
+                sends=sent,
+                opens=opened,
+                without_evidence=not enough_evidence,
+            )
         return None
 
     def _build_proposal(
         self,
         flow: HogFlow,
-        action_id: str,
-        new_subject: str,
-        open_rate: Optional[float],
-        sent: int,
-        opened: int,
+        candidate: _SubjectCandidate,
         window: str,
-        forced: bool,
     ) -> WorkflowProposal:
         actions = []
         for action in flow.actions or []:
             action = dict(action)
-            if action.get("id") == action_id:
+            if action.get("id") == candidate.action_id:
                 config = dict(action.get("config") or {})
                 inputs = dict(config.get("inputs") or {})
                 email = dict(inputs.get("email") or {})
-                email["value"] = {**dict(email.get("value") or {}), "subject": new_subject}
+                email["value"] = {**dict(email.get("value") or {}), "subject": candidate.proposed_subject}
                 inputs["email"] = email
                 config["inputs"] = inputs
                 action["config"] = config
             actions.append(action)
 
+        rate = candidate.open_rate
         rationale = (
             f"The subject line on this step is long, and shorter subjects tend to get opened more. "
-            f"This proposal shortens it to '{new_subject}'. "
+            f"This proposal shortens it to '{candidate.proposed_subject}'. "
         )
         rationale += (
             "No metrics were available for this step, so the change was picked without evidence."
-            if forced
-            else f"Over {window} this step was opened {open_rate:.1%} of the time, against a {OPEN_RATE_TARGET:.0%} target."
+            if candidate.without_evidence
+            else f"Over {window} this step was opened {rate:.1%} of the time, against a {OPEN_RATE_TARGET:.0%} target."
         )
         rationale += " Written by a stub generator, not by an agent that read your copy."
 
         return WorkflowProposal(
             hog_flow=flow,
-            title=f"Shorten the subject line on '{_step_name(flow, action_id)}'",
+            title=f"Shorten the subject line on '{_step_name(flow, candidate.action_id)}'",
             rationale=rationale,
             content={"actions": actions},
             base_version=flow.version or 1,
             evidence={
                 "metric": "email open rate",
-                "current_value": None if forced else round(open_rate or 0, 4),
+                "current_value": None if candidate.without_evidence else round(rate or 0, 4),
                 "target_value": OPEN_RATE_TARGET,
                 "window": window,
-                "sends": sent,
-                "opens": opened,
-                "forced": forced,
+                "sends": candidate.sends,
+                "opens": candidate.opens,
+                "forced": candidate.without_evidence,
                 "app_source_id": f"{flow.id}/{flow.version}",
                 "query": (
                     "SELECT metric_name, sum(count) FROM app_metrics WHERE app_source = 'hog_flow_version' "
-                    f"AND app_source_id = '{flow.id}/{flow.version}' AND instance_id = '{action_id}' "
+                    f"AND app_source_id = '{flow.id}/{flow.version}' AND instance_id = '{candidate.action_id}' "
                     "GROUP BY metric_name"
                 ),
             },
             source_type=WorkflowProposal.SourceType.STUB,
             # Stable per (flow, version, step, day) so re-running the command is idempotent but a later
             # version can be proposed against again.
-            source_id=f"stub:{flow.id}:v{flow.version}:{action_id}:{timezone.now():%Y-%m-%d}",
+            source_id=f"stub:{flow.id}:v{flow.version}:{candidate.action_id}:{timezone.now():%Y-%m-%d}",
             created_via=WorkflowProposal.CreatedVia.API,
             created_by=None,
         )
