@@ -378,8 +378,8 @@ export interface experimentReplayTabLogicMeta {
             arg: any
         ) => string | null
         effectiveExposureScope: (
-            exposureScope: any,
-            exposureInSessionUnavailableReason: any
+            exposureScope: ExperimentReplayExposureScope,
+            exposureInSessionUnavailableReason: string | null
         ) => ExperimentReplayExposureScope
         metricOptions: (
             linkabilityLoaded: boolean,
@@ -404,7 +404,7 @@ export interface experimentReplayTabLogicMeta {
         ) => string[] | undefined
         recordingsFilters: (
             effectiveVariantKey: string | null,
-            effectiveExposureScope: any,
+            effectiveExposureScope: ExperimentReplayExposureScope,
             effectiveMetricUuids: string[],
             metricOptions: ExperimentReplayMetricOption[],
             unlinkableEventNames: Set<string>,
