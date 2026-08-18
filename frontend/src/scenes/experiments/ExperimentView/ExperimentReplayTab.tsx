@@ -27,6 +27,7 @@ import { isLaunched } from '../experimentStatus'
 import { NOT_A_FUNNEL_REASON } from '../utils'
 import { ExperimentBehaviorComparison, ExperimentBehaviorComparisonToggle } from './ExperimentBehaviorComparison'
 import {
+    ExperimentReplayExposureScope,
     ExperimentReplayMetricFilterMode,
     ExperimentReplayMetricOption,
     ExperimentSessionBucket,
@@ -39,11 +40,20 @@ import { VariantTag } from './VariantTag'
 // variant — a variant literally named "all" just renders as its own option after the built-in "All".
 const ALL_VARIANTS = '$all'
 
-// What the unfiltered list is, said once above it. The second sentence carries the part that
-// isn't guessable: exposure is resolved per person, matching who the analysis counts, so
-// sessions appear even when the exposure event fired server-side or in an earlier session.
-const POPULATION_CAPTION =
-    "Showing sessions of exposed participants from their first exposure onward. The exposure event itself doesn't have to be in the session."
+// What the unfiltered list is, said once above it, following the exposure scope control. The
+// 'all_exposed' caption carries the part that isn't guessable: exposure is resolved per person,
+// matching who the analysis counts, so sessions appear even when the exposure event fired
+// server-side or in an earlier session.
+const POPULATION_CAPTIONS: Record<ExperimentReplayExposureScope, string> = {
+    in_session: 'Showing sessions of exposed participants where the exposure was captured in the session.',
+    all_exposed:
+        "Showing sessions of exposed participants from their first exposure onward. The exposure event itself doesn't have to be in the session.",
+}
+
+// Buckets and watch cards select their sessions from the in-session-exposed population, so the
+// scope control cannot widen or narrow them and is parked instead of silently ignored.
+const SCOPE_LOCKED_BY_BUCKET_REASON =
+    'This metric filter already narrows to sessions where the exposure was captured in the session.'
 
 // A session fires a metric's events, never the metric — the caption spells that out where it
 // has the room the trigger doesn't.
@@ -170,6 +180,8 @@ export function ExperimentReplayTab({ experiment }: { experiment: Experiment }):
     const logic = experimentReplayTabLogic({ experiment })
     const {
         effectiveVariantKey,
+        effectiveExposureScope,
+        exposureInSessionUnavailableReason,
         variantKeys,
         recordingsFilters,
         effectiveMetricUuids,
@@ -182,6 +194,7 @@ export function ExperimentReplayTab({ experiment }: { experiment: Experiment }):
     } = useValues(logic)
     const {
         setSelectedVariantKey,
+        setExposureScope,
         setMetricSelected,
         setMetricFilterMode,
         loadSessionBucket,
@@ -240,6 +253,29 @@ export function ExperimentReplayTab({ experiment }: { experiment: Experiment }):
                     options={[
                         { value: ALL_VARIANTS, label: 'All' },
                         ...variantKeys.map((key) => ({ value: key, label: <VariantTag variantKey={key} /> })),
+                    ]}
+                />
+                <LemonSegmentedButton
+                    size="small"
+                    value={effectiveExposureScope}
+                    onChange={(value) => setExposureScope(value)}
+                    disabledReason={sessionBucketRequest !== null ? SCOPE_LOCKED_BY_BUCKET_REASON : undefined}
+                    options={[
+                        {
+                            value: 'in_session' as const,
+                            label: 'Exposed in session',
+                            tooltip:
+                                'Only sessions where an exposure event for this experiment was captured in the session.',
+                            disabledReason: exposureInSessionUnavailableReason ?? undefined,
+                            'data-attr': 'experiment-recordings-exposure-scope-in-session',
+                        },
+                        {
+                            value: 'all_exposed' as const,
+                            label: 'All sessions',
+                            tooltip:
+                                'Every session of exposed participants from their first exposure onward, including sessions without the exposure event.',
+                            'data-attr': 'experiment-recordings-exposure-scope-all',
+                        },
                     ]}
                 />
                 {metricOptions.length > 0 && (
@@ -323,7 +359,9 @@ export function ExperimentReplayTab({ experiment }: { experiment: Experiment }):
             <div className="mb-2 flex items-center gap-2 text-xs text-secondary">
                 {!sessionBucketRequest && metricFilterMode === 'fired_all' ? (
                     effectiveMetricUuids.length === 0 ? (
-                        <span data-attr="experiment-recordings-population-caption">{POPULATION_CAPTION}</span>
+                        <span data-attr="experiment-recordings-population-caption">
+                            {POPULATION_CAPTIONS[effectiveExposureScope]}
+                        </span>
                     ) : null
                 ) : !sessionBucketRequest ? (
                     <span>{unappliedModeReason(metricFilterMode)}</span>

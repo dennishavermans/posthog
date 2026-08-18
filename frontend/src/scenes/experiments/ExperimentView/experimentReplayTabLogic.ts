@@ -63,11 +63,13 @@ import type {
 
 import type { ExperimentIdType } from '../../../types'
 import type { ExperimentSavedMetric } from '../experimentLogic'
+import { EXPERIMENT_EXPOSURE_EVENT, EXPOSURE_DEFAULT_EVENT } from '../exposureContract'
 import { getDefaultMetricTitle } from '../MetricsView/shared/utils'
 import {
     getExperimentVariants,
     getFunnelDropoffReason,
     getMetricSessionFilters,
+    isEventExposureConfig,
     isUnlinkableEventFilter,
 } from '../utils'
 import {
@@ -104,6 +106,19 @@ export interface ExperimentReplayMetricOption {
  * bounds, so those modes show a capped, most-recent-first slice.
  */
 export type ExperimentReplayMetricFilterMode = 'fired_all' | 'fired_any' | 'no_metric_activity' | 'funnel_dropoff'
+
+/**
+ * Which of an exposed participant's sessions the list shows: only the ones carrying in-session
+ * exposure evidence (the default, since the long tail of an exposed person's other sessions
+ * rarely touches the feature under test), or every session from first exposure onward.
+ */
+export type ExperimentReplayExposureScope = 'in_session' | 'all_exposed'
+
+/** Why in-session narrowing can't mean anything for this experiment, mirroring the backend's
+ * refusal: a custom exposure event captured server-side never carries a session id, and unlike
+ * the default events it has no stamped-property stand-in. */
+export const IN_SESSION_EXPOSURE_UNAVAILABLE_REASON =
+    "This experiment's exposure event is captured server-side without a session ID, so no session can contain it. Showing all exposed participants' sessions."
 
 /** What the tab asks the bucket endpoint for, and the spec a loaded response belongs to. */
 export interface ExperimentSessionBucketRequest {
@@ -169,8 +184,11 @@ export interface experimentReplayTabLogicValues {
     behaviorComparisonAvailable: boolean
     behaviorComparisonOpen: boolean
     bucketSessionIds: string[] | undefined
+    effectiveExposureScope: ExperimentReplayExposureScope
     effectiveMetricUuids: string[]
     effectiveVariantKey: string | null
+    exposureInSessionUnavailableReason: string | null
+    exposureScope: ExperimentReplayExposureScope
     loadedRecordings: ExperimentReplayRecording[]
     loadedRecordingsById: Map<string, ExperimentReplayRecording>
     metricFilterMode: ExperimentReplayMetricFilterMode
@@ -318,6 +336,9 @@ export interface experimentReplayTabLogicActions {
     selectWatchCard: (card: ExperimentWatchCardApi | null) => {
         card: ExperimentWatchCardApi | null
     }
+    setExposureScope: (scope: ExperimentReplayExposureScope) => {
+        scope: ExperimentReplayExposureScope
+    }
     setMetricFilterMode: (mode: ExperimentReplayMetricFilterMode) => {
         mode: ExperimentReplayMetricFilterMode
     }
@@ -351,6 +372,15 @@ export interface experimentReplayTabLogicMeta {
         variantKeys: (arg: any) => string[]
         behaviorComparisonAvailable: (featureFlags: FeatureFlagsSet) => boolean
         effectiveVariantKey: (selectedVariantKey: string | null, variantKeys: string[]) => string | null
+        exposureInSessionUnavailableReason: (
+            linkabilityLoaded: boolean,
+            unlinkableEventNames: Set<string>,
+            arg: any
+        ) => string | null
+        effectiveExposureScope: (
+            exposureScope: any,
+            exposureInSessionUnavailableReason: any
+        ) => ExperimentReplayExposureScope
         metricOptions: (
             linkabilityLoaded: boolean,
             unlinkableEventNames: Set<string>,
@@ -374,6 +404,7 @@ export interface experimentReplayTabLogicMeta {
         ) => string[] | undefined
         recordingsFilters: (
             effectiveVariantKey: string | null,
+            effectiveExposureScope: any,
             effectiveMetricUuids: string[],
             metricOptions: ExperimentReplayMetricOption[],
             unlinkableEventNames: Set<string>,
@@ -434,6 +465,7 @@ export const experimentReplayTabLogic = kea<experimentReplayTabLogicType>([
     })),
     actions({
         setSelectedVariantKey: (variantKey: string | null) => ({ variantKey }),
+        setExposureScope: (scope: ExperimentReplayExposureScope) => ({ scope }),
         setMetricSelected: (metricUuid: string, selected: boolean) => ({ metricUuid, selected }),
         setMetricFilterMode: (mode: ExperimentReplayMetricFilterMode) => ({ mode }),
         playlistFiltersChanged: (filters: RecordingUniversalFilters) => ({ filters }),
@@ -523,6 +555,16 @@ export const experimentReplayTabLogic = kea<experimentReplayTabLogicType>([
                 selectWatchCard: (state: string | null, { card }) => (card ? card.variant : state),
             },
         ],
+        // Persisted like the variant facet. The default excludes the long tail of an exposed
+        // person's sessions that never touch the feature under test; 'all_exposed' widens to
+        // their whole journey from first exposure.
+        exposureScope: [
+            'in_session' as ExperimentReplayExposureScope,
+            { persist: true },
+            {
+                setExposureScope: (_, { scope }) => scope,
+            },
+        ],
         // Empty = no metric filter. Every selected metric narrows the playlist further (AND) —
         // OR across metrics is inexpressible, since the recordings query carries a single
         // operator shared with the exposure filter. Persisted for the same reason as the
@@ -607,6 +649,7 @@ export const experimentReplayTabLogic = kea<experimentReplayTabLogicType>([
                 // trigger and the caption.
                 setMetricFilterMode: () => null,
                 setSelectedVariantKey: () => null,
+                setExposureScope: () => null,
                 setMetricSelected: () => null,
                 // Closing the shelf takes away the only way to deselect, so the list would stay
                 // narrowed with nothing on screen saying why.
@@ -632,6 +675,39 @@ export const experimentReplayTabLogic = kea<experimentReplayTabLogicType>([
             (s) => [s.selectedVariantKey, s.variantKeys],
             (selectedVariantKey: string | null, variantKeys: string[]): string | null =>
                 selectedVariantKey !== null && variantKeys.includes(selectedVariantKey) ? selectedVariantKey : null,
+        ],
+        // Mirrors the backend's refusal condition so the default never turns the tab into an
+        // error banner: only a custom exposure event has no stand-in when it was never captured
+        // with a $session_id (the default events fall back to the stamped $feature/<key>
+        // property). Null while the linkability check loads or fails, the fail-open posture
+        // every linkability consumer shares.
+        exposureInSessionUnavailableReason: [
+            (s) => [s.linkabilityLoaded, s.unlinkableEventNames, (_, props) => props.experiment],
+            (linkabilityLoaded: boolean, unlinkableEventNames: Set<string>, experiment: Experiment): string | null => {
+                if (!linkabilityLoaded) {
+                    return null
+                }
+                const exposureConfig = experiment.exposure_criteria?.exposure_config
+                const customEvent =
+                    exposureConfig &&
+                    isEventExposureConfig(exposureConfig) &&
+                    exposureConfig.event &&
+                    exposureConfig.event !== EXPOSURE_DEFAULT_EVENT &&
+                    exposureConfig.event !== EXPERIMENT_EXPOSURE_EVENT
+                        ? exposureConfig.event
+                        : null
+                return customEvent !== null && unlinkableEventNames.has(customEvent)
+                    ? IN_SESSION_EXPOSURE_UNAVAILABLE_REASON
+                    : null
+            },
+        ],
+        effectiveExposureScope: [
+            (s) => [s.exposureScope, s.exposureInSessionUnavailableReason],
+            (
+                exposureScope: ExperimentReplayExposureScope,
+                exposureInSessionUnavailableReason: string | null
+            ): ExperimentReplayExposureScope =>
+                exposureInSessionUnavailableReason !== null ? 'all_exposed' : exposureScope,
         ],
         // Every uuid-carrying metric: inline primary + secondary, then saved/shared metrics (their
         // definition lives in `saved_metrics[].query`) — the same set the backend
@@ -784,6 +860,7 @@ export const experimentReplayTabLogic = kea<experimentReplayTabLogicType>([
         recordingsFilters: [
             (s) => [
                 s.effectiveVariantKey,
+                s.effectiveExposureScope,
                 s.effectiveMetricUuids,
                 s.metricOptions,
                 s.unlinkableEventNames,
@@ -794,6 +871,7 @@ export const experimentReplayTabLogic = kea<experimentReplayTabLogicType>([
             ],
             (
                 effectiveVariantKey: string | null,
+                effectiveExposureScope: ExperimentReplayExposureScope,
                 effectiveMetricUuids: string[],
                 metricOptions: ExperimentReplayMetricOption[],
                 unlinkableEventNames: Set<string>,
@@ -854,14 +932,23 @@ export const experimentReplayTabLogic = kea<experimentReplayTabLogicType>([
                     date_to: experiment.end_date ?? null,
                     filter_test_accounts: experiment.exposure_criteria?.filterTestAccounts ?? false,
                     // Resolved server-side from the experiment (same population the analysis
-                    // counts), so it works even when exposure events are fired server-side and
-                    // shows exposed users' whole journey, not just sessions containing the
-                    // exposure event. Deliberately not an event filter in `filter_group`.
+                    // counts), so it works even when exposure events are fired server-side.
+                    // Deliberately not an event filter in `filter_group`. The in-session
+                    // narrowing waits for the linkability check like the metric filters do
+                    // (exposure-only is the correct superset until it lands), and stays out of
+                    // bucket and card queries, whose session sets carry in-session exposure
+                    // evidence by construction.
                     experiment_exposure:
                         typeof experiment.id === 'number'
                             ? {
                                   experiment_id: experiment.id,
                                   ...(effectiveVariantKey !== null ? { variant: effectiveVariantKey } : {}),
+                                  ...(effectiveExposureScope === 'in_session' &&
+                                  !seenTogetherMapLoading &&
+                                  bucketSessionIds === undefined &&
+                                  selectedWatchCard === null
+                                      ? { in_session: true }
+                                      : {}),
                               }
                             : undefined,
                     filter_group: {
@@ -979,6 +1066,7 @@ export const experimentReplayTabLogic = kea<experimentReplayTabLogicType>([
             )
             actions.reportExperimentRecordingOpened(props.experiment.id, {
                 variant: values.effectiveVariantKey,
+                exposure_scope: values.effectiveExposureScope,
                 metric_filter_mode: values.metricFilterMode,
                 selected_metric_count: values.effectiveMetricUuids.length,
                 is_bucketed: values.bucketSessionIds !== undefined,
