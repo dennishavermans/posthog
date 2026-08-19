@@ -3,10 +3,13 @@ from uuid import UUID
 from posthog.test.base import APIBaseTest
 from unittest.mock import patch
 
+from django.test import override_settings
+
 from parameterized import parameterized
 from rest_framework import status
 
-from posthog.models import Team, User
+from posthog.models import PersonalAPIKey, Team, User
+from posthog.models.utils import generate_random_token_personal, hash_key_value
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import CreateWizardRunInput, LocalFolderWorkspace
@@ -14,9 +17,21 @@ from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRun
 from products.wizard.backend.models import WizardRun
 
 
+@override_settings(WIZARD_CLOUD_RUN_OAUTH_CLIENT_ID="wizard-client-id")
 class TestWizardRunViewSet(APIBaseTest):
     def _url(self, run_id: str = "") -> str:
         return f"/api/projects/{self.team.id}/wizard/runs/{run_id}"
+
+    def _authenticate_personal_api_key(self, scopes: list[str]) -> None:
+        token = generate_random_token_personal()
+        PersonalAPIKey.objects.create(
+            label="Wizard run test key",
+            user=self.user,
+            secure_value=hash_key_value(token),
+            scopes=scopes,
+        )
+        self.client.logout()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
     def test_create_local_run(self) -> None:
         response = self.client.post(
@@ -123,6 +138,51 @@ class TestWizardRunViewSet(APIBaseTest):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.json()["detail"], "Connect GitHub with access to this repository, then try again.")
+
+    @patch(
+        "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+        return_value=True,
+    )
+    @patch(
+        "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+        return_value=123,
+    )
+    @override_settings(WIZARD_CLOUD_RUN_OAUTH_CLIENT_ID="")
+    def test_cloud_run_rejects_disabled_cloud_execution(self, _resolve_integration, _repository_accessible) -> None:
+        response = self.client.post(
+            self._url(),
+            {
+                "environment": "cloud",
+                "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
+
+    @patch(
+        "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+        return_value=True,
+    )
+    @patch(
+        "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+        return_value=123,
+    )
+    def test_cloud_run_rejects_automated_token(self, _resolve_integration, _repository_accessible) -> None:
+        self._authenticate_personal_api_key(["wizard_session:write"])
+
+        response = self.client.post(
+            self._url(),
+            {
+                "environment": "cloud",
+                "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
 
     @patch("products.wizard.backend.logic.artifacts.object_storage.write")
     def test_list_run_artifacts(self, _write) -> None:

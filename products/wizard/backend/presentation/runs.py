@@ -3,6 +3,8 @@ from functools import partial
 from typing import cast
 from uuid import UUID
 
+from django.conf import settings
+
 from drf_spectacular.utils import OpenApiResponse, PolymorphicProxySerializer, extend_schema, extend_schema_field
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -11,6 +13,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
+from posthog.auth import SessionAuthentication
 from posthog.exceptions import Conflict
 
 from products.wizard.backend.facade import api as wizard_facade
@@ -205,16 +208,19 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         responses={
             201: WizardRunSerializer,
             400: OpenApiResponse(response=WizardRunErrorSerializer),
+            403: OpenApiResponse(response=WizardRunErrorSerializer),
+            404: OpenApiResponse(response=WizardRunErrorSerializer),
         },
         description="Create a local or cloud Wizard run for a project workspace.",
     )
     def create(self, request: Request, *args: object, **kwargs: object) -> Response:
         serializer = WizardRunCreateRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        params = serializer.to_contract(team_id=self.team_id, created_by_id=cast(int, request.user.id))
+        if params.environment == WizardRunEnvironment.CLOUD:
+            self._validate_cloud_creation(request)
         try:
-            run = wizard_facade.create_run(
-                serializer.to_contract(team_id=self.team_id, created_by_id=cast(int, request.user.id))
-            )
+            run = wizard_facade.create_run(params)
         except InvalidWorkspaceEnvironmentError:
             raise ValidationError({"detail": "Choose a workspace supported by this run environment."})
         except InvalidRepositoryError:
@@ -222,6 +228,13 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         except (MissingGitHubIntegrationError, RepositoryNotAccessibleError):
             raise ValidationError({"detail": "Connect GitHub with access to this repository, then try again."})
         return Response(WizardRunSerializer(run).data, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _validate_cloud_creation(request: Request) -> None:
+        if not settings.WIZARD_CLOUD_RUN_OAUTH_CLIENT_ID:
+            raise NotFound("Running the Wizard in the cloud is not available.")
+        if not isinstance(request.successful_authenticator, SessionAuthentication):
+            raise PermissionDenied("Sign in to start a cloud Wizard run.")
 
     @extend_schema(
         responses={
