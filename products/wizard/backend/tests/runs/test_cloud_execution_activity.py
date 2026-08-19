@@ -5,14 +5,14 @@ from asgiref.sync import async_to_sync
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
-from products.tasks.backend.facade.wizard_worker import (
+from products.wizard.backend.facade import api as wizard_facade
+from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace, WizardRunDTO
+from products.wizard.backend.facade.enums import WizardRunEnvironment
+from products.wizard.backend.logic.cloud_worker import (
     WizardWorkerExecutionError,
     WizardWorkerInput,
     WizardWorkerTimeoutError,
 )
-from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace, WizardRunDTO
-from products.wizard.backend.facade.enums import WizardRunEnvironment
 from products.wizard.backend.temporal.activities.execute_cloud import (
     WIZARD_REPOSITORY_ACCESS_ERROR_TYPE,
     WIZARD_WORKER_EXECUTION_ERROR_TYPE,
@@ -67,7 +67,7 @@ def test_execute_cloud_run_rechecks_access_and_stores_diff(_write: MagicMock, te
             return_value=True,
         ) as repository_accessible,
         patch(
-            "products.wizard.backend.temporal.activities.execute_cloud.wizard_worker.execute_wizard_worker",
+            "products.wizard.backend.temporal.activities.execute_cloud.cloud_worker.execute_wizard_worker",
             return_value=diff,
         ) as execute_worker,
     ):
@@ -98,9 +98,7 @@ def test_execute_cloud_run_rejects_access_revoked_after_creation(team, user) -> 
             "products.wizard.backend.temporal.activities.execute_cloud.repo_selection.resolve_team_github_integration_id",
             return_value=None,
         ),
-        patch(
-            "products.wizard.backend.temporal.activities.execute_cloud.wizard_worker.execute_wizard_worker"
-        ) as worker,
+        patch("products.wizard.backend.temporal.activities.execute_cloud.cloud_worker.execute_wizard_worker") as worker,
         pytest.raises(ApplicationError) as error,
     ):
         _run_execute_cloud_activity(WizardRunActivityInput(team_id=team.id, run_id=run.id))
@@ -131,7 +129,7 @@ def test_execute_cloud_run_maps_worker_error(team, user, worker_error: Exception
             return_value=True,
         ),
         patch(
-            "products.wizard.backend.temporal.activities.execute_cloud.wizard_worker.execute_wizard_worker",
+            "products.wizard.backend.temporal.activities.execute_cloud.cloud_worker.execute_wizard_worker",
             side_effect=worker_error,
         ),
         pytest.raises(ApplicationError) as error,

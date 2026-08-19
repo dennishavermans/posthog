@@ -3,15 +3,16 @@ from temporalio.exceptions import ApplicationError
 
 from posthog.temporal.common.utils import asyncify
 
-from products.tasks.backend.facade import repo_selection, wizard_worker
-from products.tasks.backend.facade.wizard_worker import (
+from products.tasks.backend.facade import repo_selection
+from products.wizard.backend.facade import api as wizard_facade
+from products.wizard.backend.facade.contracts import GitRepositoryWorkspace
+from products.wizard.backend.facade.enums import WizardRunEnvironment
+from products.wizard.backend.logic import cloud_worker
+from products.wizard.backend.logic.cloud_worker import (
     WizardWorkerExecutionError,
     WizardWorkerInput,
     WizardWorkerTimeoutError,
 )
-from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import GitRepositoryWorkspace
-from products.wizard.backend.facade.enums import WizardRunEnvironment
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput
 
 WIZARD_REPOSITORY_ACCESS_ERROR_TYPE = "WizardRepositoryAccessError"
@@ -50,7 +51,7 @@ def execute_cloud_run(input: WizardRunActivityInput) -> None:
         )
 
     try:
-        diff = wizard_worker.execute_wizard_worker(
+        diff = cloud_worker.execute_wizard_worker(
             WizardWorkerInput(
                 team_id=input.team_id,
                 created_by_id=run.created_by_id,

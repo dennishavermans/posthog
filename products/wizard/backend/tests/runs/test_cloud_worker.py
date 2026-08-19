@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from unittest.mock import MagicMock, patch
 
-from products.tasks.backend.facade.wizard_worker import (
+from products.wizard.backend.logic.cloud_worker import (
     WizardWorkerExecutionError,
     WizardWorkerInput,
     WizardWorkerTimeoutError,
@@ -26,10 +26,10 @@ def _input() -> WizardWorkerInput:
     )
 
 
-@patch("products.tasks.backend.facade.wizard_worker.get_sandbox_class")
-@patch("products.tasks.backend.facade.wizard_worker.create_wizard_oauth_access_token_for_user")
-@patch("products.tasks.backend.facade.wizard_worker.get_github_token")
-@patch("products.tasks.backend.facade.wizard_worker.User.objects.get")
+@patch("products.wizard.backend.logic.cloud_worker.get_sandbox_class")
+@patch("products.wizard.backend.logic.cloud_worker.create_wizard_oauth_access_token_for_user")
+@patch("products.wizard.backend.logic.cloud_worker.get_github_token")
+@patch("products.wizard.backend.logic.cloud_worker.User.objects.get")
 def test_execute_wizard_worker_returns_git_diff_and_cleans_up(
     get_user: MagicMock,
     get_github_token: MagicMock,
@@ -40,7 +40,6 @@ def test_execute_wizard_worker_returns_git_diff_and_cleans_up(
     get_github_token.return_value = "github-secret"
     create_wizard_token.return_value = "wizard-secret"
     sandbox = MagicMock()
-    sandbox.__enter__.return_value = sandbox
     sandbox.clone_repository.return_value = _execution_result()
     sandbox.execute.side_effect = [_execution_result(), _execution_result(stdout="diff --git a/a b/a\n")]
     get_sandbox_class.return_value.create.return_value = sandbox
@@ -58,10 +57,10 @@ def test_execute_wizard_worker_returns_git_diff_and_cleans_up(
     assert "git add -N --all" in sandbox.execute.call_args_list[1].args[0]
 
 
-@patch("products.tasks.backend.facade.wizard_worker.get_sandbox_class")
-@patch("products.tasks.backend.facade.wizard_worker.create_wizard_oauth_access_token_for_user", return_value="token")
-@patch("products.tasks.backend.facade.wizard_worker.get_github_token", return_value="github-token")
-@patch("products.tasks.backend.facade.wizard_worker.User.objects.get")
+@patch("products.wizard.backend.logic.cloud_worker.get_sandbox_class")
+@patch("products.wizard.backend.logic.cloud_worker.create_wizard_oauth_access_token_for_user", return_value="token")
+@patch("products.wizard.backend.logic.cloud_worker.get_github_token", return_value="github-token")
+@patch("products.wizard.backend.logic.cloud_worker.User.objects.get")
 def test_execute_wizard_worker_maps_timeout_and_cleans_up(
     _get_user: MagicMock,
     _get_github_token: MagicMock,
@@ -69,7 +68,6 @@ def test_execute_wizard_worker_maps_timeout_and_cleans_up(
     get_sandbox_class: MagicMock,
 ) -> None:
     sandbox = MagicMock()
-    sandbox.__enter__.return_value = sandbox
     sandbox.clone_repository.return_value = _execution_result()
     sandbox.execute.return_value = _execution_result(exit_code=124)
     get_sandbox_class.return_value.create.return_value = sandbox
@@ -80,10 +78,10 @@ def test_execute_wizard_worker_maps_timeout_and_cleans_up(
     sandbox.destroy.assert_called_once_with()
 
 
-@patch("products.tasks.backend.facade.wizard_worker.get_sandbox_class")
-@patch("products.tasks.backend.facade.wizard_worker.create_wizard_oauth_access_token_for_user", return_value="token")
-@patch("products.tasks.backend.facade.wizard_worker.get_github_token", return_value="github-token")
-@patch("products.tasks.backend.facade.wizard_worker.User.objects.get")
+@patch("products.wizard.backend.logic.cloud_worker.get_sandbox_class")
+@patch("products.wizard.backend.logic.cloud_worker.create_wizard_oauth_access_token_for_user", return_value="token")
+@patch("products.wizard.backend.logic.cloud_worker.get_github_token", return_value="github-token")
+@patch("products.wizard.backend.logic.cloud_worker.User.objects.get")
 def test_execute_wizard_worker_rejects_clone_failure(
     _get_user: MagicMock,
     _get_github_token: MagicMock,
@@ -91,7 +89,6 @@ def test_execute_wizard_worker_rejects_clone_failure(
     get_sandbox_class: MagicMock,
 ) -> None:
     sandbox = MagicMock()
-    sandbox.__enter__.return_value = sandbox
     sandbox.clone_repository.return_value = _execution_result(stderr="not found", exit_code=128)
     get_sandbox_class.return_value.create.return_value = sandbox
 

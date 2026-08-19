@@ -8,13 +8,8 @@ from posthog.models.user import User
 from posthog.temporal.oauth import create_wizard_oauth_access_token_for_user
 from posthog.utils import get_instance_region
 
-from products.tasks.backend.logic.services.sandbox import (
-    SandboxConfig,
-    SandboxTemplate,
-    get_sandbox_class,
-    sandbox_repo_path,
-)
-from products.tasks.backend.temporal.process_task.utils import get_github_token
+from products.tasks.backend.facade.repo_selection import get_github_token
+from products.tasks.backend.facade.sandbox import SandboxConfig, SandboxTemplate, get_sandbox_class, sandbox_repo_path
 
 WIZARD_PACKAGE = "@posthog/wizard@latest"
 WIZARD_TIMEOUT_SECONDS = 45 * 60
@@ -119,11 +114,3 @@ def _wizard_region() -> str:
 def _raise_for_failure(stage: str, exit_code: int) -> None:
     if exit_code != 0:
         raise WizardWorkerExecutionError(stage, exit_code)
-
-
-__all__ = [
-    "WizardWorkerExecutionError",
-    "WizardWorkerInput",
-    "WizardWorkerTimeoutError",
-    "execute_wizard_worker",
-]

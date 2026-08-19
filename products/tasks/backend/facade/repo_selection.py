@@ -16,6 +16,7 @@ from products.tasks.backend.logic.repo_selection import (
     resolve_team_github_integration,
     select_repository,
 )
+from products.tasks.backend.temporal.process_task.utils import get_github_token
 
 
 def repository_accessible_via_integration(team_id: int, integration_id: int, repository: str) -> bool:
@@ -32,6 +33,7 @@ __all__ = [
     "RepoSelectionRejectedError",
     "RepoSelectionResult",
     "RepoSelectionUnavailableError",
+    "get_github_token",
     "list_team_connected_repositories",
     "repository_accessible_via_integration",
     "resolve_team_github_integration",
