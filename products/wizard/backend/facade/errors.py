@@ -14,6 +14,10 @@ class InvalidWorkspaceEnvironmentError(Exception):
     pass
 
 
+class InvalidRepositoryError(Exception):
+    pass
+
+
 class IllegalStatusTransitionError(Exception):
     pass
 

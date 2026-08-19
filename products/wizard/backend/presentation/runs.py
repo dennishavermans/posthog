@@ -4,6 +4,7 @@ from typing import cast
 from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema_field
 from rest_framework import serializers
 
+from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import (
     CreateWizardRunInput,
     GitRepositoryWorkspace,
@@ -11,6 +12,7 @@ from products.wizard.backend.facade.contracts import (
     WizardWorkspace,
 )
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardWorkspaceType
+from products.wizard.backend.facade.errors import InvalidRepositoryError
 
 
 class LocalFolderWorkspaceSerializer(serializers.Serializer):
@@ -38,8 +40,9 @@ class GitRepositoryWorkspaceSerializer(serializers.Serializer):
 
     def validate_repository(self, value: str) -> str:
         repository = value.strip()
-        owner, separator, name = repository.partition("/")
-        if not separator or not owner or not name or "/" in name:
+        try:
+            wizard_facade.validate_git_repository(repository)
+        except InvalidRepositoryError:
             raise serializers.ValidationError("Enter a repository in owner/name format.")
         return repository
 

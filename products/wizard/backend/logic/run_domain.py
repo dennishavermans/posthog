@@ -2,6 +2,7 @@ from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, Loc
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.facade.errors import (
     IllegalStatusTransitionError,
+    InvalidRepositoryError,
     InvalidTransitionMetadataError,
     InvalidWorkspaceEnvironmentError,
 )
@@ -39,3 +40,9 @@ def validate_workspace_environment(environment: WizardRunEnvironment, workspace:
             return
         case _:
             raise InvalidWorkspaceEnvironmentError
+
+
+def validate_git_repository(repository: str) -> None:
+    owner, separator, name = repository.partition("/")
+    if not separator or not owner or not name or "/" in name:
+        raise InvalidRepositoryError

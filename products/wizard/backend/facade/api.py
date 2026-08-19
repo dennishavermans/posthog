@@ -118,3 +118,7 @@ def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> Wiza
 
 def list_run_artifacts(team_id: int, run_id: UUID) -> list[WizardRunArtifactDTO]:
     return artifacts.list_run_artifacts(team_id, run_id)
+
+
+def validate_git_repository(repository: str) -> None:
+    run_service.validate_git_repository(repository)

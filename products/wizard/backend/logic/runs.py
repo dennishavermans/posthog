@@ -17,7 +17,7 @@ from products.wizard.backend.facade.enums import (
     WizardWorkspaceType,
 )
 from products.wizard.backend.facade.errors import MissingGitHubIntegrationError, RepositoryNotAccessibleError
-from products.wizard.backend.logic.run_domain import transition, validate_workspace_environment
+from products.wizard.backend.logic.run_domain import transition, validate_git_repository, validate_workspace_environment
 from products.wizard.backend.logic.run_store import get_run_model
 from products.wizard.backend.models import WizardRun
 
@@ -26,6 +26,7 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
     validate_workspace_environment(params.environment, params.workspace)
 
     if isinstance(params.workspace, GitRepositoryWorkspace):
+        validate_git_repository(params.workspace.repository)
         integration_id = repo_selection.resolve_team_github_integration_id(params.team_id)
         if integration_id is None:
             raise MissingGitHubIntegrationError

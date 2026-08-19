@@ -5,6 +5,7 @@ from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace, LocalFolderWorkspace
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
 from products.wizard.backend.facade.errors import (
+    InvalidRepositoryError,
     InvalidWorkspaceEnvironmentError,
     MissingGitHubIntegrationError,
     RepositoryNotAccessibleError,
@@ -111,3 +112,21 @@ def test_cloud_run_rejects_inaccessible_repository(team, user) -> None:
                     workspace=GitRepositoryWorkspace(repository="private/example"),
                 )
             )
+
+
+@pytest.mark.parametrize("repository", ("posthog", "/posthog", "posthog/", "posthog/posthog/extra"))
+@pytest.mark.django_db
+def test_cloud_run_rejects_invalid_repository_before_github_lookup(team, user, repository: str) -> None:
+    with patch("products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id") as resolve:
+        with pytest.raises(InvalidRepositoryError):
+            wizard_facade.create_run(
+                CreateWizardRunInput(
+                    team_id=team.id,
+                    created_by_id=user.id,
+                    environment=WizardRunEnvironment.CLOUD,
+                    workspace=GitRepositoryWorkspace(repository=repository),
+                )
+            )
+
+    resolve.assert_not_called()
+    assert not WizardRun.objects.for_team(team.id).exists()
