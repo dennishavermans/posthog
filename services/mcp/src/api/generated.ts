@@ -30292,6 +30292,18 @@ export namespace Schemas {
       readonly warehouse_origin: unknown;
     }
 
+    /**
+     * * `timeout` - timeout
+     * * `execution_failed` - execution_failed
+     */
+    export type ErrorCodeEnum = typeof ErrorCodeEnum[keyof typeof ErrorCodeEnum];
+
+
+    export const ErrorCodeEnum = {
+      Timeout: 'timeout',
+      ExecutionFailed: 'execution_failed',
+    } as const;
+
     export interface ErrorResponse {
       /** Error message */
       error: string;
@@ -40201,6 +40213,40 @@ export namespace Schemas {
       error?: string;
     }
 
+    /**
+     * Selects a GitHub repository as the workspace.
+     *
+     * * `git_repository` - git_repository
+     */
+    export type GitRepositoryWorkspaceType = typeof GitRepositoryWorkspaceType[keyof typeof GitRepositoryWorkspaceType];
+
+
+    export const GitRepositoryWorkspaceType = {
+      GitRepository: 'git_repository',
+    } as const;
+
+    export interface GitRepositoryWorkspace {
+      /** Selects a GitHub repository as the workspace.
+       *
+       * * `git_repository` - git_repository */
+      type: GitRepositoryWorkspaceType;
+      /**
+         * GitHub repository in owner/name format.
+         * @maxLength 255
+         */
+      repository: string;
+    }
+
+    /**
+     * * `git_repository` - git_repository
+     */
+    export type GitRepositoryWorkspaceTypeEnum = typeof GitRepositoryWorkspaceTypeEnum[keyof typeof GitRepositoryWorkspaceTypeEnum];
+
+
+    export const GitRepositoryWorkspaceTypeEnum = {
+      GitRepository: 'git_repository',
+    } as const;
+
     export interface GiteaIssueSignalExtra {
       state: string | null;
       labels: unknown[];
@@ -46645,6 +46691,40 @@ export namespace Schemas {
       /** Final public URL after redirects. */
       url: string;
     }
+
+    /**
+     * Selects a folder on the user's machine as the workspace.
+     *
+     * * `local_folder` - local_folder
+     */
+    export type LocalFolderWorkspaceType = typeof LocalFolderWorkspaceType[keyof typeof LocalFolderWorkspaceType];
+
+
+    export const LocalFolderWorkspaceType = {
+      LocalFolder: 'local_folder',
+    } as const;
+
+    export interface LocalFolderWorkspace {
+      /** Selects a folder on the user's machine as the workspace.
+       *
+       * * `local_folder` - local_folder */
+      type: LocalFolderWorkspaceType;
+      /**
+         * Name of the project in the local folder.
+         * @maxLength 255
+         */
+      project_name: string;
+    }
+
+    /**
+     * * `local_folder` - local_folder
+     */
+    export type LocalFolderWorkspaceTypeEnum = typeof LocalFolderWorkspaceTypeEnum[keyof typeof LocalFolderWorkspaceTypeEnum];
+
+
+    export const LocalFolderWorkspaceTypeEnum = {
+      LocalFolder: 'local_folder',
+    } as const;
 
     export interface LogsAlertFilters {
       filterGroup?: PropertyGroupFilter | null;
@@ -73527,6 +73607,18 @@ export namespace Schemas {
       already_running: boolean;
     }
 
+    /**
+     * * `local` - local
+     * * `cloud` - cloud
+     */
+    export type RunEnvironmentEnum = typeof RunEnvironmentEnum[keyof typeof RunEnvironmentEnum];
+
+
+    export const RunEnvironmentEnum = {
+      Local: 'local',
+      Cloud: 'cloud',
+    } as const;
+
     export interface RunFailureLogs {
       /** Failed CI jobs of this run with their thinned failure logs, grouped by job. */
       jobs: CIJobFailureLog[];
@@ -82062,18 +82154,6 @@ export namespace Schemas {
     }
 
     /**
-     * * `local` - local
-     * * `cloud` - cloud
-     */
-    export type TaskRunBootstrapCreateRequestEnvironmentEnum = typeof TaskRunBootstrapCreateRequestEnvironmentEnum[keyof typeof TaskRunBootstrapCreateRequestEnvironmentEnum];
-
-
-    export const TaskRunBootstrapCreateRequestEnvironmentEnum = {
-      Local: 'local',
-      Cloud: 'cloud',
-    } as const;
-
-    /**
      * Request body for creating a task run without starting execution yet.
      */
     export interface TaskRunBootstrapCreateRequest {
@@ -82091,7 +82171,7 @@ export namespace Schemas {
        *
        * * `local` - local
        * * `cloud` - cloud */
-      environment?: TaskRunBootstrapCreateRequestEnvironmentEnum;
+      environment?: RunEnvironmentEnum;
       /** Execution mode: 'interactive' for user-connected runs, 'background' for autonomous runs
        *
        * * `interactive` - interactive
@@ -84708,6 +84788,119 @@ export namespace Schemas {
          * @nullable
          */
       started_at?: string | null;
+    }
+
+    export type WizardWorkspace = LocalFolderWorkspace | GitRepositoryWorkspace;
+
+    /**
+     * * `created` - created
+     * * `running` - running
+     * * `completed` - completed
+     * * `failed` - failed
+     * * `cancelled` - cancelled
+     */
+    export type WizardRunStatusEnum = typeof WizardRunStatusEnum[keyof typeof WizardRunStatusEnum];
+
+
+    export const WizardRunStatusEnum = {
+      Created: 'created',
+      Running: 'running',
+      Completed: 'completed',
+      Failed: 'failed',
+      Cancelled: 'cancelled',
+    } as const;
+
+    export interface WizardRun {
+      /** Unique ID of the Wizard run. */
+      readonly id: string;
+      /** Project that owns the Wizard run. */
+      readonly team_id: number;
+      /**
+         * User who created the Wizard run, or null if that user no longer exists.
+         * @nullable
+         */
+      readonly created_by_id: number | null;
+      /** Where the setup agent runs.
+       *
+       * * `local` - local
+       * * `cloud` - cloud */
+      readonly environment: RunEnvironmentEnum;
+      /** Project that the setup agent works on. */
+      readonly workspace: WizardWorkspace;
+      /** Current lifecycle status of the Wizard run.
+       *
+       * * `created` - created
+       * * `running` - running
+       * * `completed` - completed
+       * * `failed` - failed
+       * * `cancelled` - cancelled */
+      readonly status: WizardRunStatusEnum;
+      /** Machine-readable failure reason, or null if the run has not failed.
+       *
+       * * `timeout` - timeout
+       * * `execution_failed` - execution_failed */
+      readonly error_code: ErrorCodeEnum | null;
+    }
+
+    /**
+     * * `git_diff` - git_diff
+     */
+    export type WizardRunArtifactTypeEnum = typeof WizardRunArtifactTypeEnum[keyof typeof WizardRunArtifactTypeEnum];
+
+
+    export const WizardRunArtifactTypeEnum = {
+      GitDiff: 'git_diff',
+    } as const;
+
+    export interface WizardRunArtifact {
+      /** Unique ID of the run artifact. */
+      readonly id: string;
+      /** Project that owns the run artifact. */
+      readonly team_id: number;
+      /** Wizard run that produced the artifact. */
+      readonly run_id: string;
+      /** Format of the changes produced by the run.
+       *
+       * * `git_diff` - git_diff */
+      readonly artifact_type: WizardRunArtifactTypeEnum;
+      /** Stored artifact size in bytes. */
+      readonly size_bytes: number;
+      /** SHA-256 hash of the stored artifact content. */
+      readonly content_hash: string;
+      /** Time when the artifact was stored. */
+      readonly created_at: string;
+    }
+
+    export interface WizardRunCreateRequest {
+      /** Where the setup agent runs.
+       *
+       * * `local` - local
+       * * `cloud` - cloud */
+      environment: RunEnvironmentEnum;
+      /** Project that the setup agent works on. */
+      workspace: WizardWorkspace;
+    }
+
+    export interface WizardRunError {
+      /** Error category. */
+      readonly type: string;
+      /** Machine-readable error code. */
+      readonly code: string;
+      /** What happened and how to continue. */
+      readonly detail: string;
+      /**
+         * Request field associated with the error, when available.
+         * @nullable
+         */
+      readonly attr: string | null;
+    }
+
+    export interface WizardRunFailureRequest {
+      /** Machine-readable reason the Wizard run failed.
+       *
+       * * `timeout` - timeout
+       * * `execution_failed` - execution_failed */
+      error_code?: ErrorCodeEnum | null;
     }
 
     export interface WorkflowHealthBucket {

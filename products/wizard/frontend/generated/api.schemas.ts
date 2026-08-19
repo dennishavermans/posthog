@@ -96,11 +96,13 @@ export const WizardRunStatusEnumApi = {
 
 /**
  * * `timeout` - timeout
+ * * `execution_failed` - execution_failed
  */
 export type ErrorCodeEnumApi = (typeof ErrorCodeEnumApi)[keyof typeof ErrorCodeEnumApi]
 
 export const ErrorCodeEnumApi = {
     Timeout: 'timeout',
+    ExecutionFailed: 'execution_failed',
 } as const
 
 export interface WizardRunApi {
@@ -130,7 +132,8 @@ export interface WizardRunApi {
     readonly status: WizardRunStatusEnumApi
     /** Machine-readable failure reason, or null if the run has not failed.
      *
-     * * `timeout` - timeout */
+     * * `timeout` - timeout
+     * * `execution_failed` - execution_failed */
     readonly error_code: ErrorCodeEnumApi | null
 }
 
@@ -180,7 +183,8 @@ export interface WizardRunArtifactApi {
 export interface WizardRunFailureRequestApi {
     /** Machine-readable reason the Wizard run failed.
      *
-     * * `timeout` - timeout */
+     * * `timeout` - timeout
+     * * `execution_failed` - execution_failed */
     error_code?: ErrorCodeEnumApi | null
 }
 

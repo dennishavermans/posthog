@@ -218,7 +218,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Leave the stored row unchanged when a transition fails validation.
 - [x] Make repeated or concurrent terminal updates deterministic.
 - [x] Keep generic transition persistence private. Public operations express intent or are driven by execution.
-- [ ] Expose cancellation through HTTP only when a user-facing cancellation flow is added.
+- [x] Expose cancellation through HTTP for local setup-agent control.
 
 ### 6. Define Run Artifacts
 
@@ -236,7 +236,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Create `products/wizard/backend/temporal/contracts.py`.
 - [x] Define a small workflow input containing `team_id` and `run_id`.
 - [ ] Create `products/wizard/backend/temporal/workflows/execute_run.py`.
-- [ ] Create `products/wizard/backend/temporal/activities/lifecycle.py`.
+- [x] Create `products/wizard/backend/temporal/activities/lifecycle.py`.
 - [x] Create `products/wizard/backend/temporal/activities/execute_cloud.py`.
 - [ ] Create `products/wizard/backend/temporal/client.py`.
 - [ ] Register workflows and activities in `products/wizard/backend/temporal/__init__.py`.
@@ -247,7 +247,7 @@ This audit covers all Wizard run work completed before the environment and works
 
 ### 8. Implement the cloud workflow
 
-- [ ] Mark the run as running in a lifecycle activity.
+- [x] Mark the run as running in a lifecycle activity.
 - [x] Load and validate the Git-repository workspace in the execution activity.
 - [x] Resolve the current GitHub integration and authorize the repository again.
 - [x] Create short-lived GitHub and Wizard credentials inside the execution activity.

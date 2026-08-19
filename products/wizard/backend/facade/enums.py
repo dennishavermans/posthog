@@ -46,6 +46,7 @@ class WizardWorkspaceType(StrEnum):
 
 class WizardRunErrorCode(StrEnum):
     TIMEOUT = "timeout"
+    EXECUTION_FAILED = "execution_failed"
 
 
 class WizardRunArtifactType(StrEnum):
