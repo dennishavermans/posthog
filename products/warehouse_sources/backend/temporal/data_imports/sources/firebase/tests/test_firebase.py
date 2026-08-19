@@ -639,6 +639,29 @@ class TestTableDiscovery:
         # `messages` under both parents is one collection group, so it becomes a single table.
         assert tables == [AUTH_USERS_TABLE, "firestore_rooms", "firestore_chats", "firestore_rooms/messages"]
 
+    def test_subcollections_below_missing_parent_documents_are_discovered(self) -> None:
+        # A parent that exists only to hold a subcollection is a "missing" document: `listDocuments`
+        # omits it unless `showMissing` is set, and it returns a name with no fields. Discovery must
+        # still sample and probe it, or a collection written only under such a parent is never found.
+        missing_parent = {"name": f"{DOCUMENTS_ROOT}/rooms/room1"}
+        session = FakeSession(
+            request_responses=[
+                FakeResponse(payload={"collectionIds": ["rooms"]}),
+                FakeResponse(payload={"documents": [missing_parent]}),
+                FakeResponse(payload={"collectionIds": ["messages"]}),
+                FakeResponse(payload=[]),
+            ],
+            post_responses=[FakeResponse(payload=TOKEN_PAYLOAD)],
+        )
+
+        with mock.patch(_SESSION_FACTORY, return_value=session.as_session()):
+            tables = get_tables(credentials())
+
+        assert tables == [AUTH_USERS_TABLE, "firestore_rooms", "firestore_rooms/messages"]
+        # Without `showMissing` on the root sample, the missing parent is dropped and its
+        # subcollection is never discovered.
+        assert session.requests[1][2]["params"]["showMissing"] == "true"
+
     @pytest.mark.parametrize("status", [403, 404])
     def test_unreachable_firestore_does_not_hide_the_other_tables(self, status: int) -> None:
         session = FakeSession(

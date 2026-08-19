@@ -687,7 +687,11 @@ def _sample_firestore_document_paths(
         documents = _run_query_documents(results)
     else:
         url = f"{_firestore_documents_root(credentials)}/{quote(collection_path, safe='')}"
-        payload = _request(session, tokens, "GET", url, params={"pageSize": limit}) or {}
+        # `showMissing` surfaces parent documents that exist only to hold a subcollection. Without it
+        # `listDocuments` hides them, so a collection written only under `parent/{id}/child` is never
+        # sampled and stays invisible. A missing document returns a name and no fields, which is all
+        # this probe reads. The flag is incompatible with `where`/`orderBy`, which this call omits.
+        payload = _request(session, tokens, "GET", url, params={"pageSize": limit, "showMissing": "true"}) or {}
         documents = [doc for doc in payload.get("documents") or [] if isinstance(doc, dict)]
 
     return [_relative_document_path(str(doc["name"])) for doc in documents if doc.get("name")]
