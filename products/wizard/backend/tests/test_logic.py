@@ -22,6 +22,7 @@ from products.wizard.backend.facade.errors import (
     WizardSessionRunMismatchError,
 )
 from products.wizard.backend.metrics import WIZARD_SESSIONS_FINISHED_TOTAL
+from products.wizard.backend.models import WizardRun
 from products.wizard.backend.tasks.tasks import sync_wizard_event_definitions
 
 from ee.models.event_definition import EnterpriseEventDefinition
@@ -149,6 +150,24 @@ def test_upsert_rejects_run_created_by_another_user(team, user):
 
     with pytest.raises(WizardSessionOwnershipError):
         wizard_facade.upsert(_input(team.id, run_id=run.id, created_by_id=other_user.id))
+
+    assert wizard_facade.get(team.id, _input(team.id).session_id) is None
+
+
+@pytest.mark.django_db
+def test_upsert_rejects_run_without_creator(team, user):
+    run = wizard_facade.create_run(
+        CreateWizardRunInput(
+            team_id=team.id,
+            created_by_id=user.id,
+            environment=WizardRunEnvironment.LOCAL,
+            workspace=LocalFolderWorkspace(project_name="example-project"),
+        )
+    )
+    WizardRun.objects.for_team(team.id).filter(id=run.id).update(created_by_id=None)
+
+    with pytest.raises(WizardSessionOwnershipError):
+        wizard_facade.upsert(_input(team.id, run_id=run.id, created_by_id=user.id))
 
     assert wizard_facade.get(team.id, _input(team.id).session_id) is None
 

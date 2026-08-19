@@ -46,7 +46,7 @@ def upsert_session(params: UpsertWizardSessionInput) -> tuple[WizardSessionDTO, 
         run_id = previous_session.run_id if previous_session is not None else None
         if params.run_id is not None:
             run = get_run_model(params.team_id, params.run_id)
-            if run.created_by_id is not None and run.created_by_id != params.created_by_id:
+            if run.created_by_id != params.created_by_id:
                 raise WizardSessionOwnershipError
             if run_id is not None and run_id != params.run_id:
                 raise WizardSessionRunMismatchError

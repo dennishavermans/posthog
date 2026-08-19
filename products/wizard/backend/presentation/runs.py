@@ -6,7 +6,7 @@ from uuid import UUID
 from drf_spectacular.utils import OpenApiResponse, PolymorphicProxySerializer, extend_schema, extend_schema_field
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -254,6 +254,7 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         request=None,
         responses={
             200: WizardRunSerializer,
+            403: OpenApiResponse(response=WizardRunErrorSerializer),
             404: OpenApiResponse(response=WizardRunErrorSerializer),
             409: OpenApiResponse(response=WizardRunErrorSerializer),
         },
@@ -268,6 +269,7 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         responses={
             200: WizardRunSerializer,
             400: OpenApiResponse(response=WizardRunErrorSerializer),
+            403: OpenApiResponse(response=WizardRunErrorSerializer),
             404: OpenApiResponse(response=WizardRunErrorSerializer),
             409: OpenApiResponse(response=WizardRunErrorSerializer),
         },
@@ -284,6 +286,7 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         request=None,
         responses={
             200: WizardRunSerializer,
+            403: OpenApiResponse(response=WizardRunErrorSerializer),
             404: OpenApiResponse(response=WizardRunErrorSerializer),
             409: OpenApiResponse(response=WizardRunErrorSerializer),
         },
@@ -306,6 +309,8 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         run = self._get_run()
         if run.environment != WizardRunEnvironment.LOCAL:
             raise Conflict("Cloud Wizard runs are managed by their worker.", code="cloud_run_managed")
+        if run.created_by_id != self.request.user.id:
+            raise PermissionDenied("Only the user who started this Wizard run can update it.")
         return run.id
 
     def _transition_local_run(

@@ -6,7 +6,7 @@ from unittest.mock import patch
 from parameterized import parameterized
 from rest_framework import status
 
-from posthog.models import Team
+from posthog.models import Team, User
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import CreateWizardRunInput, LocalFolderWorkspace
@@ -187,6 +187,23 @@ class TestWizardRunViewSet(APIBaseTest):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(response.json()["code"], "invalid_transition")
+
+    def test_transition_rejects_another_user(self) -> None:
+        created = self.client.post(
+            self._url(),
+            {
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "example-project"},
+            },
+            format="json",
+        ).json()
+        other_user = User.objects.create_and_join(self.organization, "teammate@example.com", None)
+        self.client.force_login(other_user)
+
+        response = self.client.post(self._url(f"{created['id']}/complete/"), {}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(wizard_facade.get_run(self.team.id, UUID(created["id"])).status, WizardRunStatus.RUNNING)
 
     @patch(
         "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
