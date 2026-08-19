@@ -1,0 +1,143 @@
+import pytest
+from unittest.mock import MagicMock, patch
+
+from asgiref.sync import async_to_sync
+from temporalio.exceptions import ApplicationError
+from temporalio.testing import ActivityEnvironment
+
+from products.tasks.backend.facade.wizard_worker import (
+    WizardWorkerExecutionError,
+    WizardWorkerInput,
+    WizardWorkerTimeoutError,
+)
+from products.wizard.backend.facade import api as wizard_facade
+from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace
+from products.wizard.backend.facade.enums import WizardRunEnvironment
+from products.wizard.backend.temporal.activities.execute_cloud import (
+    WIZARD_REPOSITORY_ACCESS_ERROR_TYPE,
+    WIZARD_WORKER_EXECUTION_ERROR_TYPE,
+    WIZARD_WORKER_TIMEOUT_ERROR_TYPE,
+    execute_cloud_run,
+)
+from products.wizard.backend.temporal.contracts import WizardRunActivityInput
+
+
+def _create_cloud_run(team_id: int, user_id: int):
+    with (
+        patch(
+            "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+            return_value=123,
+        ),
+        patch(
+            "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+            return_value=True,
+        ),
+    ):
+        return wizard_facade.create_run(
+            CreateWizardRunInput(
+                team_id=team_id,
+                created_by_id=user_id,
+                environment=WizardRunEnvironment.CLOUD,
+                workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
+            )
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+@patch("products.wizard.backend.logic.artifacts.object_storage.write")
+def test_execute_cloud_run_rechecks_access_and_stores_diff(_write: MagicMock, team, user) -> None:
+    run = _create_cloud_run(team.id, user.id)
+    diff = b"diff --git a/a b/a\n"
+
+    with (
+        patch(
+            "products.wizard.backend.temporal.activities.execute_cloud.repo_selection.resolve_team_github_integration_id",
+            return_value=456,
+        ) as resolve_integration,
+        patch(
+            "products.wizard.backend.temporal.activities.execute_cloud.repo_selection.repository_accessible_via_integration",
+            return_value=True,
+        ) as repository_accessible,
+        patch(
+            "products.wizard.backend.temporal.activities.execute_cloud.wizard_worker.execute_wizard_worker",
+            return_value=diff,
+        ) as execute_worker,
+    ):
+        result = async_to_sync(ActivityEnvironment().run)(
+            execute_cloud_run,
+            WizardRunActivityInput(team_id=team.id, run_id=run.id),
+        )
+
+    assert result is None
+    resolve_integration.assert_called_once_with(team.id)
+    repository_accessible.assert_called_once_with(team.id, 456, "posthog/posthog")
+    execute_worker.assert_called_once_with(
+        WizardWorkerInput(
+            team_id=team.id,
+            created_by_id=user.id,
+            run_id=run.id,
+            github_integration_id=456,
+            repository="posthog/posthog",
+        )
+    )
+    artifacts = wizard_facade.list_run_artifacts(team.id, run.id)
+    assert len(artifacts) == 1
+    assert artifacts[0].size_bytes == len(diff)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_execute_cloud_run_rejects_access_revoked_after_creation(team, user) -> None:
+    run = _create_cloud_run(team.id, user.id)
+
+    with (
+        patch(
+            "products.wizard.backend.temporal.activities.execute_cloud.repo_selection.resolve_team_github_integration_id",
+            return_value=None,
+        ),
+        patch(
+            "products.wizard.backend.temporal.activities.execute_cloud.wizard_worker.execute_wizard_worker"
+        ) as worker,
+        pytest.raises(ApplicationError) as error,
+    ):
+        async_to_sync(ActivityEnvironment().run)(
+            execute_cloud_run,
+            WizardRunActivityInput(team_id=team.id, run_id=run.id),
+        )
+
+    assert error.value.type == WIZARD_REPOSITORY_ACCESS_ERROR_TYPE
+    worker.assert_not_called()
+    assert wizard_facade.list_run_artifacts(team.id, run.id) == []
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "worker_error, error_type",
+    (
+        (WizardWorkerTimeoutError(), WIZARD_WORKER_TIMEOUT_ERROR_TYPE),
+        (WizardWorkerExecutionError("execution", 1), WIZARD_WORKER_EXECUTION_ERROR_TYPE),
+    ),
+)
+def test_execute_cloud_run_maps_worker_error(team, user, worker_error: Exception, error_type: str) -> None:
+    run = _create_cloud_run(team.id, user.id)
+
+    with (
+        patch(
+            "products.wizard.backend.temporal.activities.execute_cloud.repo_selection.resolve_team_github_integration_id",
+            return_value=456,
+        ),
+        patch(
+            "products.wizard.backend.temporal.activities.execute_cloud.repo_selection.repository_accessible_via_integration",
+            return_value=True,
+        ),
+        patch(
+            "products.wizard.backend.temporal.activities.execute_cloud.wizard_worker.execute_wizard_worker",
+            side_effect=worker_error,
+        ),
+        pytest.raises(ApplicationError) as error,
+    ):
+        async_to_sync(ActivityEnvironment().run)(
+            execute_cloud_run,
+            WizardRunActivityInput(team_id=team.id, run_id=run.id),
+        )
+
+    assert error.value.type == error_type

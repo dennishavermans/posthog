@@ -202,7 +202,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Reject repositories the resolved integration cannot access.
 - [x] Treat missing and inaccessible repositories as the same external result to avoid revealing private repository existence.
 - [x] Validate the `owner/name` shape before calling GitHub-backed services.
-- [ ] Recheck integration and repository access when cloud execution starts because access can change after creation.
+- [x] Recheck integration and repository access when cloud execution starts because access can change after creation.
 - [x] Confirm that all required GitHub and token operations are available through public facades.
 - [x] Add a Tasks facade method that returns the selected integration ID without leaking a Tasks-owned object.
 
@@ -225,7 +225,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Add `WizardRunArtifactType` with the V0 `GIT_DIFF` type.
 - [x] Decide whether metadata belongs in a separate team-scoped artifact model or an object-storage manifest.
 - [x] Store large diffs in object storage and persist a reference.
-- [ ] Never return large diff contents through a Temporal activity result.
+- [x] Never return large diff contents through a Temporal activity result.
 - [x] Associate every artifact with one run and team.
 - [x] Return typed artifact metadata through the Wizard facade.
 - [x] Define the no-changes result without creating an empty artifact.
@@ -233,11 +233,11 @@ This audit covers all Wizard run work completed before the environment and works
 
 ### 7. Add Temporal contracts and registration
 
-- [ ] Create `products/wizard/backend/temporal/contracts.py`.
-- [ ] Define a small workflow input containing `team_id` and `run_id`.
+- [x] Create `products/wizard/backend/temporal/contracts.py`.
+- [x] Define a small workflow input containing `team_id` and `run_id`.
 - [ ] Create `products/wizard/backend/temporal/workflows/execute_run.py`.
 - [ ] Create `products/wizard/backend/temporal/activities/lifecycle.py`.
-- [ ] Create `products/wizard/backend/temporal/activities/execute_cloud.py`.
+- [x] Create `products/wizard/backend/temporal/activities/execute_cloud.py`.
 - [ ] Create `products/wizard/backend/temporal/client.py`.
 - [ ] Register workflows and activities in `products/wizard/backend/temporal/__init__.py`.
 - [ ] Confirm how the shared Temporal worker discovers product-owned registrations.
@@ -248,15 +248,15 @@ This audit covers all Wizard run work completed before the environment and works
 ### 8. Implement the cloud workflow
 
 - [ ] Mark the run as running in a lifecycle activity.
-- [ ] Load and validate the Git-repository workspace in the execution activity.
-- [ ] Resolve the current GitHub integration and authorize the repository again.
-- [ ] Create short-lived GitHub and Wizard credentials inside the execution activity.
-- [ ] Provision a sandbox through `products.tasks.backend.facade.sandbox`.
-- [ ] Clone the repository into a stable sandbox workspace path.
-- [ ] Run the npm Wizard in headless mode with the Wizard run ID.
-- [ ] Apply explicit execution, heartbeat, and sandbox TTL timeouts.
-- [ ] Clean up the sandbox in `finally` for success, failure, timeout, and cancellation.
-- [ ] Collect a Git diff and persist a Run Artifact reference.
+- [x] Load and validate the Git-repository workspace in the execution activity.
+- [x] Resolve the current GitHub integration and authorize the repository again.
+- [x] Create short-lived GitHub and Wizard credentials inside the execution activity.
+- [x] Provision a sandbox through `products.tasks.backend.facade.wizard_worker`.
+- [x] Clone the repository into a stable sandbox workspace path.
+- [x] Run the npm Wizard in headless mode with the Wizard run ID.
+- [x] Apply explicit execution and sandbox TTL timeouts.
+- [x] Clean up the sandbox in `finally` for success, failure, and timeout.
+- [x] Collect a Git diff and persist a Run Artifact reference.
 - [ ] Complete the run and associate any produced Run Artifacts.
 - [ ] Map sandbox or activity timeout to the timeout error code.
 - [ ] Map other execution failures to a typed error code before enabling broad retries.
@@ -278,7 +278,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [ ] Document the current state-update endpoint and payload used by the npm Wizard.
 - [ ] Pass the existing Wizard run ID to both local and cloud executions.
 - [ ] Ensure a local setup agent creates its run before sending updates.
-- [ ] Ensure a Wizard Worker receives the pre-created run ID.
+- [x] Ensure a Wizard Worker receives the pre-created run ID.
 - [ ] Bind updates to both `team_id` and `run_id`.
 - [ ] Preserve the existing Wizard session API and frontend stream behavior.
 - [ ] Add a compatibility test for the existing state-update path.
