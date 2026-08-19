@@ -126,6 +126,14 @@ class TestDockerSandboxUnit:
         assert "secret token" not in redacted
         assert "POSTHOG_TASK_RUN_EVENT_INGEST_TOKEN=<redacted>" in redacted
 
+    def test_redact_sandbox_command_hides_github_clone_token(self) -> None:
+        command = "git clone https://x-access-token:github-secret@github.com/PostHog/posthog.git"
+
+        redacted = redact_sandbox_command(command)
+
+        assert "github-secret" not in redacted
+        assert "https://x-access-token:<redacted>@github.com/PostHog/posthog.git" in redacted
+
     @pytest.mark.parametrize(
         "input_url,expected_url",
         [

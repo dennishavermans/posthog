@@ -222,6 +222,7 @@ SENSITIVE_AGENT_RUNTIME_ENV_PATTERN = re.compile(
     r"(?P<name>" + "|".join(re.escape(name) for name in SENSITIVE_AGENT_RUNTIME_ENV_NAMES) + r")="
     r"(?P<value>'(?:[^']|'\"'\"')*'|\"(?:\\.|[^\"])*\"|\S+)"
 )
+GITHUB_CLONE_TOKEN_PATTERN = re.compile(r"(?P<prefix>https://x-access-token:)[^@\s]+(?P<suffix>@github\.com/)")
 
 
 def is_public_sandbox_repo(repository: str | None) -> bool:
@@ -235,7 +236,8 @@ def sandbox_repo_path(repository: str) -> str:
 
 
 def redact_sandbox_command(command: str) -> str:
-    return SENSITIVE_AGENT_RUNTIME_ENV_PATTERN.sub(r"\g<name>=<redacted>", command)
+    redacted = SENSITIVE_AGENT_RUNTIME_ENV_PATTERN.sub(r"\g<name>=<redacted>", command)
+    return GITHUB_CLONE_TOKEN_PATTERN.sub(r"\g<prefix><redacted>\g<suffix>", redacted)
 
 
 def build_agent_runtime_env_prefix(
