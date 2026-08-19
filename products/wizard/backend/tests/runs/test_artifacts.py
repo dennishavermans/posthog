@@ -31,7 +31,7 @@ def test_create_git_diff_artifact_stores_content_by_reference(team, user) -> Non
     assert artifact is not None
     assert artifact.team_id == team.id
     assert artifact.run_id == run.id
-    assert artifact.type == WizardRunArtifactType.GIT_DIFF
+    assert artifact.artifact_type == WizardRunArtifactType.GIT_DIFF
     assert artifact.size_bytes == len(diff)
     write.assert_called_once_with(
         f"wizard/runs/team_{team.id}/run_{run.id}/artifacts/git.diff",

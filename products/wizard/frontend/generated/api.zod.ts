@@ -10,6 +10,48 @@
 import * as zod from 'zod'
 
 /**
+ * Create a local or cloud Wizard run for a project workspace.
+ */
+export const wizardRunsCreateBodyWorkspaceOneOneProjectNameMax = 255
+
+export const wizardRunsCreateBodyWorkspaceOneTwoRepositoryMax = 255
+
+export const WizardRunsCreateBody = /* @__PURE__ */ zod.object({
+    environment: zod
+        .enum(['local', 'cloud'])
+        .describe('\* `local` - local\n\* `cloud` - cloud')
+        .describe('Where the setup agent runs.\n\n\* `local` - local\n\* `cloud` - cloud'),
+    workspace: zod
+        .union([
+            zod.object({
+                type: zod
+                    .enum(['local_folder'])
+                    .describe('\* `local_folder` - local_folder')
+                    .enum(['local_folder'])
+                    .describe(
+                        "Selects a folder on the user's machine as the workspace.\n\n\* `local_folder` - local_folder"
+                    ),
+                project_name: zod
+                    .string()
+                    .max(wizardRunsCreateBodyWorkspaceOneOneProjectNameMax)
+                    .describe('Name of the project in the local folder.'),
+            }),
+            zod.object({
+                type: zod
+                    .enum(['git_repository'])
+                    .describe('\* `git_repository` - git_repository')
+                    .enum(['git_repository'])
+                    .describe('Selects a GitHub repository as the workspace.\n\n\* `git_repository` - git_repository'),
+                repository: zod
+                    .string()
+                    .max(wizardRunsCreateBodyWorkspaceOneTwoRepositoryMax)
+                    .describe('GitHub repository in owner\/name format.'),
+            }),
+        ])
+        .describe('Project that the setup agent works on.'),
+})
+
+/**
  * Upsert a wizard session. The `session_id` key is the idempotency anchor — reposting the same `session_id` replaces the existing row. Returns 201 on create, 200 on update.
  */
 export const wizardSessionsCreateBodyPendingInputOneIdMax = 255

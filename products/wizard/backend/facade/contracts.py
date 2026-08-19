@@ -129,7 +129,7 @@ class WizardRunArtifactDTO:
     id: UUID
     team_id: int
     run_id: UUID
-    type: WizardRunArtifactType
+    artifact_type: WizardRunArtifactType
     size_bytes: int
     content_hash: str
     created_at: datetime

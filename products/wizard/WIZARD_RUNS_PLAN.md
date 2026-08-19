@@ -200,7 +200,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Resolve only team-owned GitHub integrations through the Tasks facade.
 - [x] Reject a cloud Git-repository run when the team has no GitHub integration.
 - [x] Reject repositories the resolved integration cannot access.
-- [ ] Treat missing and inaccessible repositories as the same external result to avoid revealing private repository existence.
+- [x] Treat missing and inaccessible repositories as the same external result to avoid revealing private repository existence.
 - [x] Validate the `owner/name` shape before calling GitHub-backed services.
 - [ ] Recheck integration and repository access when cloud execution starts because access can change after creation.
 - [ ] Confirm that all required GitHub and token operations are available through public facades.
@@ -288,12 +288,12 @@ This audit covers all Wizard run work completed before the environment and works
 
 - [x] Add discriminated workspace serializers under `products/wizard/backend/presentation/runs.py`.
 - [x] Validate missing and unknown workspace discriminators without database access.
-- [ ] Add one database-backed endpoint test as a serializer wiring guard.
-- [ ] Add request and response schema annotations.
+- [x] Add one database-backed endpoint test as a serializer wiring guard.
+- [x] Add request and response schema annotations.
 - [ ] Add create, retrieve, and any required status endpoints through `routes.py`.
-- [ ] Enforce team scoping from request context.
-- [ ] Return typed errors with actionable public messages.
-- [ ] Regenerate OpenAPI and product frontend types after serializer changes.
+- [x] Enforce team scoping from request context.
+- [x] Return typed errors with actionable public messages.
+- [x] Regenerate OpenAPI and product frontend types after serializer changes.
 - [ ] Update relevant public documentation in the same PR when the API becomes user-facing.
 
 ### 12. Tests and verification

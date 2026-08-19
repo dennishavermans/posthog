@@ -11,11 +11,70 @@ import { apiMutator } from '../../../../frontend/src/lib/api-orval-mutator'
 import type {
     PaginatedWizardSessionDTOListApi,
     UpsertWizardSessionRequestApi,
+    WizardRunApi,
+    WizardRunArtifactApi,
+    WizardRunCreateRequestApi,
     WizardSessionDTOApi,
     WizardSessionsLatestRetrieveParams,
     WizardSessionsListParams,
     WizardSessionsStreamRetrieveParams,
 } from './api.schemas'
+
+export const getWizardRunsCreateUrl = (projectId: string) => {
+    return `/api/projects/${projectId}/wizard/runs/`
+}
+
+/**
+ * Create a local or cloud Wizard run for a project workspace.
+ */
+export const wizardRunsCreate = async (
+    projectId: string,
+    wizardRunCreateRequestApi: WizardRunCreateRequestApi,
+    options?: RequestInit
+): Promise<WizardRunApi> => {
+    return apiMutator<WizardRunApi>(getWizardRunsCreateUrl(projectId), {
+        ...options,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(wizardRunCreateRequestApi),
+    })
+}
+
+export const getWizardRunsRetrieveUrl = (projectId: string, runId: string) => {
+    return `/api/projects/${projectId}/wizard/runs/${runId}/`
+}
+
+/**
+ * Retrieve a Wizard run in this project.
+ */
+export const wizardRunsRetrieve = async (
+    projectId: string,
+    runId: string,
+    options?: RequestInit
+): Promise<WizardRunApi> => {
+    return apiMutator<WizardRunApi>(getWizardRunsRetrieveUrl(projectId, runId), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getWizardRunsArtifactsListUrl = (projectId: string, runId: string) => {
+    return `/api/projects/${projectId}/wizard/runs/${runId}/artifacts/`
+}
+
+/**
+ * List metadata for artifacts produced by a Wizard run.
+ */
+export const wizardRunsArtifactsList = async (
+    projectId: string,
+    runId: string,
+    options?: RequestInit
+): Promise<WizardRunArtifactApi[]> => {
+    return apiMutator<WizardRunArtifactApi[]>(getWizardRunsArtifactsListUrl(projectId, runId), {
+        ...options,
+        method: 'GET',
+    })
+}
 
 export const getWizardSessionsListUrl = (projectId: string, params?: WizardSessionsListParams) => {
     const normalizedParams = new URLSearchParams()

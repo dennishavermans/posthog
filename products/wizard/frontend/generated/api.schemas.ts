@@ -8,6 +8,176 @@
  * OpenAPI spec version: 1.0.0
  */
 /**
+ * * `local` - local
+ * * `cloud` - cloud
+ */
+export type RunEnvironmentEnumApi = (typeof RunEnvironmentEnumApi)[keyof typeof RunEnvironmentEnumApi]
+
+export const RunEnvironmentEnumApi = {
+    Local: 'local',
+    Cloud: 'cloud',
+} as const
+
+/**
+ * Selects a folder on the user's machine as the workspace.
+ *
+ * * `local_folder` - local_folder
+ */
+export type LocalFolderWorkspaceApiType = (typeof LocalFolderWorkspaceApiType)[keyof typeof LocalFolderWorkspaceApiType]
+
+export const LocalFolderWorkspaceApiType = {
+    LocalFolder: 'local_folder',
+} as const
+
+export interface LocalFolderWorkspaceApi {
+    /** Selects a folder on the user's machine as the workspace.
+     *
+     * * `local_folder` - local_folder */
+    type: LocalFolderWorkspaceApiType
+    /**
+     * Name of the project in the local folder.
+     * @maxLength 255
+     */
+    project_name: string
+}
+
+/**
+ * Selects a GitHub repository as the workspace.
+ *
+ * * `git_repository` - git_repository
+ */
+export type GitRepositoryWorkspaceApiType =
+    (typeof GitRepositoryWorkspaceApiType)[keyof typeof GitRepositoryWorkspaceApiType]
+
+export const GitRepositoryWorkspaceApiType = {
+    GitRepository: 'git_repository',
+} as const
+
+export interface GitRepositoryWorkspaceApi {
+    /** Selects a GitHub repository as the workspace.
+     *
+     * * `git_repository` - git_repository */
+    type: GitRepositoryWorkspaceApiType
+    /**
+     * GitHub repository in owner/name format.
+     * @maxLength 255
+     */
+    repository: string
+}
+
+export type WizardWorkspaceApi = LocalFolderWorkspaceApi | GitRepositoryWorkspaceApi
+
+export interface WizardRunCreateRequestApi {
+    /** Where the setup agent runs.
+     *
+     * * `local` - local
+     * * `cloud` - cloud */
+    environment: RunEnvironmentEnumApi
+    /** Project that the setup agent works on. */
+    workspace: WizardWorkspaceApi
+}
+
+/**
+ * * `created` - created
+ * * `running` - running
+ * * `completed` - completed
+ * * `failed` - failed
+ * * `cancelled` - cancelled
+ */
+export type WizardRunStatusEnumApi = (typeof WizardRunStatusEnumApi)[keyof typeof WizardRunStatusEnumApi]
+
+export const WizardRunStatusEnumApi = {
+    Created: 'created',
+    Running: 'running',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled',
+} as const
+
+/**
+ * * `timeout` - timeout
+ */
+export type ErrorCodeEnumApi = (typeof ErrorCodeEnumApi)[keyof typeof ErrorCodeEnumApi]
+
+export const ErrorCodeEnumApi = {
+    Timeout: 'timeout',
+} as const
+
+export interface WizardRunApi {
+    /** Unique ID of the Wizard run. */
+    readonly id: string
+    /** Project that owns the Wizard run. */
+    readonly team_id: number
+    /**
+     * User who created the Wizard run, or null if that user no longer exists.
+     * @nullable
+     */
+    readonly created_by_id: number | null
+    /** Where the setup agent runs.
+     *
+     * * `local` - local
+     * * `cloud` - cloud */
+    readonly environment: RunEnvironmentEnumApi
+    /** Project that the setup agent works on. */
+    readonly workspace: WizardWorkspaceApi
+    /** Current lifecycle status of the Wizard run.
+     *
+     * * `created` - created
+     * * `running` - running
+     * * `completed` - completed
+     * * `failed` - failed
+     * * `cancelled` - cancelled */
+    readonly status: WizardRunStatusEnumApi
+    /** Machine-readable failure reason, or null if the run has not failed.
+     *
+     * * `timeout` - timeout */
+    readonly error_code: ErrorCodeEnumApi | null
+}
+
+export interface WizardRunErrorApi {
+    /** Error category. */
+    readonly type: string
+    /** Machine-readable error code. */
+    readonly code: string
+    /** What happened and how to continue. */
+    readonly detail: string
+    /**
+     * Request field associated with the error, when available.
+     * @nullable
+     */
+    readonly attr: string | null
+}
+
+/**
+ * * `git_diff` - git_diff
+ */
+export type WizardRunArtifactTypeEnumApi =
+    (typeof WizardRunArtifactTypeEnumApi)[keyof typeof WizardRunArtifactTypeEnumApi]
+
+export const WizardRunArtifactTypeEnumApi = {
+    GitDiff: 'git_diff',
+} as const
+
+export interface WizardRunArtifactApi {
+    /** Unique ID of the run artifact. */
+    readonly id: string
+    /** Project that owns the run artifact. */
+    readonly team_id: number
+    /** Wizard run that produced the artifact. */
+    readonly run_id: string
+    /** Format of the changes produced by the run.
+     *
+     * * `git_diff` - git_diff */
+    readonly artifact_type: WizardRunArtifactTypeEnumApi
+    /** Stored artifact size in bytes. */
+    readonly size_bytes: number
+    /** SHA-256 hash of the stored artifact content. */
+    readonly content_hash: string
+    /** Time when the artifact was stored. */
+    readonly created_at: string
+}
+
+/**
  * The in-flight `wizard_ask` question. Typed rather than a free-form dict so the shape the
  * widget renders is enforced at the edge instead of trusted from the producer.
  */
@@ -187,6 +357,26 @@ export interface UpsertWizardSessionRequestApi {
      */
     error?: UpsertWizardSessionRequestApiError
 }
+
+/**
+ * * `local_folder` - local_folder
+ */
+export type LocalFolderWorkspaceTypeEnumApi =
+    (typeof LocalFolderWorkspaceTypeEnumApi)[keyof typeof LocalFolderWorkspaceTypeEnumApi]
+
+export const LocalFolderWorkspaceTypeEnumApi = {
+    LocalFolder: 'local_folder',
+} as const
+
+/**
+ * * `git_repository` - git_repository
+ */
+export type GitRepositoryWorkspaceTypeEnumApi =
+    (typeof GitRepositoryWorkspaceTypeEnumApi)[keyof typeof GitRepositoryWorkspaceTypeEnumApi]
+
+export const GitRepositoryWorkspaceTypeEnumApi = {
+    GitRepository: 'git_repository',
+} as const
 
 export type WizardSessionsListParams = {
     /**

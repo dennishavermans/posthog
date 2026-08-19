@@ -46,7 +46,7 @@ def _to_dto(artifact: WizardRunArtifact) -> WizardRunArtifactDTO:
         id=artifact.id,
         team_id=artifact.team_id,
         run_id=artifact.run_id,
-        type=WizardRunArtifactType(artifact.type),
+        artifact_type=WizardRunArtifactType(artifact.type),
         size_bytes=artifact.size_bytes,
         content_hash=artifact.content_hash,
         created_at=artifact.created_at,

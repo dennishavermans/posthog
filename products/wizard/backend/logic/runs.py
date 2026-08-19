@@ -42,7 +42,7 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
         WizardRunStatus.RUNNING if params.environment == WizardRunEnvironment.LOCAL else WizardRunStatus.CREATED
     )
 
-    created = WizardRun.objects.create(
+    created = WizardRun.objects.for_team(params.team_id).create(
         team_id=params.team_id,
         created_by_id=params.created_by_id,
         environment=params.environment.value,

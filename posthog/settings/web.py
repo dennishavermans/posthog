@@ -661,6 +661,7 @@ SPECTACULAR_SETTINGS = {
         # TaskRunUpdate.status and ExperimentFlagCleanupTask.run_status.
         "RunStatusEnum": ["not_started", "queued", "in_progress", "completed", "failed", "cancelled"],
         "TaskRunEnvironmentEnum": "products.tasks.backend.models.TaskRun.Environment",
+        "RunEnvironmentEnum": ["local", "cloud"],
         "ReasoningEffortEnum": ["low", "medium", "high", "xhigh", "max", "ultracode", None],
         "TaskRunReasoningEffortEnum": [
             "off",
@@ -949,6 +950,16 @@ SPECTACULAR_SETTINGS = {
             "user_attachment",
             "skill_bundle",
         ],
+        "ArtifactTypeEnum": [
+            "slack_message",
+            "slack_canvas",
+            "document",
+            "spreadsheet",
+            "dashboard",
+            "file",
+            "github_pr",
+        ],
+        "WizardRunArtifactTypeEnum": ["git_diff"],
         "AdapterEnum": ["slack_message", "slack_canvas", "slack_file", "document_connector", "github_pr"],
         "TaskArtifactStatusEnum": ["active", "failed"],
         # Same-value collisions: identical choice sets appear on fields with different names.
