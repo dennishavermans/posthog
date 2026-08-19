@@ -1,8 +1,11 @@
 import json
+from collections.abc import Iterator
 from typing import Any, Optional
 
 import pytest
 from unittest import mock
+
+from django.core.cache import cache as django_cache
 
 import jwt
 import requests
@@ -562,6 +565,13 @@ class TestRealtimeDatabase:
 
 
 class TestTableDiscovery:
+    @pytest.fixture(autouse=True)
+    def _clear_discovery_cache(self) -> Iterator[None]:
+        # Discovery is cached per credentials, so isolate each test from the others' cached walk.
+        django_cache.clear()
+        yield
+        django_cache.clear()
+
     def test_lists_auth_firestore_and_configured_paths(self) -> None:
         session = FakeSession(
             request_responses=[
@@ -677,6 +687,32 @@ class TestTableDiscovery:
         with mock.patch(_SESSION_FACTORY, return_value=session.as_session()):
             with pytest.raises(requests.HTTPError):
                 get_tables(credentials())
+
+    def test_discovery_is_cached_and_force_refresh_rewalks(self) -> None:
+        # `rooms` has no documents to probe, so one discovery pass is two requests: the root
+        # `listCollectionIds` and the sample read that finds no subcollections.
+        session = FakeSession(
+            request_responses=[
+                FakeResponse(payload={"collectionIds": ["rooms"]}),
+                FakeResponse(payload={"documents": []}),
+            ],
+            post_responses=[FakeResponse(payload=TOKEN_PAYLOAD), FakeResponse(payload=TOKEN_PAYLOAD)],
+        )
+
+        with mock.patch(_SESSION_FACTORY, return_value=session.as_session()):
+            first = get_tables(credentials())
+            # The second lookup reuses the cached collections instead of walking the project again.
+            cached = get_tables(credentials())
+            assert len(session.requests) == 2
+
+            # A forced refresh walks again, so it needs a fresh set of discovery responses.
+            session.request_queue.extend(
+                [FakeResponse(payload={"collectionIds": ["rooms"]}), FakeResponse(payload={"documents": []})]
+            )
+            get_tables(credentials(), force_refresh=True)
+
+        assert first == cached == [AUTH_USERS_TABLE, "firestore_rooms"]
+        assert len(session.requests) == 4
 
 
 class TestSampleCapture:

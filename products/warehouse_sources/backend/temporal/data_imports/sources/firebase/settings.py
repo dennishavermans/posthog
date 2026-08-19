@@ -38,6 +38,12 @@ REALTIME_DATABASE_PAGE_SIZE: Final[int] = 500
 FIRESTORE_SUBCOLLECTION_SAMPLE_DOCUMENTS: Final[int] = 10
 FIRESTORE_MAX_SUBCOLLECTION_DEPTH: Final[int] = 3
 
+# Discovery walks the project one document sample at a time, so it can fire ~11 sequential requests
+# per collection id — all on the synchronous schema-lookup path a user waits on. Cache the result so
+# repeated lookups don't repeat the walk; the user-triggered refresh bypasses it. Mirrors the Slack
+# source's channel-discovery cache, which caps the same cost for the same reason.
+FIRESTORE_DISCOVERY_CACHE_TTL_SECONDS: Final[int] = 300
+
 # Hard stop so an endpoint that keeps handing back a page token can't page forever.
 MAX_PAGES: Final[int] = 100_000
 

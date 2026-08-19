@@ -143,7 +143,7 @@ Create a service account key in the Firebase console under Project settings, Ser
         # Firestore collections are created by the customer's app, so the table list can only come
         # from the live project. Nothing here supports a server-side timestamp filter, so every
         # table is full refresh.
-        tables = get_tables(self._credentials(config))
+        tables = get_tables(self._credentials(config), force_refresh=force_refresh)
         if names is not None:
             wanted = set(names)
             tables = [table for table in tables if table in wanted]

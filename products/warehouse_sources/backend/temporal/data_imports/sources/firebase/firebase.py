@@ -5,6 +5,8 @@ from collections.abc import Iterator
 from typing import Any, Optional
 from urllib.parse import quote, urlparse
 
+from django.core.cache import cache
+
 import jwt
 import requests
 import structlog
@@ -22,6 +24,7 @@ from products.warehouse_sources.backend.temporal.data_imports.sources.firebase.s
     FIRESTORE_API_ROOT,
     FIRESTORE_COLLECTION_IDS_PAGE_SIZE,
     FIRESTORE_CREATE_TIME_COLUMN,
+    FIRESTORE_DISCOVERY_CACHE_TTL_SECONDS,
     FIRESTORE_ID_COLUMN,
     FIRESTORE_MAX_SUBCOLLECTION_DEPTH,
     FIRESTORE_PAGE_SIZE,
@@ -733,14 +736,45 @@ def discover_firestore_collections(
     return ordered
 
 
-def get_tables(credentials: FirebaseCredentials) -> list[str]:
+def _firestore_discovery_cache_key(credentials: FirebaseCredentials) -> str:
+    # What discovery returns is fixed by the project, the database, and the service account's read
+    # scope, so those three identify the entry. All are non-secret identifiers.
+    return f"@dwh/firebase/{credentials.project_id}/{credentials.database_id}/{credentials.client_email}/collections"
+
+
+def _discover_firestore_collections_cached(
+    session: requests.Session,
+    tokens: AccessTokenProvider,
+    credentials: FirebaseCredentials,
+    force_refresh: bool = False,
+) -> list[str]:
+    """Cached wrapper around `discover_firestore_collections`.
+
+    Discovery fires many sequential requests on the synchronous schema-lookup path, so callers that
+    don't need fresh data read through this cache; the user-triggered refresh passes
+    `force_refresh=True`. A failed walk raises before the cache is written, so the previous value
+    survives. Mirrors the Slack source's channel-discovery cache.
+    """
+    cache_key = _firestore_discovery_cache_key(credentials)
+    if not force_refresh:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+    collection_paths = discover_firestore_collections(session, tokens, credentials)
+    cache.set(cache_key, collection_paths, FIRESTORE_DISCOVERY_CACHE_TTL_SECONDS)
+    return collection_paths
+
+
+def get_tables(credentials: FirebaseCredentials, force_refresh: bool = False) -> list[str]:
     """List every table this source can sync: Auth users, Firestore collections, configured paths."""
     tables: list[str] = [AUTH_USERS_TABLE]
 
     tokens = AccessTokenProvider(_auth_session(credentials), credentials)
     api_session = _api_session(credentials)
     try:
-        collection_paths = discover_firestore_collections(api_session, tokens, credentials)
+        collection_paths = _discover_firestore_collections_cached(
+            api_session, tokens, credentials, force_refresh=force_refresh
+        )
         tables.extend(firestore_table_name(collection_path) for collection_path in collection_paths)
     except requests.HTTPError as e:
         # A project with no Firestore database answers 404, a service account without the
