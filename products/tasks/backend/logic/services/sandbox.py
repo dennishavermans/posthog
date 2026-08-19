@@ -215,11 +215,16 @@ PUBLIC_SANDBOX_REPOS: frozenset[str] = frozenset({"posthog/hedgebox", "posthog/.
 """Repos the sandbox is allowed to clone unauthenticated, even when the team has no GitHub integration"""
 # TODO: Remove `posthog/.github` when we switch repo discovery to repo-less agent (now it works as a lightweight dummy)
 
-SENSITIVE_AGENT_RUNTIME_ENV_NAMES: frozenset[str] = frozenset(
-    {"POSTHOG_TASK_RUN_EVENT_INGEST_TOKEN", "POSTHOG_TASK_RUN_SESSION_TOKEN"}
+SENSITIVE_SANDBOX_ENV_NAMES: frozenset[str] = frozenset(
+    {
+        "GITHUB_TOKEN",
+        "POSTHOG_TASK_RUN_EVENT_INGEST_TOKEN",
+        "POSTHOG_TASK_RUN_SESSION_TOKEN",
+        "POSTHOG_WIZARD_API_KEY",
+    }
 )
-SENSITIVE_AGENT_RUNTIME_ENV_PATTERN = re.compile(
-    r"(?P<name>" + "|".join(re.escape(name) for name in SENSITIVE_AGENT_RUNTIME_ENV_NAMES) + r")="
+SENSITIVE_SANDBOX_ENV_PATTERN = re.compile(
+    r"(?P<name>" + "|".join(re.escape(name) for name in SENSITIVE_SANDBOX_ENV_NAMES) + r")="
     r"(?P<value>'(?:[^']|'\"'\"')*'|\"(?:\\.|[^\"])*\"|\S+)"
 )
 GITHUB_CLONE_TOKEN_PATTERN = re.compile(r"(?P<prefix>https://x-access-token:)[^@\s]+(?P<suffix>@github\.com/)")
@@ -236,7 +241,7 @@ def sandbox_repo_path(repository: str) -> str:
 
 
 def redact_sandbox_command(command: str) -> str:
-    redacted = SENSITIVE_AGENT_RUNTIME_ENV_PATTERN.sub(r"\g<name>=<redacted>", command)
+    redacted = SENSITIVE_SANDBOX_ENV_PATTERN.sub(r"\g<name>=<redacted>", command)
     return GITHUB_CLONE_TOKEN_PATTERN.sub(r"\g<prefix><redacted>\g<suffix>", redacted)
 
 

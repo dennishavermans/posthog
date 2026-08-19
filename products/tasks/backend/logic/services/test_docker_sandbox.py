@@ -134,6 +134,13 @@ class TestDockerSandboxUnit:
         assert "github-secret" not in redacted
         assert "https://x-access-token:<redacted>@github.com/PostHog/posthog.git" in redacted
 
+    @pytest.mark.parametrize("name", ("GITHUB_TOKEN", "POSTHOG_WIZARD_API_KEY"))
+    def test_redact_sandbox_command_hides_worker_credentials(self, name: str) -> None:
+        redacted = redact_sandbox_command(f"docker run -e {name}=worker-secret sandbox")
+
+        assert "worker-secret" not in redacted
+        assert f"{name}=<redacted>" in redacted
+
     @pytest.mark.parametrize(
         "input_url,expected_url",
         [
