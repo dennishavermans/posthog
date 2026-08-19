@@ -33,7 +33,7 @@ from products.signals.backend.report_generation.research import (
 )
 from products.signals.backend.report_generation.resolve_reviewers import resolve_suggested_reviewers
 from products.signals.backend.report_generation.reviewer_telemetry import capture_suggested_reviewers_resolved
-from products.signals.backend.report_generation.select_repo import RepoSelectionResult
+from products.signals.backend.report_generation.select_repo import RepoSelectionResult, resolve_team_github_integration
 from products.signals.backend.temporal.agentic import (
     SIGNALS_REPORT_RESEARCH_ENV_NAME,
     get_or_create_signals_sandbox_env,
@@ -455,7 +455,30 @@ async def run_agentic_report_activity(input: RunAgenticReportInput) -> RunAgenti
 
         async with Heartbeater():
             # 1. Get context for the sandbox
-            user_id = await database_sync_to_async(resolve_user_id_for_team, thread_sensitive=False)(input.team_id)
+            # The integration can lapse between repo selection and now (deleted, token refresh
+            # failing, installation unavailable). Research needs it to reach the repo, so ask for
+            # human input rather than raising when it is gone.
+            github = await database_sync_to_async(resolve_team_github_integration, thread_sensitive=False)(
+                input.team_id
+            )
+            if github is None:
+                logger.info(
+                    "signals report research skipped: GitHub integration no longer available",
+                    team_id=input.team_id,
+                    report_id=input.report_id,
+                )
+                return RunAgenticReportOutput(
+                    title="Repository selection required",
+                    summary="Research could not run because the team's GitHub integration is no longer available.",
+                    choice=ActionabilityChoice.REQUIRES_HUMAN_INPUT,
+                    priority=None,
+                    explanation="The team's GitHub integration is no longer available. Reconnect GitHub to run the report.",
+                    already_addressed=False,
+                    repository=repository,
+                )
+            user_id = await database_sync_to_async(resolve_user_id_for_team, thread_sensitive=False)(
+                input.team_id, github
+            )
             sandbox_env_id = await database_sync_to_async(get_or_create_signals_sandbox_env, thread_sensitive=False)(
                 input.team_id, SIGNALS_REPORT_RESEARCH_ENV_NAME, tasks_facade.SandboxNetworkAccessLevel.TRUSTED
             )

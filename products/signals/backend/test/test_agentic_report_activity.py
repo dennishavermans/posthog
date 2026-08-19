@@ -133,8 +133,12 @@ _EXISTING_CHART = {
 
 async def _run_activity_with_output(monkeypatch, ateam, report, output, *, charts_enabled=True):
     monkeypatch.setattr(
+        "products.signals.backend.temporal.agentic.report.resolve_team_github_integration",
+        lambda team_id: object(),
+    )
+    monkeypatch.setattr(
         "products.signals.backend.temporal.agentic.report.resolve_user_id_for_team",
-        lambda team_id: 1,
+        lambda team_id, github=None: 1,
     )
     monkeypatch.setattr(
         "products.signals.backend.temporal.agentic.report._team_report_charts_enabled",
@@ -221,6 +225,10 @@ async def test_select_repository_activity_reuses_previous_selection(monkeypatch,
         "products.signals.backend.temporal.agentic.select_repository.persisted_repo_selection",
         lambda report_id: previous,
     )
+    monkeypatch.setattr(
+        "products.signals.backend.temporal.agentic.select_repository._resolve_sandbox_user_id",
+        lambda team_id: 1,
+    )
 
     select_repo_called = False
 
@@ -245,6 +253,30 @@ async def test_select_repository_activity_reuses_previous_selection(monkeypatch,
 
 @pytest.mark.asyncio
 @pytest.mark.django_db
+async def test_select_repository_activity_does_not_reuse_when_integration_lapsed(monkeypatch, ateam):
+    # A persisted selection from an earlier run must not be reused once the GitHub integration is
+    # gone: research would re-resolve nothing and crash. The activity must fall through to the
+    # no-repo prompt instead of handing the stale repo forward.
+    previous = RepoSelectionResult(repository="posthog/posthog", reason="Previously selected")
+    monkeypatch.setattr(
+        "products.signals.backend.temporal.agentic.select_repository.persisted_repo_selection",
+        lambda report_id: previous,
+    )
+    monkeypatch.setattr(
+        "products.signals.backend.temporal.agentic.select_repository._resolve_sandbox_user_id",
+        lambda team_id: None,
+    )
+
+    with patch("products.signals.backend.temporal.agentic.select_repository.Heartbeater"):
+        result = await select_repository_activity(
+            SelectRepositoryInput(team_id=ateam.id, report_id="test-report-id", signals=_build_signals())
+        )
+
+    assert result.repository is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db
 async def test_select_repository_activity_retries_transient_db_drop(monkeypatch, ateam):
     # A pooled pgbouncer connection dropped mid-request raises OperationalError on the
     # activity's early read. The retry-once guard must evict the dead connection and
@@ -261,6 +293,10 @@ async def test_select_repository_activity_retries_transient_db_drop(monkeypatch,
     monkeypatch.setattr(
         "products.signals.backend.temporal.agentic.select_repository.persisted_repo_selection",
         flaky_load,
+    )
+    monkeypatch.setattr(
+        "products.signals.backend.temporal.agentic.select_repository._resolve_sandbox_user_id",
+        lambda team_id: 1,
     )
 
     with patch("products.signals.backend.temporal.agentic.select_repository.Heartbeater"):
@@ -355,8 +391,12 @@ async def test_run_agentic_report_activity_persists_artefacts(monkeypatch, ateam
     )
 
     monkeypatch.setattr(
+        "products.signals.backend.temporal.agentic.report.resolve_team_github_integration",
+        lambda team_id: object(),
+    )
+    monkeypatch.setattr(
         "products.signals.backend.temporal.agentic.report.resolve_user_id_for_team",
-        lambda team_id: 1,
+        lambda team_id, github=None: 1,
     )
 
     async def fake_run_multi_turn_research(*args, **kwargs):
@@ -419,6 +459,52 @@ async def test_run_agentic_report_activity_persists_artefacts(monkeypatch, ateam
 
         finding_contents = [json.loads(artefact.content) for artefact in artefacts[3:]]
         assert [finding["signal_id"] for finding in finding_contents] == ["sig-1", "sig-2"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db
+async def test_run_agentic_report_activity_requires_human_input_when_integration_gone(monkeypatch, ateam):
+    # The integration can lapse between repo selection and research (deleted, token refresh failing,
+    # installation unavailable). Research must ask for human input rather than raising, so the report
+    # reaches the user instead of dying mid-run.
+    report = await database_sync_to_async(SignalReport.objects.create)(
+        team=ateam,
+        status=SignalReport.Status.IN_PROGRESS,
+        signal_count=2,
+        total_weight=1.3,
+    )
+    monkeypatch.setattr(
+        "products.signals.backend.temporal.agentic.report.resolve_team_github_integration",
+        lambda team_id: None,
+    )
+
+    research_called = False
+
+    async def fake_run_multi_turn_research(*args, **kwargs):
+        nonlocal research_called
+        research_called = True
+        raise AssertionError("research should not run without an integration")
+
+    monkeypatch.setattr(
+        "products.signals.backend.temporal.agentic.report.run_multi_turn_research",
+        fake_run_multi_turn_research,
+    )
+
+    with patch("products.signals.backend.temporal.agentic.report.Heartbeater"):
+        result = await run_agentic_report_activity(
+            RunAgenticReportInput(
+                team_id=ateam.id,
+                report_id=str(report.id),
+                signals=_build_signals(),
+                repo_selection=RepoSelectionResult(repository="posthog/posthog", reason="test"),
+            )
+        )
+
+    assert result.choice == ActionabilityChoice.REQUIRES_HUMAN_INPUT
+    assert result.repository == "posthog/posthog"
+    assert not research_called
+    artefact_count = await database_sync_to_async(lambda: SignalReportArtefact.objects.filter(report=report).count())()
+    assert artefact_count == 0
 
 
 @pytest.mark.asyncio
@@ -513,8 +599,12 @@ async def test_run_agentic_report_activity_does_not_persist_partial_artefacts(mo
     )
 
     monkeypatch.setattr(
+        "products.signals.backend.temporal.agentic.report.resolve_team_github_integration",
+        lambda team_id: object(),
+    )
+    monkeypatch.setattr(
         "products.signals.backend.temporal.agentic.report.resolve_user_id_for_team",
-        lambda team_id: 1,
+        lambda team_id, github=None: 1,
     )
 
     async def fake_run_multi_turn_research(*args, **kwargs):
