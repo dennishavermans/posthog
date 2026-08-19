@@ -203,7 +203,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Treat missing and inaccessible repositories as the same external result to avoid revealing private repository existence.
 - [x] Validate the `owner/name` shape before calling GitHub-backed services.
 - [ ] Recheck integration and repository access when cloud execution starts because access can change after creation.
-- [ ] Confirm that all required GitHub and token operations are available through public facades.
+- [x] Confirm that all required GitHub and token operations are available through public facades.
 - [x] Add a Tasks facade method that returns the selected integration ID without leaking a Tasks-owned object.
 
 ### 5. Add persisted lifecycle operations
