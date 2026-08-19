@@ -23,7 +23,6 @@ from products.warehouse_sources.backend.temporal.data_imports.sources.firebase.s
     AUTH_USERS_PRIMARY_KEY,
     AUTH_USERS_TABLE,
     FIRESTORE_API_ROOT,
-    FIRESTORE_COLLECTION_GROUP_TABLE_PREFIX,
     FIRESTORE_COLLECTION_IDS_PAGE_SIZE,
     FIRESTORE_CREATE_TIME_COLUMN,
     FIRESTORE_DISCOVERY_CACHE_TTL_SECONDS,
@@ -644,13 +643,14 @@ def get_rows(
 
 def _resolve_firestore_collection(table_name: str) -> Optional[str]:
     """Recover the root Firestore collection id a table name was built from (`rooms`)."""
-    # The collection-group prefix starts with the root prefix, so exclude it first.
-    if table_name.startswith(FIRESTORE_COLLECTION_GROUP_TABLE_PREFIX):
-        return None
     prefix = firestore_table_name("")
     if not table_name.startswith(prefix) or len(table_name) == len(prefix):
         return None
-    return table_name[len(prefix) :]
+    collection_id = table_name[len(prefix) :]
+    # A root collection id can never contain `/`, so a remaining slash marks a collection-group table.
+    if "/" in collection_id:
+        return None
+    return collection_id
 
 
 def _resolve_firestore_collection_group(table_name: str) -> Optional[str]:
@@ -709,10 +709,18 @@ def _sample_firestore_document_paths(
     return [_relative_document_path(str(doc["name"])) for doc in documents if doc.get("name")]
 
 
+@frozen
+class FirestoreCollections:
+    """The Firestore collections a source can read: root collections and subcollection groups."""
+
+    root_ids: list[str]
+    subcollection_ids: list[str]
+
+
 def discover_firestore_collections(
     session: requests.Session, tokens: AccessTokenProvider, credentials: FirebaseCredentials
-) -> tuple[list[str], list[str]]:
-    """Return the Firestore collections this source can read, as (root ids, subcollection ids).
+) -> FirestoreCollections:
+    """Return the Firestore collections this source can read.
 
     Root collections come from `listCollectionIds`. Subcollections are found by sampling documents
     and asking each for its child collection ids, following nesting down to the depth cap. A
@@ -755,7 +763,7 @@ def discover_firestore_collections(
             break
         frontier = next_frontier
 
-    return root_ids, subcollection_ids
+    return FirestoreCollections(root_ids=root_ids, subcollection_ids=subcollection_ids)
 
 
 def _firestore_discovery_cache_key(credentials: FirebaseCredentials) -> str:
@@ -769,7 +777,7 @@ def _discover_firestore_collections_cached(
     tokens: AccessTokenProvider,
     credentials: FirebaseCredentials,
     force_refresh: bool = False,
-) -> tuple[list[str], list[str]]:
+) -> FirestoreCollections:
     """Cached wrapper around `discover_firestore_collections`.
 
     Discovery fires many sequential requests on the synchronous schema-lookup path, so callers that
@@ -781,8 +789,7 @@ def _discover_firestore_collections_cached(
     if not force_refresh:
         cached = cache.get(cache_key)
         if cached is not None:
-            root_ids, subcollection_ids = cached
-            return list(root_ids), list(subcollection_ids)
+            return cached
     discovered = discover_firestore_collections(session, tokens, credentials)
     cache.set(cache_key, discovered, FIRESTORE_DISCOVERY_CACHE_TTL_SECONDS)
     return discovered
@@ -814,12 +821,12 @@ def get_tables(credentials: FirebaseCredentials, force_refresh: bool = False) ->
     tokens = AccessTokenProvider(_auth_session(credentials), credentials)
     api_session = _api_session(credentials)
     try:
-        root_ids, subcollection_ids = _discover_firestore_collections_cached(
+        collections = _discover_firestore_collections_cached(
             api_session, tokens, credentials, force_refresh=force_refresh
         )
-        firestore_tables = [firestore_table_name(collection_id) for collection_id in root_ids]
+        firestore_tables = [firestore_table_name(collection_id) for collection_id in collections.root_ids]
         firestore_tables += [
-            firestore_collection_group_table_name(collection_id) for collection_id in subcollection_ids
+            firestore_collection_group_table_name(collection_id) for collection_id in collections.subcollection_ids
         ]
     except requests.HTTPError as e:
         # A project with no Firestore database answers 404, a service account without the

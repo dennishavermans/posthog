@@ -22,9 +22,10 @@ DEFAULT_DATABASE_ID: Final[str] = "(default)"
 
 AUTH_USERS_TABLE: Final[str] = "auth_users"
 FIRESTORE_TABLE_PREFIX: Final[str] = "firestore_"
-# A subcollection reads as a collection group (every collection with the id, under any parent), so
-# its own prefix keeps its name distinct from a root collection and states that scope to the user.
-FIRESTORE_COLLECTION_GROUP_TABLE_PREFIX: Final[str] = "firestore_collection_group_"
+# A subcollection reads as a collection group (every collection with the id, under any parent). The
+# `/` in the prefix states that scope and cannot appear in a Firestore collection id, so no root
+# collection can ever produce this name and be routed to the wrong reader.
+FIRESTORE_COLLECTION_GROUP_TABLE_PREFIX: Final[str] = "firestore_collection_group/"
 REALTIME_DATABASE_TABLE_PREFIX: Final[str] = "realtime_database_"
 
 # Firestore caps a `listDocuments` page at 300 documents; Identity Platform caps `accounts:batchGet`

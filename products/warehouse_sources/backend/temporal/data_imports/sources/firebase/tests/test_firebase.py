@@ -416,10 +416,24 @@ class TestFirestoreCollectionGroup:
         )
 
         with mock.patch(_SESSION_FACTORY, return_value=session.as_session()):
-            batches = list(get_rows(credentials(), "firestore_collection_group_messages", FakeResumeManager(), logger))
+            batches = list(get_rows(credentials(), "firestore_collection_group/messages", FakeResumeManager(), logger))
 
         assert session.requests[0][1] == f"{DOCUMENTS_ROOT}:runQuery"
         assert [row[FIRESTORE_ID_COLUMN] for row in batches[0]] == ["m1"]
+
+    def test_a_root_collection_named_like_a_group_reads_as_a_root(self, logger: FilteringBoundLogger) -> None:
+        # A root collection whose id starts with `collection_group_` has no slash, so it must read
+        # through `listDocuments`, not be misrouted to a collection-group query.
+        session = FakeSession(
+            request_responses=[FakeResponse(payload={"documents": [firestore_document("a")]})],
+            post_responses=[FakeResponse(payload=TOKEN_PAYLOAD)],
+        )
+
+        with mock.patch(_SESSION_FACTORY, return_value=session.as_session()):
+            list(get_rows(credentials(), "firestore_collection_group_orders", FakeResumeManager(), logger))
+
+        assert session.requests[0][0] == "GET"
+        assert session.requests[0][1] == f"{DOCUMENTS_ROOT}/collection_group_orders"
 
 
 class TestAuthUsersPagination:
@@ -615,7 +629,7 @@ class TestTableDiscovery:
         with mock.patch(_SESSION_FACTORY, return_value=session.as_session()):
             tables = get_tables(credentials())
 
-        assert tables == [AUTH_USERS_TABLE, "firestore_rooms", "firestore_collection_group_messages"]
+        assert tables == [AUTH_USERS_TABLE, "firestore_rooms", "firestore_collection_group/messages"]
         # The subcollection is discovered by asking a sampled document for its child collections.
         assert session.requests[2][1] == f"{DOCUMENTS_ROOT}/rooms/room1:listCollectionIds"
 
@@ -637,7 +651,7 @@ class TestTableDiscovery:
             tables = get_tables(credentials())
 
         # `messages` under both parents is one collection group, so it becomes a single table.
-        assert tables == [AUTH_USERS_TABLE, "firestore_rooms", "firestore_chats", "firestore_collection_group_messages"]
+        assert tables == [AUTH_USERS_TABLE, "firestore_rooms", "firestore_chats", "firestore_collection_group/messages"]
 
     def test_a_subcollection_sharing_an_id_with_a_root_collection_is_not_hidden(self) -> None:
         session = FakeSession(
@@ -660,7 +674,7 @@ class TestTableDiscovery:
             AUTH_USERS_TABLE,
             "firestore_messages",
             "firestore_rooms",
-            "firestore_collection_group_messages",
+            "firestore_collection_group/messages",
         ]
 
     def test_a_table_whose_storage_name_collides_is_dropped(self) -> None:
@@ -701,7 +715,7 @@ class TestTableDiscovery:
         with mock.patch(_SESSION_FACTORY, return_value=session.as_session()):
             tables = get_tables(credentials())
 
-        assert tables == [AUTH_USERS_TABLE, "firestore_rooms", "firestore_collection_group_messages"]
+        assert tables == [AUTH_USERS_TABLE, "firestore_rooms", "firestore_collection_group/messages"]
         # Without `showMissing` on the root sample, the missing parent is dropped and its
         # subcollection is never discovered.
         assert session.requests[1][2]["params"]["showMissing"] == "true"
@@ -948,7 +962,7 @@ class TestSourceResponseShape:
             (AUTH_USERS_TABLE, ["localId"], False),
             ("firestore_rooms", [FIRESTORE_ID_COLUMN], True),
             # A subcollection is a collection group, so its unique key is the full document path.
-            ("firestore_collection_group_messages", [FIRESTORE_PATH_COLUMN], True),
+            ("firestore_collection_group/messages", [FIRESTORE_PATH_COLUMN], True),
             ("realtime_database_rooms", [REALTIME_DATABASE_KEY_COLUMN], False),
         ],
     )
