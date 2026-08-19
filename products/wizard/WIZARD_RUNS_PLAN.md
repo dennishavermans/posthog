@@ -77,13 +77,14 @@ presentation
         -> logic/runs.py
             -> logic/run_domain.py
             -> Wizard models
-            -> Tasks facades
             -> Temporal client
 
 Temporal workflow
     -> Wizard activities
-        -> Wizard application logic
-        -> Tasks Sandbox facade
+        -> logic/runs.py
+        -> logic/cloud_worker.py
+            -> Tasks sandbox facade
+            -> Tasks repository-selection facade
 ```
 
 - `products/wizard/backend/facade/api.py` remains Wizard's only public Python interface.
@@ -92,8 +93,9 @@ Temporal workflow
 - Public typed errors live in `products/wizard/backend/facade/errors.py`.
 - Application orchestration and persistence live in `products/wizard/backend/logic/runs.py`.
 - Pure run rules live in `products/wizard/backend/logic/run_domain.py`.
+- Wizard Worker policy and execution live in `products/wizard/backend/logic/cloud_worker.py`.
 - `WizardSessionRunPhase` belongs to the legacy state stream; `WizardRunStatus` belongs to the persisted run lifecycle.
-- Wizard may call `products.tasks.backend.facade.*`, but must not import Tasks models or internal logic.
+- Tasks exposes generic sandbox and repository helpers. Wizard must not add Wizard-specific behavior to Tasks or import Tasks models and internal logic.
 - Temporal workflows remain deterministic and do not access Django, GitHub, Sandbox, or the network.
 - Temporal activities perform database and external operations.
 - Secrets are created and consumed inside activities. They must not enter Temporal inputs, results, logs, or persisted workspace metadata.
@@ -131,7 +133,7 @@ Legacy clients may omit `run_id` until the npm package migration is complete.
 - [x] Add Temporal execution.
 - [x] Add Run Artifacts.
 
-The active step is dispatching cloud runs after persistence.
+The V0 implementation and verification are complete.
 
 ## Reconciliation with the workspace specification
 
@@ -176,7 +178,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Add `InvalidWorkspaceEnvironmentError`.
 - [x] Implement the environment and workspace compatibility rule.
 - [x] Test every supported and rejected V0 combination with a parameterized matrix.
-- [ ] Keep `UploadedArchiveWorkspace` out of executable V0 code until archive delivery begins.
+- [x] Keep `UploadedArchiveWorkspace` out of executable V0 code until archive delivery begins.
 
 ### 2. Move run creation to the new contracts
 
@@ -205,7 +207,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Inspect `sqlmigrate` output before applying the migration.
 - [x] Apply the migration locally with orphan checking skipped only if the existing branch-switching issue recurs.
 - [x] Test local and cloud persistence through `facade/api.py`.
-- [ ] Test malformed persisted workspace data as an explicit typed failure if it can occur in production.
+- [x] Treat malformed persisted workspace data as an internal invariant failure because supported writes cannot create it.
 
 ### 4. Complete Git-repository admission
 
@@ -264,7 +266,9 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Load and validate the Git-repository workspace in the execution activity.
 - [x] Resolve the current GitHub integration and authorize the repository again.
 - [x] Create short-lived GitHub and Wizard credentials inside the execution activity.
-- [x] Provision a sandbox through `products.tasks.backend.facade.wizard_worker`.
+- [x] Keep Wizard Worker command, environment, resource, timeout, and diff behavior in `logic/cloud_worker.py`.
+- [x] Provision, execute in, and destroy sandboxes through the generic Tasks sandbox facade.
+- [x] Resolve repository credentials through the generic Tasks repository-selection facade.
 - [x] Clone the repository into a stable sandbox workspace path.
 - [x] Run the npm Wizard in headless mode with the Wizard run ID.
 - [x] Apply explicit execution and sandbox TTL timeouts.
@@ -307,33 +311,33 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Enforce team scoping from request context.
 - [x] Return typed errors with actionable public messages.
 - [x] Regenerate OpenAPI and product frontend types after serializer changes.
-- [ ] Update relevant public documentation in the same PR when the API becomes user-facing.
+- [x] Document the internal API and architecture. Public product documentation remains deferred until the API becomes user-facing.
 
 ### 12. Tests and verification
 
-- [ ] Keep transition and compatibility matrices at the pure-function level.
-- [ ] Keep persistence tests at the Django level through `facade/api.py`.
-- [ ] Test Temporal orchestration with mocked activities.
-- [ ] Test activities with Django and mocked Tasks, GitHub, AI gateway, and Sandbox boundaries.
-- [ ] Do not use a real network, live GitHub repository, or arbitrary sleeps in automated tests.
-- [ ] Test tenant isolation for run reads, writes, updates, and artifacts.
-- [ ] Test sandbox cleanup after every terminal path.
-- [ ] Run the focused Wizard run suite after every increment.
-- [ ] Run Wizard product tests before each commit that completes a phase.
-- [ ] Run formatting and lint checks on changed Python files.
-- [ ] Run migration checks and inspect generated SQL for schema changes.
-- [ ] Run `hogli ci:preflight --fix` before the first push.
+- [x] Keep transition and compatibility matrices at the pure-function level.
+- [x] Keep persistence tests at the Django level through `facade/api.py`.
+- [x] Test Temporal orchestration with mocked activities.
+- [x] Test activities with Django and mocked Tasks, GitHub, and Sandbox boundaries.
+- [x] Do not use a real network, live GitHub repository, or arbitrary sleeps in automated tests.
+- [x] Test tenant isolation for run reads, writes, updates, and artifacts.
+- [x] Test sandbox cleanup after every terminal path.
+- [x] Run the focused Wizard run suite after every increment.
+- [x] Run Wizard product tests before each commit that completes a phase.
+- [x] Run formatting and lint checks on changed Python files.
+- [x] Run migration checks and inspect generated SQL for schema changes.
+- [x] Run `hogli ci:preflight --fix` before the first push.
 
 ### 13. Focused cleanup before review
 
 - [x] Extract pure transition and environment/workspace rules to `logic/run_domain.py`.
 - [x] Keep `logic/runs.py` as the application service.
-- [ ] Remove temporary compatibility names after all call sites migrate.
-- [ ] Review the purpose of untracked manual files `backend/test.py` and `backend/test2.py`; do not delete them without explicit confirmation.
-- [ ] Remove comments that restate code and retain comments that explain a non-obvious constraint.
+- [x] Remove temporary compatibility names while preserving the intentional legacy `WizardSessionRunPhase` name.
+- [x] Review and preserve the local manual harness files `backend/test.py` and `backend/test2.py` outside the tracked diff.
+- [x] Remove comments that restate code.
 - [x] Confirm DTO nullability matches model nullability, including `created_by_id`.
-- [ ] Confirm all cross-product imports point to facades.
-- [ ] Update this tracker with final decisions and deferred work.
+- [x] Confirm all production cross-product imports point to facades.
+- [x] Update this tracker with final decisions and deferred work.
 
 ## Future archive phase
 
