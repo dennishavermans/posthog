@@ -7,13 +7,18 @@ from asgiref.sync import async_to_sync
 from temporalio.testing import ActivityEnvironment
 
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace, LocalFolderWorkspace
+from products.wizard.backend.facade.contracts import (
+    CreateWizardRunInput,
+    GitRepositoryWorkspace,
+    LocalFolderWorkspace,
+    WizardRunDTO,
+)
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.temporal.activities.lifecycle import cancel_run, complete_run, fail_run, start_run
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput, WizardRunFailureActivityInput
 
 
-def _create_cloud_run(team_id: int, user_id: int):
+def _create_cloud_run(team_id: int, user_id: int) -> WizardRunDTO:
     with (
         patch(
             "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
@@ -38,7 +43,14 @@ def _run_activity(
     activity: Callable[..., Awaitable[None]],
     input: WizardRunActivityInput | WizardRunFailureActivityInput,
 ) -> None:
-    async_to_sync(ActivityEnvironment().run)(activity, input)
+    async_to_sync(_run_activity_async)(activity, input)
+
+
+async def _run_activity_async(
+    activity: Callable[..., Awaitable[None]],
+    input: WizardRunActivityInput | WizardRunFailureActivityInput,
+) -> None:
+    await ActivityEnvironment().run(activity, input)
 
 
 @pytest.mark.django_db(transaction=True)

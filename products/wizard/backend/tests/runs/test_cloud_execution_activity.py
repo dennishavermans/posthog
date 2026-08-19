@@ -11,7 +11,7 @@ from products.tasks.backend.facade.wizard_worker import (
     WizardWorkerTimeoutError,
 )
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace
+from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace, WizardRunDTO
 from products.wizard.backend.facade.enums import WizardRunEnvironment
 from products.wizard.backend.temporal.activities.execute_cloud import (
     WIZARD_REPOSITORY_ACCESS_ERROR_TYPE,
@@ -22,7 +22,7 @@ from products.wizard.backend.temporal.activities.execute_cloud import (
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput
 
 
-def _create_cloud_run(team_id: int, user_id: int):
+def _create_cloud_run(team_id: int, user_id: int) -> WizardRunDTO:
     with (
         patch(
             "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
@@ -41,6 +41,14 @@ def _create_cloud_run(team_id: int, user_id: int):
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
         )
+
+
+def _run_execute_cloud_activity(input: WizardRunActivityInput) -> None:
+    async_to_sync(_run_execute_cloud_activity_async)(input)
+
+
+async def _run_execute_cloud_activity_async(input: WizardRunActivityInput) -> None:
+    await ActivityEnvironment().run(execute_cloud_run, input)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -63,12 +71,8 @@ def test_execute_cloud_run_rechecks_access_and_stores_diff(_write: MagicMock, te
             return_value=diff,
         ) as execute_worker,
     ):
-        result = async_to_sync(ActivityEnvironment().run)(
-            execute_cloud_run,
-            WizardRunActivityInput(team_id=team.id, run_id=run.id),
-        )
+        _run_execute_cloud_activity(WizardRunActivityInput(team_id=team.id, run_id=run.id))
 
-    assert result is None
     resolve_integration.assert_called_once_with(team.id)
     repository_accessible.assert_called_once_with(team.id, 456, "posthog/posthog")
     execute_worker.assert_called_once_with(
@@ -99,10 +103,7 @@ def test_execute_cloud_run_rejects_access_revoked_after_creation(team, user) -> 
         ) as worker,
         pytest.raises(ApplicationError) as error,
     ):
-        async_to_sync(ActivityEnvironment().run)(
-            execute_cloud_run,
-            WizardRunActivityInput(team_id=team.id, run_id=run.id),
-        )
+        _run_execute_cloud_activity(WizardRunActivityInput(team_id=team.id, run_id=run.id))
 
     assert error.value.type == WIZARD_REPOSITORY_ACCESS_ERROR_TYPE
     worker.assert_not_called()
@@ -135,9 +136,6 @@ def test_execute_cloud_run_maps_worker_error(team, user, worker_error: Exception
         ),
         pytest.raises(ApplicationError) as error,
     ):
-        async_to_sync(ActivityEnvironment().run)(
-            execute_cloud_run,
-            WizardRunActivityInput(team_id=team.id, run_id=run.id),
-        )
+        _run_execute_cloud_activity(WizardRunActivityInput(team_id=team.id, run_id=run.id))
 
     assert error.value.type == error_type

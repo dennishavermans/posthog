@@ -89,13 +89,13 @@ class WizardWorkspaceField(serializers.Field):
         workspace_data = cast(Mapping[str, object], data)
         workspace_type = workspace_data.get("type")
         if workspace_type == WizardWorkspaceType.LOCAL_FOLDER.value:
-            serializer = LocalFolderWorkspaceSerializer(data=workspace_data)
-            serializer.is_valid(raise_exception=True)
-            return LocalFolderWorkspace(project_name=cast(str, serializer.validated_data["project_name"]))
+            local_serializer = LocalFolderWorkspaceSerializer(data=workspace_data)
+            local_serializer.is_valid(raise_exception=True)
+            return LocalFolderWorkspace(project_name=cast(str, local_serializer.validated_data["project_name"]))
         if workspace_type == WizardWorkspaceType.GIT_REPOSITORY.value:
-            serializer = GitRepositoryWorkspaceSerializer(data=workspace_data)
-            serializer.is_valid(raise_exception=True)
-            return GitRepositoryWorkspace(repository=cast(str, serializer.validated_data["repository"]))
+            repository_serializer = GitRepositoryWorkspaceSerializer(data=workspace_data)
+            repository_serializer.is_valid(raise_exception=True)
+            return GitRepositoryWorkspace(repository=cast(str, repository_serializer.validated_data["repository"]))
         if "type" not in workspace_data:
             raise serializers.ValidationError({"type": ["This field is required."]})
         raise serializers.ValidationError({"type": ["Select a valid workspace type."]})
