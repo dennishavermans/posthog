@@ -51,6 +51,7 @@ def test_execute_wizard_worker_returns_git_diff_and_cleans_up(
     sandbox.clone_repository.assert_called_once_with(input.repository, github_token="github-secret", shallow=True)
     sandbox.destroy.assert_called_once_with()
     config = get_sandbox_class.return_value.create.call_args.args[0]
+    assert "GITHUB_TOKEN" not in config.environment_variables
     assert config.environment_variables["POSTHOG_WIZARD_API_KEY"] == "wizard-secret"
     assert config.environment_variables["POSTHOG_WIZARD_RUN_ID"] == str(input.run_id)
     assert "wizard-secret" not in sandbox.execute.call_args_list[0].args[0]

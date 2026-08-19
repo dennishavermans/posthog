@@ -52,7 +52,6 @@ def execute_wizard_worker(input: WizardWorkerInput) -> bytes:
         cpu_cores=2,
         disk_size_gb=16,
         environment_variables={
-            "GITHUB_TOKEN": github_token,
             "POSTHOG_API_URL": settings.SANDBOX_API_URL or settings.SITE_URL,
             "POSTHOG_PROJECT_ID": str(input.team_id),
             "POSTHOG_WIZARD_API_KEY": wizard_token,
