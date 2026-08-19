@@ -10,9 +10,10 @@ disallow reverse relations with related_name='+'.
 from django.db import models
 
 from posthog.models.scoping.root_mixin import TeamScopedRootMixin
-from posthog.models.utils import CreatedMetaFields, UUIDModel
+from posthog.models.utils import CreatedMetaFields, UpdatedMetaFields, UUIDModel
 
 from products.wizard.backend.facade.enums import RunPhase
+from products.wizard.backend.facade.runs import WizardRunErrorCode, WizardRunOutcome, WizardRunStatus, WizardRunSurface
 
 
 class WizardSession(UUIDModel, TeamScopedRootMixin, CreatedMetaFields):
@@ -63,3 +64,34 @@ class WizardSession(UUIDModel, TeamScopedRootMixin, CreatedMetaFields):
                 name="wizard_sess_team_wf_start_idx",
             ),
         ]
+
+
+class WizardRun(UUIDModel, TeamScopedRootMixin, CreatedMetaFields, UpdatedMetaFields):
+    team = models.ForeignKey("posthog.Team", on_delete=models.CASCADE, related_name="+", db_constraint=False)
+
+    created_by = models.ForeignKey(
+        "posthog.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        db_constraint=False,
+    )
+
+    surface = models.CharField(max_length=20, choices=[(surface.value, surface.value) for surface in WizardRunSurface])
+
+    status = models.CharField(
+        max_length=20,
+        choices=[(status.value, status.value) for status in WizardRunStatus],
+    )
+
+    outcome = models.CharField(
+        max_length=20, choices=[(outcome.value, outcome.value) for outcome in WizardRunOutcome], null=True, blank=True
+    )
+
+    error_code = models.CharField(
+        max_length=50, choices=[(error.value, error.value) for error in WizardRunErrorCode], null=True, blank=True
+    )
+
+    class Meta(TeamScopedRootMixin.Meta):
+        pass

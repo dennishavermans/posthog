@@ -1,12 +1,20 @@
+from products.tasks.backend.facade import repo_selection
 from products.wizard.backend.facade.runs import (
+    CreateWizardRunInput,
     IllegalStatusTransitionError,
     InvalidTransitionMetadataError,
     MissingErrorCodeError,
+    MissingGithubIntegrationError,
     MissingOutcomeError,
+    MissingRepositoryError,
+    RepositoryNotAccessibleError,
+    WizardRunDTO,
     WizardRunErrorCode,
     WizardRunOutcome,
     WizardRunStatus,
+    WizardRunSurface,
 )
+from products.wizard.backend.models import WizardRun
 
 _ALLOWED_STATUS_TRANSITIONS = {
     (WizardRunStatus.QUEUED, WizardRunStatus.RUNNING),
@@ -45,3 +53,40 @@ def transition(
         raise MissingErrorCodeError
 
     return next_status
+
+
+def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
+    if params.surface == WizardRunSurface.CLOUD:
+        if params.repository is None:
+            raise MissingRepositoryError
+
+        integration = repo_selection.resolve_team_github_integration(params.team_id, team_only=True)
+
+        if integration is None:
+            raise MissingGithubIntegrationError
+
+        if not repo_selection.repository_accessible_via_integration(
+            params.team_id, integration.integration.id, params.repository
+        ):
+            raise RepositoryNotAccessibleError
+
+    created = WizardRun.objects.create(
+        team_id=params.team_id,
+        created_by_id=params.created_by_id,
+        surface=params.surface.value,
+        status=WizardRunStatus.QUEUED.value,
+    )
+
+    return _to_dto(created)
+
+
+def _to_dto(run: WizardRun) -> WizardRunDTO:
+    return WizardRunDTO(
+        id=run.id,
+        team_id=run.team_id,
+        created_by_id=run.created_by_id,
+        surface=WizardRunSurface(run.surface),
+        status=WizardRunStatus(run.status),
+        outcome=WizardRunOutcome(run.outcome) if run.outcome else None,
+        error_code=WizardRunErrorCode(run.error_code) if run.error_code else None,
+    )

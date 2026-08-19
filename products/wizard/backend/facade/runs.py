@@ -31,6 +31,18 @@ class MissingOutcomeError(Exception):
     pass
 
 
+class MissingGithubIntegrationError(Exception):
+    pass
+
+
+class MissingRepositoryError(Exception):
+    pass
+
+
+class RepositoryNotAccessibleError(Exception):
+    pass
+
+
 class IllegalStatusTransitionError(Exception):
     pass
 
@@ -51,10 +63,25 @@ class InvalidTransitionMetadataError(Exception):
 
 
 @frozen
+class LocalWizardRunTarget:
+    project_name: str
+
+
+@frozen
+class CloudWizardRunTarget:
+    repository: str
+    ref: str | None = None
+
+
+type WizardRunTarget = LocalWizardRunTarget | CloudWizardRunTarget
+
+
+@frozen
 class CreateWizardRunInput:
     team_id: int
     created_by_id: int
     surface: WizardRunSurface
+    repository: str | None = None
 
 
 # DTOs
