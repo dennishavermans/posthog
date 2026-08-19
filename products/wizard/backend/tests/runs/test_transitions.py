@@ -19,8 +19,6 @@ ILLEGAL_TRANSITIONS = tuple(
     transition for transition in product(WizardRunStatus, repeat=2) if transition not in ALLOWED_TRANSITIONS
 )
 
-# Transitions
-
 
 @pytest.mark.parametrize("current_status, next_status", ALLOWED_TRANSITIONS)
 def test_run_accepts_valid_status_transitions(current_status: WizardRunStatus, next_status: WizardRunStatus) -> None:

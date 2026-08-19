@@ -80,9 +80,6 @@ def record_latest_session_poll(raw_source: str | None, result: str) -> None:
     ).inc()
 
 
-# Wizard Runs API
-
-
 def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
     return run_service.create_run(params)
 
