@@ -73,6 +73,12 @@ interface ReasoningLevelSelectorProps {
   onMenuOpenChange?: (open: boolean) => void;
   disabled?: boolean;
   isLoading?: boolean;
+  /**
+   * The selection shown is inherited rather than picked here — the trigger prefixes it
+   * with "Default ·" so an inherited value can't be mistaken for one you chose. Matches
+   * the web composer's marker.
+   */
+  isDefaultSelection?: boolean;
 }
 
 function toDropdownOptions(
@@ -108,6 +114,7 @@ export function ReasoningLevelSelector({
   onMenuOpenChange,
   disabled,
   isLoading,
+  isDefaultSelection,
 }: ReasoningLevelSelectorProps) {
   const [internalMenuOpen, setInternalMenuOpen] = useState(false);
   const open = menuOpen ?? internalMenuOpen;
@@ -395,7 +402,9 @@ export function ReasoningLevelSelector({
               </span>
             )}
             {modelLabel && (
-              <span className="font-medium text-foreground">{modelLabel}</span>
+              <span className="font-medium text-foreground">
+                {isDefaultSelection ? `Default · ${modelLabel}` : modelLabel}
+              </span>
             )}
             {effortLabel && (
               <span
