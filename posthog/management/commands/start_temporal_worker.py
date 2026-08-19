@@ -269,6 +269,10 @@ from products.web_analytics.backend.temporal import (
     ACTIVITIES as WA_DIGEST_ACTIVITIES,
     WORKFLOWS as WA_DIGEST_WORKFLOWS,
 )
+from products.wizard.backend.facade.temporal import (
+    ACTIVITIES as WIZARD_ACTIVITIES,
+    WORKFLOWS as WIZARD_WORKFLOWS,
+)
 
 # When adding modules to a queue, also update the corresponding CI trigger
 # in .github/workflows/container-images-cd.yml (check_changes_*_temporal_worker)
@@ -396,8 +400,8 @@ _task_queue_specs = [
         # cut over and any in-flight runs have drained, drop them from
         # AI_WORKFLOWS / AI_ACTIVITIES and flip the start_workflow callers in
         # products/slack_app to settings.TASKS_TASK_QUEUE.
-        TASKS_WORKFLOWS + POSTHOG_CODE_SLACK_WORKFLOWS,
-        TASKS_ACTIVITIES + POSTHOG_CODE_SLACK_ACTIVITIES,
+        TASKS_WORKFLOWS + POSTHOG_CODE_SLACK_WORKFLOWS + WIZARD_WORKFLOWS,
+        TASKS_ACTIVITIES + POSTHOG_CODE_SLACK_ACTIVITIES + WIZARD_ACTIVITIES,
     ),
     (
         settings.MAX_AI_TASK_QUEUE,

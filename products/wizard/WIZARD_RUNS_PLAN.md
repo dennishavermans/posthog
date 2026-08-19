@@ -118,7 +118,7 @@ Temporal workflow
 - [ ] Add Temporal execution.
 - [x] Add Run Artifacts.
 
-The active step is adding persisted lifecycle operations.
+The active step is dispatching cloud runs after persistence.
 
 ## Reconciliation with the workspace specification
 
@@ -235,15 +235,15 @@ This audit covers all Wizard run work completed before the environment and works
 
 - [x] Create `products/wizard/backend/temporal/contracts.py`.
 - [x] Define a small workflow input containing `team_id` and `run_id`.
-- [ ] Create `products/wizard/backend/temporal/workflows/execute_run.py`.
+- [x] Create `products/wizard/backend/temporal/workflows/execute_run.py`.
 - [x] Create `products/wizard/backend/temporal/activities/lifecycle.py`.
 - [x] Create `products/wizard/backend/temporal/activities/execute_cloud.py`.
 - [ ] Create `products/wizard/backend/temporal/client.py`.
-- [ ] Register workflows and activities in `products/wizard/backend/temporal/__init__.py`.
-- [ ] Confirm how the shared Temporal worker discovers product-owned registrations.
-- [ ] Add a registration test.
-- [ ] Use a deterministic workflow ID derived from the Wizard run UUID.
-- [ ] Pass IDs through Temporal rather than serialized model or workspace contents.
+- [x] Register workflows and activities in `products/wizard/backend/temporal/__init__.py`.
+- [x] Confirm how the shared Temporal worker discovers product-owned registrations.
+- [x] Add a registration test.
+- [x] Use a deterministic workflow ID derived from the Wizard run UUID.
+- [x] Pass IDs through Temporal rather than serialized model or workspace contents.
 
 ### 8. Implement the cloud workflow
 
@@ -257,11 +257,11 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Apply explicit execution and sandbox TTL timeouts.
 - [x] Clean up the sandbox in `finally` for success, failure, and timeout.
 - [x] Collect a Git diff and persist a Run Artifact reference.
-- [ ] Complete the run and associate any produced Run Artifacts.
-- [ ] Map sandbox or activity timeout to the timeout error code.
-- [ ] Map other execution failures to a typed error code before enabling broad retries.
-- [ ] Mark canceled executions as canceled.
-- [ ] Avoid retrying irreversible side effects without an idempotency strategy.
+- [x] Complete the run and associate any produced Run Artifacts.
+- [x] Map sandbox or activity timeout to the timeout error code.
+- [x] Map other execution failures to a typed error code before enabling broad retries.
+- [x] Mark canceled executions as canceled.
+- [x] Avoid retrying irreversible side effects without an idempotency strategy.
 
 ### 9. Dispatch cloud runs
 
