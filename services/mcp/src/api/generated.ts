@@ -40217,8 +40217,6 @@ export namespace Schemas {
 
     /**
      * Selects a GitHub repository as the workspace.
-     *
-     * * `git_repository` - git_repository
      */
     export type GitRepositoryWorkspaceType = typeof GitRepositoryWorkspaceType[keyof typeof GitRepositoryWorkspaceType];
 
@@ -40228,9 +40226,7 @@ export namespace Schemas {
     } as const;
 
     export interface GitRepositoryWorkspace {
-      /** Selects a GitHub repository as the workspace.
-       *
-       * * `git_repository` - git_repository */
+      /** Selects a GitHub repository as the workspace. */
       type: GitRepositoryWorkspaceType;
       /**
          * GitHub repository in owner/name format.
@@ -40238,16 +40234,6 @@ export namespace Schemas {
          */
       repository: string;
     }
-
-    /**
-     * * `git_repository` - git_repository
-     */
-    export type GitRepositoryWorkspaceTypeEnum = typeof GitRepositoryWorkspaceTypeEnum[keyof typeof GitRepositoryWorkspaceTypeEnum];
-
-
-    export const GitRepositoryWorkspaceTypeEnum = {
-      GitRepository: 'git_repository',
-    } as const;
 
     export interface GiteaIssueSignalExtra {
       state: string | null;
@@ -46696,8 +46682,6 @@ export namespace Schemas {
 
     /**
      * Selects a folder on the user's machine as the workspace.
-     *
-     * * `local_folder` - local_folder
      */
     export type LocalFolderWorkspaceType = typeof LocalFolderWorkspaceType[keyof typeof LocalFolderWorkspaceType];
 
@@ -46707,9 +46691,7 @@ export namespace Schemas {
     } as const;
 
     export interface LocalFolderWorkspace {
-      /** Selects a folder on the user's machine as the workspace.
-       *
-       * * `local_folder` - local_folder */
+      /** Selects a folder on the user's machine as the workspace. */
       type: LocalFolderWorkspaceType;
       /**
          * Name of the project in the local folder.
@@ -46717,16 +46699,6 @@ export namespace Schemas {
          */
       project_name: string;
     }
-
-    /**
-     * * `local_folder` - local_folder
-     */
-    export type LocalFolderWorkspaceTypeEnum = typeof LocalFolderWorkspaceTypeEnum[keyof typeof LocalFolderWorkspaceTypeEnum];
-
-
-    export const LocalFolderWorkspaceTypeEnum = {
-      LocalFolder: 'local_folder',
-    } as const;
 
     export interface LogsAlertFilters {
       filterGroup?: PropertyGroupFilter | null;
