@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from products.tasks.backend.facade import repo_selection
 from products.wizard.backend.facade.contracts import (
     CreateWizardRunInput,
@@ -12,7 +14,11 @@ from products.wizard.backend.facade.enums import (
     WizardRunStatus,
     WizardWorkspaceType,
 )
-from products.wizard.backend.facade.errors import MissingGitHubIntegrationError, RepositoryNotAccessibleError
+from products.wizard.backend.facade.errors import (
+    MissingGitHubIntegrationError,
+    RepositoryNotAccessibleError,
+    WizardRunNotFoundError,
+)
 from products.wizard.backend.logic.run_domain import validate_workspace_environment
 from products.wizard.backend.models import WizardRun
 
@@ -46,6 +52,14 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
     )
 
     return _to_dto(created)
+
+
+def get_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    run = WizardRun.objects.for_team(team_id).filter(id=run_id).first()
+    if run is None:
+        raise WizardRunNotFoundError
+
+    return _to_dto(run)
 
 
 def _to_dto(run: WizardRun) -> WizardRunDTO:

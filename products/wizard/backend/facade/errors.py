@@ -20,3 +20,7 @@ class IllegalStatusTransitionError(Exception):
 
 class InvalidTransitionMetadataError(Exception):
     pass
+
+
+class WizardRunNotFoundError(Exception):
+    pass

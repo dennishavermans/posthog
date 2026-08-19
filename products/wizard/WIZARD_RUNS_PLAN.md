@@ -5,9 +5,10 @@ Last updated: 2026-08-19
 ## Working agreement
 
 - Codex writes one small TDD increment at a time.
-- Every handoff names each modified file and summarizes its diff.
-- The user reviews the diff, runs the requested command, and commits an accepted increment.
-- Production code and tests move together through red, green, and cleanup steps.
+- Codex verifies the focused test fails before implementing each behavior.
+- Codex runs the focused and affected suites after implementation.
+- Every green TDD increment is committed separately for review.
+- Production code, tests, and cleanup move together in the same commit.
 - Unrelated worktree changes remain untouched.
 
 ## Domain vocabulary
@@ -117,7 +118,7 @@ Temporal workflow
 - [ ] Add Temporal execution.
 - [ ] Add Run Artifacts.
 
-The active step is verifying the reorganized facade and run domain against the Wizard run and legacy session suites.
+The active step is adding persisted lifecycle operations.
 
 ## Reconciliation with the workspace specification
 
@@ -207,8 +208,8 @@ This audit covers all Wizard run work completed before the environment and works
 
 ### 5. Add persisted lifecycle operations
 
-- [ ] Add an internal, team-scoped run lookup.
-- [ ] Add a typed run-not-found error that does not disclose another team's run.
+- [x] Add an internal, team-scoped run lookup.
+- [x] Add a typed run-not-found error that does not disclose another team's run.
 - [ ] Lock the run row with `select_for_update` during lifecycle changes.
 - [ ] Persist created to running through the existing transition rules.
 - [ ] Persist successful completion. Run Artifacts represent any produced changes.

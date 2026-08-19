@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
+from uuid import UUID
 
 from products.wizard.backend import metrics
 from products.wizard.backend.facade.contracts import (
@@ -81,3 +82,7 @@ def record_latest_session_poll(raw_source: str | None, result: str) -> None:
 
 def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
     return run_service.create_run(params)
+
+
+def get_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    return run_service.get_run(team_id, run_id)
