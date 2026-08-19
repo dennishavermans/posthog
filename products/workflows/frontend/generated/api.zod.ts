@@ -2108,6 +2108,7 @@ export const HogFlowsInvocationsCreateBody = /* @__PURE__ */ zod.object({
 })
 
 /**
+<<<<<<< HEAD
  * Agent-authored changes to this workflow, awaiting a human's decision.
  *
  * Creating one stages nothing: a proposal only reaches the workflow's draft once a human
@@ -2174,6 +2175,35 @@ export const HogFlowsProposalsRejectCreateBody = /* @__PURE__ */ zod.object({
         .optional()
         .describe('Why the proposal was rejected. Read back by whoever tunes the agent that produced it.'),
 })
+=======
+ * Cancel in-flight invocations of this workflow, by id or all at once.
+ *
+ * Cancellation is asynchronous: runs are flagged here, then terminated by
+ * the workflow workers, promptly for parked runs (delays and waits) and at
+ * the next step boundary for runs mid-execution. Steps that already
+ * executed are not undone. Canceled runs can be re-run later via `rerun`.
+ */
+export const hogFlowsInvocationsCancelCreateBodyInvocationIdsMax = 10000
+
+export const hogFlowsInvocationsCancelCreateBodyAllDefault = false
+
+export const HogFlowsInvocationsCancelCreateBody = /* @__PURE__ */ zod
+    .object({
+        invocation_ids: zod
+            .array(zod.uuid())
+            .min(1)
+            .max(hogFlowsInvocationsCancelCreateBodyInvocationIdsMax)
+            .optional()
+            .describe(
+                'Cancel these specific invocations. Capped at 10000 per request. Invocations that already finished are skipped rather than failing the request.'
+            ),
+        all: zod
+            .boolean()
+            .default(hogFlowsInvocationsCancelCreateBodyAllDefault)
+            .describe('Cancel every in-flight invocation of this workflow, including parked delays and waits.'),
+    })
+    .describe('Cancel in-flight invocations of a workflow. Provide exactly one selector.')
+>>>>>>> origin/master
 
 export const hogFlowsPublishCreateBodyConfirmDefault = false
 
@@ -2222,8 +2252,10 @@ export const HogFlowsRerunCreateBody = /* @__PURE__ */ zod
                 status: zod
                     .array(
                         zod
-                            .enum(['running', 'succeeded', 'failed'])
-                            .describe('\* `running` - running\n\* `succeeded` - succeeded\n\* `failed` - failed')
+                            .enum(['running', 'succeeded', 'failed', 'canceled'])
+                            .describe(
+                                '\* `running` - running\n\* `succeeded` - succeeded\n\* `failed` - failed\n\* `canceled` - canceled'
+                            )
                     )
                     .optional()
                     .describe("Restrict to invocations whose latest status is one of these. Defaults to ['failed']."),
