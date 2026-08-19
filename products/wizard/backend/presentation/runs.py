@@ -11,6 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.throttling import BaseThrottle
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.auth import SessionAuthentication
@@ -38,6 +39,10 @@ from products.wizard.backend.facade.errors import (
     MissingGitHubIntegrationError,
     RepositoryNotAccessibleError,
     WizardRunNotFoundError,
+)
+from products.wizard.backend.presentation.run_throttles import (
+    WizardCloudRunBurstRateThrottle,
+    WizardCloudRunSustainedRateThrottle,
 )
 
 
@@ -203,6 +208,21 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
     lookup_value_regex = "[0-9a-fA-F-]{36}"
     pagination_class = None
 
+    def get_throttles(self) -> list[BaseThrottle]:
+        throttles = super().get_throttles()
+        if (
+            self.action == "create"
+            and isinstance(self.request.data, Mapping)
+            and self.request.data.get("environment") == WizardRunEnvironment.CLOUD.value
+        ):
+            throttles.extend(
+                [
+                    WizardCloudRunBurstRateThrottle(),
+                    WizardCloudRunSustainedRateThrottle(),
+                ]
+            )
+        return throttles
+
     @extend_schema(
         request=WizardRunCreateRequestSerializer,
         responses={
@@ -210,6 +230,7 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
             400: OpenApiResponse(response=WizardRunErrorSerializer),
             403: OpenApiResponse(response=WizardRunErrorSerializer),
             404: OpenApiResponse(response=WizardRunErrorSerializer),
+            429: OpenApiResponse(response=WizardRunErrorSerializer),
         },
         description="Create a local or cloud Wizard run for a project workspace.",
     )

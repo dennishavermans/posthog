@@ -184,6 +184,37 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
 
+    @patch(
+        "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+        return_value=True,
+    )
+    @patch(
+        "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+        return_value=123,
+    )
+    def test_cloud_run_creation_is_rate_limited(self, _resolve_integration, _repository_accessible) -> None:
+        payload = {
+            "environment": "cloud",
+            "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
+        }
+
+        responses = [self.client.post(self._url(), payload, format="json") for _ in range(3)]
+
+        self.assertEqual(
+            [response.status_code for response in responses],
+            [status.HTTP_201_CREATED, status.HTTP_201_CREATED, status.HTTP_429_TOO_MANY_REQUESTS],
+        )
+
+    def test_local_run_creation_does_not_use_cloud_rate_limit(self) -> None:
+        payload = {
+            "environment": "local",
+            "workspace": {"type": "local_folder", "project_name": "example-project"},
+        }
+
+        responses = [self.client.post(self._url(), payload, format="json") for _ in range(3)]
+
+        self.assertEqual([response.status_code for response in responses], [status.HTTP_201_CREATED] * 3)
+
     @patch("products.wizard.backend.logic.artifacts.object_storage.write")
     def test_list_run_artifacts(self, _write) -> None:
         created = self.client.post(
