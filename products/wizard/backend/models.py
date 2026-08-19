@@ -12,8 +12,13 @@ from django.db import models
 from posthog.models.scoping.root_mixin import TeamScopedRootMixin
 from posthog.models.utils import CreatedMetaFields, UpdatedMetaFields, UUIDModel
 
-from products.wizard.backend.facade.enums import RunPhase
-from products.wizard.backend.facade.runs import WizardRunErrorCode, WizardRunOutcome, WizardRunStatus, WizardRunSurface
+from products.wizard.backend.facade.enums import (
+    WizardRunEnvironment,
+    WizardRunErrorCode,
+    WizardRunStatus,
+    WizardSessionRunPhase,
+    WizardWorkspaceType,
+)
 
 
 class WizardSession(UUIDModel, TeamScopedRootMixin, CreatedMetaFields):
@@ -34,7 +39,7 @@ class WizardSession(UUIDModel, TeamScopedRootMixin, CreatedMetaFields):
     skill_id = models.CharField(max_length=255)
     started_at = models.DateTimeField()
 
-    run_phase = models.CharField(max_length=50, choices=[(phase.value, phase.value) for phase in RunPhase])
+    run_phase = models.CharField(max_length=50, choices=[(phase.value, phase.value) for phase in WizardSessionRunPhase])
 
     tasks = models.JSONField(default=list)
     event_plan = models.JSONField(null=True, blank=True)
@@ -78,15 +83,21 @@ class WizardRun(UUIDModel, TeamScopedRootMixin, CreatedMetaFields, UpdatedMetaFi
         db_constraint=False,
     )
 
-    surface = models.CharField(max_length=20, choices=[(surface.value, surface.value) for surface in WizardRunSurface])
+    environment = models.CharField(
+        max_length=20,
+        choices=[(environment.value, environment.value) for environment in WizardRunEnvironment],
+    )
+
+    workspace_type = models.CharField(
+        max_length=30,
+        choices=[(workspace_type.value, workspace_type.value) for workspace_type in WizardWorkspaceType],
+    )
+
+    workspace = models.JSONField()
 
     status = models.CharField(
         max_length=20,
         choices=[(status.value, status.value) for status in WizardRunStatus],
-    )
-
-    outcome = models.CharField(
-        max_length=20, choices=[(outcome.value, outcome.value) for outcome in WizardRunOutcome], null=True, blank=True
     )
 
     error_code = models.CharField(

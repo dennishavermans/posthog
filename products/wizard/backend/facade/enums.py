@@ -9,18 +9,14 @@ the implementation (logic.py, models.py).
 from enum import StrEnum
 
 
-class RunPhase(StrEnum):
-    """Phase of a run."""
-
+class WizardSessionRunPhase(StrEnum):
     IDLE = "idle"
     RUNNING = "running"
     COMPLETED = "completed"
     ERROR = "error"
 
 
-class TaskStatus(StrEnum):
-    """Status of a task."""
-
+class WizardSessionTaskStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -28,3 +24,25 @@ class TaskStatus(StrEnum):
     # These are not currently used, but we want to reserve them for future use.
     FAILED = "failed"
     CANCELED = "canceled"
+
+
+class WizardRunStatus(StrEnum):
+    CREATED = "created"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class WizardRunEnvironment(StrEnum):
+    LOCAL = "local"
+    CLOUD = "cloud"
+
+
+class WizardWorkspaceType(StrEnum):
+    LOCAL_FOLDER = "local_folder"
+    GIT_REPOSITORY = "git_repository"
+
+
+class WizardRunErrorCode(StrEnum):
+    TIMEOUT = "timeout"

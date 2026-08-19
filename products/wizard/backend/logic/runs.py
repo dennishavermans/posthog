@@ -1,80 +1,48 @@
 from products.tasks.backend.facade import repo_selection
-from products.wizard.backend.facade.runs import (
+from products.wizard.backend.facade.contracts import (
     CreateWizardRunInput,
-    IllegalStatusTransitionError,
-    InvalidTransitionMetadataError,
-    MissingErrorCodeError,
-    MissingGithubIntegrationError,
-    MissingOutcomeError,
-    MissingRepositoryError,
-    RepositoryNotAccessibleError,
+    GitRepositoryWorkspace,
+    LocalFolderWorkspace,
     WizardRunDTO,
-    WizardRunErrorCode,
-    WizardRunOutcome,
-    WizardRunStatus,
-    WizardRunSurface,
+    WizardWorkspace,
 )
+from products.wizard.backend.facade.enums import (
+    WizardRunEnvironment,
+    WizardRunErrorCode,
+    WizardRunStatus,
+    WizardWorkspaceType,
+)
+from products.wizard.backend.facade.errors import MissingGitHubIntegrationError, RepositoryNotAccessibleError
+from products.wizard.backend.logic.run_domain import validate_workspace_environment
 from products.wizard.backend.models import WizardRun
-
-_ALLOWED_STATUS_TRANSITIONS = {
-    (WizardRunStatus.QUEUED, WizardRunStatus.RUNNING),
-    (WizardRunStatus.QUEUED, WizardRunStatus.FAILED),
-    (WizardRunStatus.QUEUED, WizardRunStatus.CANCELLED),
-    (WizardRunStatus.RUNNING, WizardRunStatus.COMPLETED),
-    (WizardRunStatus.RUNNING, WizardRunStatus.FAILED),
-    (WizardRunStatus.RUNNING, WizardRunStatus.CANCELLED),
-}
-
-
-def transition(
-    current_status: WizardRunStatus,
-    next_status: WizardRunStatus,
-    *,
-    outcome: WizardRunOutcome | None = None,
-    error_code: WizardRunErrorCode | None = None,
-) -> WizardRunStatus:
-    if (current_status, next_status) not in _ALLOWED_STATUS_TRANSITIONS:
-        raise IllegalStatusTransitionError
-
-    # These prevent passing an outcome or error code when the next status doesn't require it
-
-    if outcome is not None and next_status != WizardRunStatus.COMPLETED:
-        raise InvalidTransitionMetadataError
-
-    if error_code is not None and next_status != WizardRunStatus.FAILED:
-        raise InvalidTransitionMetadataError
-
-    # These enforce that an outcome or error code is provided when the next status requires it
-
-    if next_status == WizardRunStatus.COMPLETED and outcome is None:
-        raise MissingOutcomeError
-
-    if next_status == WizardRunStatus.FAILED and error_code is None:
-        raise MissingErrorCodeError
-
-    return next_status
 
 
 def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
-    if params.surface == WizardRunSurface.CLOUD:
-        if params.repository is None:
-            raise MissingRepositoryError
+    validate_workspace_environment(params.environment, params.workspace)
 
-        integration = repo_selection.resolve_team_github_integration(params.team_id, team_only=True)
-
-        if integration is None:
-            raise MissingGithubIntegrationError
-
+    if isinstance(params.workspace, GitRepositoryWorkspace):
+        integration_id = repo_selection.resolve_team_github_integration_id(params.team_id)
+        if integration_id is None:
+            raise MissingGitHubIntegrationError
         if not repo_selection.repository_accessible_via_integration(
-            params.team_id, integration.integration.id, params.repository
+            params.team_id,
+            integration_id,
+            params.workspace.repository,
         ):
             raise RepositoryNotAccessibleError
+
+    workspace_type, workspace_metadata = _serialize_workspace(params.workspace)
+    initial_status = (
+        WizardRunStatus.RUNNING if params.environment == WizardRunEnvironment.LOCAL else WizardRunStatus.CREATED
+    )
 
     created = WizardRun.objects.create(
         team_id=params.team_id,
         created_by_id=params.created_by_id,
-        surface=params.surface.value,
-        status=WizardRunStatus.QUEUED.value,
+        environment=params.environment.value,
+        workspace_type=workspace_type.value,
+        workspace=workspace_metadata,
+        status=initial_status.value,
     )
 
     return _to_dto(created)
@@ -85,8 +53,37 @@ def _to_dto(run: WizardRun) -> WizardRunDTO:
         id=run.id,
         team_id=run.team_id,
         created_by_id=run.created_by_id,
-        surface=WizardRunSurface(run.surface),
+        environment=WizardRunEnvironment(run.environment),
+        workspace=_deserialize_workspace(run.workspace_type, run.workspace),
         status=WizardRunStatus(run.status),
-        outcome=WizardRunOutcome(run.outcome) if run.outcome else None,
         error_code=WizardRunErrorCode(run.error_code) if run.error_code else None,
     )
+
+
+def _serialize_workspace(workspace: WizardWorkspace) -> tuple[WizardWorkspaceType, dict[str, str]]:
+    match workspace:
+        case LocalFolderWorkspace(project_name=project_name):
+            return WizardWorkspaceType.LOCAL_FOLDER, {"project_name": project_name}
+        case GitRepositoryWorkspace(repository=repository):
+            return WizardWorkspaceType.GIT_REPOSITORY, {"repository": repository}
+    raise ValueError("Unsupported Wizard workspace")
+
+
+def _deserialize_workspace(workspace_type: str, metadata: object) -> WizardWorkspace:
+    match WizardWorkspaceType(workspace_type):
+        case WizardWorkspaceType.LOCAL_FOLDER:
+            return LocalFolderWorkspace(project_name=_workspace_metadata_value(metadata, "project_name"))
+        case WizardWorkspaceType.GIT_REPOSITORY:
+            return GitRepositoryWorkspace(repository=_workspace_metadata_value(metadata, "repository"))
+    raise ValueError("Unsupported Wizard workspace type")
+
+
+def _workspace_metadata_value(metadata: object, key: str) -> str:
+    if not isinstance(metadata, dict):
+        raise ValueError("Wizard workspace metadata must be an object")
+
+    value: object = metadata.get(key)
+    if not isinstance(value, str):
+        raise ValueError(f"Wizard workspace metadata field {key!r} must be a string")
+
+    return value

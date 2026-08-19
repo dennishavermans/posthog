@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from django.db import transaction
 
 from products.wizard.backend.facade.contracts import WizardSessionDTO, WizardTaskDTO
-from products.wizard.backend.facade.enums import RunPhase, TaskStatus
+from products.wizard.backend.facade.enums import WizardSessionRunPhase, WizardSessionTaskStatus
 from products.wizard.backend.logic.pubsub import channel_name, publish_session_update
 
 
@@ -22,9 +22,9 @@ def _dto(team_id: int = 1) -> WizardSessionDTO:
         workflow_id="onboarding",
         skill_id="nextjs",
         started_at=now,
-        run_phase=RunPhase.RUNNING,
+        run_phase=WizardSessionRunPhase.RUNNING,
         is_stale=False,
-        tasks=(WizardTaskDTO(id="1", title="Install SDK", status=TaskStatus.IN_PROGRESS),),
+        tasks=(WizardTaskDTO(id="1", title="Install SDK", status=WizardSessionTaskStatus.IN_PROGRESS),),
         event_plan=None,
         error=None,
         pending_input=None,

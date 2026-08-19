@@ -33,9 +33,9 @@ from products.wizard.backend.facade.contracts import (
     UpsertWizardSessionInput,
     UpsertWizardSessionRequest,
     WizardSessionDTO,
-    WizardSessionOwnershipError,
 )
-from products.wizard.backend.facade.enums import RunPhase
+from products.wizard.backend.facade.enums import WizardSessionRunPhase
+from products.wizard.backend.facade.errors import WizardSessionOwnershipError
 from products.wizard.backend.presentation.serializers import (
     UpsertWizardSessionRequestSerializer,
     WizardSessionSerializer,
@@ -134,7 +134,7 @@ class WizardSessionViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         if (
             self.action == "create"
             and isinstance(request.data, Mapping)
-            and request.data.get("run_phase") == RunPhase.COMPLETED.value
+            and request.data.get("run_phase") == WizardSessionRunPhase.COMPLETED.value
         ):
             return ["wizard_session:write", "event_definition:write"]
         return None

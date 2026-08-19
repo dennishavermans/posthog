@@ -8,7 +8,7 @@ from asgiref.sync import sync_to_async
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import UpsertWizardSessionInput, WizardTaskDTO
-from products.wizard.backend.facade.enums import RunPhase, TaskStatus
+from products.wizard.backend.facade.enums import WizardSessionRunPhase, WizardSessionTaskStatus
 from products.wizard.backend.presentation.views import _wizard_session_event_stream
 
 
@@ -23,8 +23,8 @@ def _input(team_id: int, **overrides) -> UpsertWizardSessionInput:
         "workflow_id": "onboarding",
         "skill_id": "nextjs",
         "started_at": datetime(2026, 5, 19, 10, 0, 0, tzinfo=UTC),
-        "run_phase": RunPhase.RUNNING,
-        "tasks": (WizardTaskDTO(id="1", title="Install SDK", status=TaskStatus.IN_PROGRESS),),
+        "run_phase": WizardSessionRunPhase.RUNNING,
+        "tasks": (WizardTaskDTO(id="1", title="Install SDK", status=WizardSessionTaskStatus.IN_PROGRESS),),
         "event_plan": None,
         "error": None,
         "pending_input": None,

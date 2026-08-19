@@ -1,11 +1,11 @@
 from prometheus_client import Counter, Histogram
 
 from products.wizard.backend.facade.contracts import WizardSessionDTO
-from products.wizard.backend.facade.enums import RunPhase
+from products.wizard.backend.facade.enums import WizardSessionRunPhase
 
 _KNOWN_WORKFLOWS = {"posthog-integration"}
 
-_TERMINAL_PHASES = {RunPhase.COMPLETED, RunPhase.ERROR}
+_TERMINAL_PHASES = {WizardSessionRunPhase.COMPLETED, WizardSessionRunPhase.ERROR}
 
 _KNOWN_POLL_SOURCES = {"detector", "transport"}
 

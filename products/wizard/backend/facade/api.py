@@ -13,8 +13,12 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from products.wizard.backend import metrics
-from products.wizard.backend.facade.contracts import UpsertWizardSessionInput, WizardSessionDTO
-from products.wizard.backend.facade.runs import CreateWizardRunInput, WizardRunDTO
+from products.wizard.backend.facade.contracts import (
+    CreateWizardRunInput,
+    UpsertWizardSessionInput,
+    WizardRunDTO,
+    WizardSessionDTO,
+)
 from products.wizard.backend.logic import (
     pubsub,
     runs as run_service,

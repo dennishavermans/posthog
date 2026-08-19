@@ -30,29 +30,28 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "surface",
+                    "environment",
                     models.CharField(choices=[("local", "local"), ("cloud", "cloud")], max_length=20),
                 ),
+                (
+                    "workspace_type",
+                    models.CharField(
+                        choices=[("local_folder", "local_folder"), ("git_repository", "git_repository")],
+                        max_length=30,
+                    ),
+                ),
+                ("workspace", models.JSONField()),
                 (
                     "status",
                     models.CharField(
                         choices=[
-                            ("queued", "queued"),
+                            ("created", "created"),
                             ("running", "running"),
                             ("completed", "completed"),
                             ("failed", "failed"),
                             ("cancelled", "cancelled"),
                         ],
                         max_length=20,
-                    ),
-                ),
-                (
-                    "outcome",
-                    models.CharField(
-                        blank=True,
-                        choices=[("changes_created", "changes_created")],
-                        max_length=20,
-                        null=True,
                     ),
                 ),
                 (

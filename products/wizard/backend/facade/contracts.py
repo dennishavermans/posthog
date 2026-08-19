@@ -7,9 +7,18 @@ No Django imports. Used by facade as inputs/outputs.
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
+from uuid import UUID
 
-from .enums import RunPhase, TaskStatus
+from posthog.dataclasses import frozen
+
+from .enums import (
+    WizardRunEnvironment,
+    WizardRunErrorCode,
+    WizardRunStatus,
+    WizardSessionRunPhase,
+    WizardSessionTaskStatus,
+)
 
 STALE_AFTER = timedelta(minutes=10)
 
@@ -18,7 +27,7 @@ STALE_AFTER = timedelta(minutes=10)
 class WizardTaskDTO:
     id: str
     title: str
-    status: TaskStatus
+    status: WizardSessionTaskStatus
 
 
 @dataclass(frozen=True)
@@ -35,7 +44,7 @@ class WizardSessionDTO:
     workflow_id: str
     skill_id: str
     started_at: datetime
-    run_phase: RunPhase
+    run_phase: WizardSessionRunPhase
     tasks: tuple[WizardTaskDTO, ...]
     event_plan: dict[str, Any] | None
     error: dict[str, Any] | None
@@ -47,10 +56,6 @@ class WizardSessionDTO:
     is_stale: bool
 
 
-class WizardSessionOwnershipError(Exception):
-    """Raised when an upsert would overwrite a session owned by a different user."""
-
-
 @dataclass(frozen=True)
 class UpsertWizardSessionRequest:
     """What the wizard CLI POSTs. team_id is derived from the URL, not the body."""
@@ -59,7 +64,7 @@ class UpsertWizardSessionRequest:
     workflow_id: str
     skill_id: str
     started_at: datetime
-    run_phase: RunPhase
+    run_phase: WizardSessionRunPhase
     tasks: tuple[WizardTaskDTO, ...]
     event_plan: dict[str, Any] | None = None
     error: dict[str, Any] | None = None
@@ -74,7 +79,7 @@ class UpsertWizardSessionInput:
     workflow_id: str
     skill_id: str
     started_at: datetime
-    run_phase: RunPhase
+    run_phase: WizardSessionRunPhase
     tasks: tuple[WizardTaskDTO, ...]
     event_plan: dict[str, Any] | None
     error: dict[str, Any] | None
@@ -82,3 +87,37 @@ class UpsertWizardSessionInput:
     handoff_text: str | None = None
     # Set on create only, never overwritten on later pushes for the same run.
     created_by_id: int | None = None
+
+
+@frozen
+class LocalFolderWorkspace:
+    project_name: str
+    type: Literal["local_folder"] = "local_folder"
+
+
+@frozen
+class GitRepositoryWorkspace:
+    repository: str
+    type: Literal["git_repository"] = "git_repository"
+
+
+type WizardWorkspace = LocalFolderWorkspace | GitRepositoryWorkspace
+
+
+@frozen
+class CreateWizardRunInput:
+    team_id: int
+    created_by_id: int
+    environment: WizardRunEnvironment
+    workspace: WizardWorkspace
+
+
+@frozen
+class WizardRunDTO:
+    id: UUID
+    team_id: int
+    created_by_id: int | None
+    environment: WizardRunEnvironment
+    workspace: WizardWorkspace
+    status: WizardRunStatus
+    error_code: WizardRunErrorCode | None

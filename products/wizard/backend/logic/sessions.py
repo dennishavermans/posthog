@@ -10,11 +10,11 @@ from django.db import transaction
 from products.wizard.backend.facade.contracts import (
     UpsertWizardSessionInput,
     WizardSessionDTO,
-    WizardSessionOwnershipError,
     WizardSessionUserDTO,
     WizardTaskDTO,
 )
-from products.wizard.backend.facade.enums import RunPhase, TaskStatus
+from products.wizard.backend.facade.enums import WizardSessionRunPhase, WizardSessionTaskStatus
+from products.wizard.backend.facade.errors import WizardSessionOwnershipError
 from products.wizard.backend.logic.pubsub import publish_session_update
 from products.wizard.backend.logic.utils import is_stale
 from products.wizard.backend.metrics import report_session_upserted
@@ -54,7 +54,7 @@ def upsert_session(params: UpsertWizardSessionInput) -> tuple[WizardSessionDTO, 
             raise WizardSessionOwnershipError("This wizard session belongs to a different user and can't be updated.")
 
         event_plan = params.event_plan
-        if event_plan is None and params.run_phase == RunPhase.COMPLETED and previous_session:
+        if event_plan is None and params.run_phase == WizardSessionRunPhase.COMPLETED and previous_session:
             event_plan = previous_session.event_plan
 
         # Monotonic within a session: the doc arrives late in the run, so a push without it
@@ -89,7 +89,10 @@ def upsert_session(params: UpsertWizardSessionInput) -> tuple[WizardSessionDTO, 
             defaults=defaults,
             create_defaults={**defaults, "created_by_id": params.created_by_id},
         )
-        if previous_run_phase != RunPhase.COMPLETED.value and params.run_phase == RunPhase.COMPLETED:
+        if (
+            previous_run_phase != WizardSessionRunPhase.COMPLETED.value
+            and params.run_phase == WizardSessionRunPhase.COMPLETED
+        ):
             transaction.on_commit(
                 partial(_enqueue_event_definition_sync, params.team_id, params.session_id),
                 robust=True,
@@ -151,7 +154,7 @@ def list_sessions(
 
 
 def _to_dto(instance: WizardSession) -> WizardSessionDTO:
-    run_phase = RunPhase(instance.run_phase)
+    run_phase = WizardSessionRunPhase(instance.run_phase)
     created_by = instance.created_by
     return WizardSessionDTO(
         session_id=instance.session_id,
@@ -165,7 +168,7 @@ def _to_dto(instance: WizardSession) -> WizardSessionDTO:
             WizardTaskDTO(
                 id=task["id"],
                 title=task["title"],
-                status=TaskStatus(task["status"]),
+                status=WizardSessionTaskStatus(task["status"]),
             )
             for task in (instance.tasks or [])
         ),

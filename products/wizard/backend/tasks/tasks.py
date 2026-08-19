@@ -10,7 +10,7 @@ from products.event_definitions.backend.logic.placeholder import (
     PlaceholderEventDefinition,
     create_placeholder_event_definitions,
 )
-from products.wizard.backend.facade.enums import RunPhase
+from products.wizard.backend.facade.enums import WizardSessionRunPhase
 from products.wizard.backend.models import WizardSession
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ def _planned_event_definitions(event_plan: dict[str, Any] | None) -> list[Placeh
 def sync_wizard_event_definitions(self: Task, team_id: int, session_id: str) -> None:
     try:
         session = WizardSession.objects.for_team(team_id).filter(session_id=session_id).first()
-        if session is None or session.run_phase != RunPhase.COMPLETED.value:
+        if session is None or session.run_phase != WizardSessionRunPhase.COMPLETED.value:
             return
 
         create_placeholder_event_definitions(
