@@ -1,3 +1,4 @@
+from functools import partial
 from uuid import UUID
 
 from django.db import transaction as database_transaction
@@ -20,6 +21,8 @@ from products.wizard.backend.facade.errors import MissingGitHubIntegrationError,
 from products.wizard.backend.logic.run_domain import transition, validate_git_repository, validate_workspace_environment
 from products.wizard.backend.logic.run_store import get_run_model
 from products.wizard.backend.models import WizardRun
+from products.wizard.backend.temporal import client as temporal_client
+from products.wizard.backend.temporal.contracts import WizardRunActivityInput
 
 
 def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
@@ -42,14 +45,22 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
         WizardRunStatus.RUNNING if params.environment == WizardRunEnvironment.LOCAL else WizardRunStatus.CREATED
     )
 
-    created = WizardRun.objects.for_team(params.team_id).create(
-        team_id=params.team_id,
-        created_by_id=params.created_by_id,
-        environment=params.environment.value,
-        workspace_type=workspace_type.value,
-        workspace=workspace_metadata,
-        status=initial_status.value,
-    )
+    with database_transaction.atomic():
+        created = WizardRun.objects.for_team(params.team_id).create(
+            team_id=params.team_id,
+            created_by_id=params.created_by_id,
+            environment=params.environment.value,
+            workspace_type=workspace_type.value,
+            workspace=workspace_metadata,
+            status=initial_status.value,
+        )
+        if params.environment == WizardRunEnvironment.CLOUD:
+            database_transaction.on_commit(
+                partial(
+                    temporal_client.start_wizard_run_workflow,
+                    WizardRunActivityInput(team_id=params.team_id, run_id=created.id),
+                )
+            )
 
     return _to_dto(created)
 

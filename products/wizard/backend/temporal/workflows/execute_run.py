@@ -15,6 +15,7 @@ from products.wizard.backend.temporal.activities.execute_cloud import (
     execute_cloud_run,
 )
 from products.wizard.backend.temporal.activities.lifecycle import cancel_run, complete_run, fail_run, start_run
+from products.wizard.backend.temporal.constants import EXECUTE_WIZARD_RUN_WORKFLOW, wizard_run_workflow_id
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput, WizardRunFailureActivityInput
 
 LIFECYCLE_TIMEOUT = timedelta(minutes=1)
@@ -23,11 +24,11 @@ LIFECYCLE_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
 WORKER_RETRY_POLICY = RetryPolicy(maximum_attempts=1)
 
 
-@workflow.defn(name="execute-wizard-run")
+@workflow.defn(name=EXECUTE_WIZARD_RUN_WORKFLOW)
 class ExecuteWizardRunWorkflow(PostHogWorkflow):
     @staticmethod
     def workflow_id_for(run_id: UUID) -> str:
-        return f"wizard-run-{run_id}"
+        return wizard_run_workflow_id(run_id)
 
     @staticmethod
     def parse_inputs(inputs: list[str]) -> WizardRunActivityInput:

@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import patch
 
+from django.db import transaction
+
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace, LocalFolderWorkspace
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
@@ -11,6 +13,7 @@ from products.wizard.backend.facade.errors import (
     RepositoryNotAccessibleError,
 )
 from products.wizard.backend.models import WizardRun
+from products.wizard.backend.temporal.contracts import WizardRunActivityInput
 
 
 @pytest.mark.django_db
@@ -70,6 +73,79 @@ def test_cloud_run_starts_created(team, user) -> None:
 
     assert run.status == WizardRunStatus.CREATED
     assert run.workspace == GitRepositoryWorkspace(repository="posthog/posthog")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_cloud_run_dispatches_after_persistence(team, user) -> None:
+    def assert_run_exists(input: WizardRunActivityInput) -> None:
+        assert WizardRun.objects.for_team(input.team_id).filter(id=input.run_id).exists()
+
+    with (
+        patch(
+            "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+            return_value=123,
+        ),
+        patch(
+            "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+            return_value=True,
+        ),
+        patch(
+            "products.wizard.backend.logic.runs.temporal_client.start_wizard_run_workflow",
+            side_effect=assert_run_exists,
+        ) as dispatch,
+    ):
+        run = wizard_facade.create_run(
+            CreateWizardRunInput(
+                team_id=team.id,
+                created_by_id=user.id,
+                environment=WizardRunEnvironment.CLOUD,
+                workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
+            )
+        )
+
+    dispatch.assert_called_once_with(WizardRunActivityInput(team_id=team.id, run_id=run.id))
+
+
+@pytest.mark.django_db(transaction=True)
+def test_cloud_run_rollback_prevents_dispatch(team, user) -> None:
+    with (
+        patch(
+            "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+            return_value=123,
+        ),
+        patch(
+            "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+            return_value=True,
+        ),
+        patch("products.wizard.backend.logic.runs.temporal_client.start_wizard_run_workflow") as dispatch,
+        transaction.atomic(),
+    ):
+        wizard_facade.create_run(
+            CreateWizardRunInput(
+                team_id=team.id,
+                created_by_id=user.id,
+                environment=WizardRunEnvironment.CLOUD,
+                workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
+            )
+        )
+        transaction.set_rollback(True)
+
+    dispatch.assert_not_called()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_local_run_does_not_dispatch(team, user) -> None:
+    with patch("products.wizard.backend.logic.runs.temporal_client.start_wizard_run_workflow") as dispatch:
+        wizard_facade.create_run(
+            CreateWizardRunInput(
+                team_id=team.id,
+                created_by_id=user.id,
+                environment=WizardRunEnvironment.LOCAL,
+                workspace=LocalFolderWorkspace(project_name="example-project"),
+            )
+        )
+
+    dispatch.assert_not_called()
 
 
 @pytest.mark.django_db

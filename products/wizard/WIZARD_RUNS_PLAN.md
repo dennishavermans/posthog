@@ -238,7 +238,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Create `products/wizard/backend/temporal/workflows/execute_run.py`.
 - [x] Create `products/wizard/backend/temporal/activities/lifecycle.py`.
 - [x] Create `products/wizard/backend/temporal/activities/execute_cloud.py`.
-- [ ] Create `products/wizard/backend/temporal/client.py`.
+- [x] Create `products/wizard/backend/temporal/client.py`.
 - [x] Register workflows and activities in `products/wizard/backend/temporal/__init__.py`.
 - [x] Confirm how the shared Temporal worker discovers product-owned registrations.
 - [x] Add a registration test.
@@ -265,10 +265,10 @@ This audit covers all Wizard run work completed before the environment and works
 
 ### 9. Dispatch cloud runs
 
-- [ ] Start the Temporal workflow only after the run row commits.
-- [ ] Use `transaction.on_commit` for workflow dispatch.
-- [ ] Keep local run creation free of Temporal dispatch.
-- [ ] Handle duplicate workflow starts idempotently.
+- [x] Start the Temporal workflow only after the run row commits.
+- [x] Use `transaction.on_commit` for workflow dispatch.
+- [x] Keep local run creation free of Temporal dispatch.
+- [x] Handle duplicate workflow starts idempotently.
 - [ ] Decide what happens when workflow dispatch fails after the run commits.
 - [ ] Add an observable dispatch-failed state if operational recovery requires it.
 - [ ] Test dispatch through the facade while mocking only the Temporal client boundary.
