@@ -16,12 +16,9 @@ from products.wizard.backend.facade.enums import (
     WizardRunStatus,
     WizardWorkspaceType,
 )
-from products.wizard.backend.facade.errors import (
-    MissingGitHubIntegrationError,
-    RepositoryNotAccessibleError,
-    WizardRunNotFoundError,
-)
+from products.wizard.backend.facade.errors import MissingGitHubIntegrationError, RepositoryNotAccessibleError
 from products.wizard.backend.logic.run_domain import transition, validate_workspace_environment
+from products.wizard.backend.logic.run_store import get_run_model
 from products.wizard.backend.models import WizardRun
 
 
@@ -57,11 +54,7 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
 
 
 def get_run(team_id: int, run_id: UUID) -> WizardRunDTO:
-    run = WizardRun.objects.for_team(team_id).filter(id=run_id).first()
-    if run is None:
-        raise WizardRunNotFoundError
-
-    return _to_dto(run)
+    return _to_dto(get_run_model(team_id, run_id))
 
 
 def start_run(team_id: int, run_id: UUID) -> WizardRunDTO:
@@ -93,10 +86,7 @@ def _transition_run(
     error_code: WizardRunErrorCode | None = None,
 ) -> WizardRunDTO:
     with database_transaction.atomic():
-        run = WizardRun.objects.for_team(team_id).select_for_update().filter(id=run_id).first()
-        if run is None:
-            raise WizardRunNotFoundError
-
+        run = get_run_model(team_id, run_id, lock=True)
         next_status = transition(WizardRunStatus(run.status), next_status, error_code=error_code)
         run.status = next_status.value
         run.error_code = error_code.value if error_code is not None else None

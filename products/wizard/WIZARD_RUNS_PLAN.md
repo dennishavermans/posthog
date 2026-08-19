@@ -116,7 +116,7 @@ Temporal workflow
 - [x] Persist workspace metadata.
 - [x] Separate facade contracts, enums, errors, application logic, and pure run rules.
 - [ ] Add Temporal execution.
-- [ ] Add Run Artifacts.
+- [x] Add Run Artifacts.
 
 The active step is adding persisted lifecycle operations.
 
@@ -188,9 +188,9 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Serialize typed workspaces into model fields in one private mapper.
 - [x] Deserialize model fields into typed facade contracts in `_to_dto`.
 - [x] Add workspace fields to the branch-only initial migration without modifying migrations on `master`.
-- [ ] Keep foreign keys to Team and User free of database constraints.
+- [x] Keep foreign keys to Team and User free of database constraints.
 - [x] Inspect `sqlmigrate` output before applying the migration.
-- [ ] Apply the migration locally with orphan checking skipped only if the existing branch-switching issue recurs.
+- [x] Apply the migration locally with orphan checking skipped only if the existing branch-switching issue recurs.
 - [x] Test local and cloud persistence through `facade/api.py`.
 - [ ] Test malformed persisted workspace data as an explicit typed failure if it can occur in production.
 
@@ -222,14 +222,14 @@ This audit covers all Wizard run work completed before the environment and works
 
 ### 6. Define Run Artifacts
 
-- [ ] Add `WizardRunArtifactType` with the V0 `GIT_DIFF` type.
-- [ ] Decide whether metadata belongs in a separate team-scoped artifact model or an object-storage manifest.
-- [ ] Store large diffs in object storage and persist a reference.
+- [x] Add `WizardRunArtifactType` with the V0 `GIT_DIFF` type.
+- [x] Decide whether metadata belongs in a separate team-scoped artifact model or an object-storage manifest.
+- [x] Store large diffs in object storage and persist a reference.
 - [ ] Never return large diff contents through a Temporal activity result.
-- [ ] Associate every artifact with one run and team.
-- [ ] Return typed artifact metadata through the Wizard facade.
-- [ ] Define the no-changes result without creating an empty artifact.
-- [ ] Reserve pull-request and updated-archive artifact types for their implementation phases.
+- [x] Associate every artifact with one run and team.
+- [x] Return typed artifact metadata through the Wizard facade.
+- [x] Define the no-changes result without creating an empty artifact.
+- [x] Reserve pull-request and updated-archive artifact types for their implementation phases.
 
 ### 7. Add Temporal contracts and registration
 

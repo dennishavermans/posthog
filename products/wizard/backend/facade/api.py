@@ -17,11 +17,13 @@ from products.wizard.backend import metrics
 from products.wizard.backend.facade.contracts import (
     CreateWizardRunInput,
     UpsertWizardSessionInput,
+    WizardRunArtifactDTO,
     WizardRunDTO,
     WizardSessionDTO,
 )
 from products.wizard.backend.facade.enums import WizardRunErrorCode
 from products.wizard.backend.logic import (
+    artifacts,
     pubsub,
     runs as run_service,
     sessions,
@@ -108,3 +110,11 @@ def fail_run(
 
 def cancel_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     return run_service.cancel_run(team_id, run_id)
+
+
+def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> WizardRunArtifactDTO | None:
+    return artifacts.create_git_diff_artifact(team_id, run_id, content)
+
+
+def list_run_artifacts(team_id: int, run_id: UUID) -> list[WizardRunArtifactDTO]:
+    return artifacts.list_run_artifacts(team_id, run_id)

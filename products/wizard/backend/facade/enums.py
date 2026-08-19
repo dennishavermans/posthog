@@ -46,3 +46,7 @@ class WizardWorkspaceType(StrEnum):
 
 class WizardRunErrorCode(StrEnum):
     TIMEOUT = "timeout"
+
+
+class WizardRunArtifactType(StrEnum):
+    GIT_DIFF = "git_diff"

@@ -13,6 +13,7 @@ from posthog.models.scoping.root_mixin import TeamScopedRootMixin
 from posthog.models.utils import CreatedMetaFields, UpdatedMetaFields, UUIDModel
 
 from products.wizard.backend.facade.enums import (
+    WizardRunArtifactType,
     WizardRunEnvironment,
     WizardRunErrorCode,
     WizardRunStatus,
@@ -106,3 +107,19 @@ class WizardRun(UUIDModel, TeamScopedRootMixin, CreatedMetaFields, UpdatedMetaFi
 
     class Meta(TeamScopedRootMixin.Meta):
         pass
+
+
+class WizardRunArtifact(UUIDModel, TeamScopedRootMixin):
+    team = models.ForeignKey("posthog.Team", on_delete=models.CASCADE, related_name="+", db_constraint=False)
+    run = models.ForeignKey(WizardRun, on_delete=models.CASCADE, related_name="artifacts")
+    type = models.CharField(
+        max_length=30,
+        choices=[(artifact_type.value, artifact_type.value) for artifact_type in WizardRunArtifactType],
+    )
+    storage_path = models.CharField(max_length=1024)
+    size_bytes = models.PositiveBigIntegerField()
+    content_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(TeamScopedRootMixin.Meta):
+        constraints = [models.UniqueConstraint(fields=["run", "type"], name="unique_wizard_artifact_type_per_run")]

@@ -13,6 +13,7 @@ from uuid import UUID
 from posthog.dataclasses import frozen
 
 from .enums import (
+    WizardRunArtifactType,
     WizardRunEnvironment,
     WizardRunErrorCode,
     WizardRunStatus,
@@ -121,3 +122,14 @@ class WizardRunDTO:
     workspace: WizardWorkspace
     status: WizardRunStatus
     error_code: WizardRunErrorCode | None
+
+
+@frozen
+class WizardRunArtifactDTO:
+    id: UUID
+    team_id: int
+    run_id: UUID
+    type: WizardRunArtifactType
+    size_bytes: int
+    content_hash: str
+    created_at: datetime
