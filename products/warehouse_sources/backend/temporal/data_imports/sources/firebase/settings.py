@@ -31,6 +31,13 @@ FIRESTORE_COLLECTION_IDS_PAGE_SIZE: Final[int] = 300
 AUTH_USERS_PAGE_SIZE: Final[int] = 1000
 REALTIME_DATABASE_PAGE_SIZE: Final[int] = 500
 
+# Firestore has no API to list a collection's subcollections, only a single document's. So table
+# discovery samples a few documents per collection and unions the subcollection ids they report.
+# A subcollection present on no sampled document is missed. `depth` bounds how far nesting is
+# followed below the root collections.
+FIRESTORE_SUBCOLLECTION_SAMPLE_DOCUMENTS: Final[int] = 10
+FIRESTORE_MAX_SUBCOLLECTION_DEPTH: Final[int] = 3
+
 # Hard stop so an endpoint that keeps handing back a page token can't page forever.
 MAX_PAGES: Final[int] = 100_000
 
@@ -81,8 +88,16 @@ REDACTED_AUTH_USER_FIELDS: Final[frozenset[str]] = frozenset({"passwordHash", "s
 REALTIME_DATABASE_HOST_SUFFIXES: Final[tuple[str, ...]] = (".firebaseio.com", ".firebasedatabase.app")
 
 
-def firestore_table_name(collection_id: str) -> str:
-    return f"{FIRESTORE_TABLE_PREFIX}{collection_id}"
+def firestore_table_name(collection_path: str) -> str:
+    """Table name for one Firestore collection. A root collection is a single id (`rooms`); a
+    subcollection is the path of collection ids down to it (`rooms/messages`).
+
+    The slash keeps root and subcollection tables distinct here, but downstream storage names flatten
+    it to `_`, so `rooms/messages` and a root collection literally named `rooms_messages` would share
+    a storage name. Firestore collection ids rarely contain `_` next to a real subcollection, so this
+    is left as a known edge, matching how the GitHub source already treats slashes in schema names.
+    """
+    return f"{FIRESTORE_TABLE_PREFIX}{collection_path}"
 
 
 def realtime_database_table_name(path: str) -> str:

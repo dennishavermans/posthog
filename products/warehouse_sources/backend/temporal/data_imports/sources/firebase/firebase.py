@@ -23,8 +23,10 @@ from products.warehouse_sources.backend.temporal.data_imports.sources.firebase.s
     FIRESTORE_COLLECTION_IDS_PAGE_SIZE,
     FIRESTORE_CREATE_TIME_COLUMN,
     FIRESTORE_ID_COLUMN,
+    FIRESTORE_MAX_SUBCOLLECTION_DEPTH,
     FIRESTORE_PAGE_SIZE,
     FIRESTORE_PATH_COLUMN,
+    FIRESTORE_SUBCOLLECTION_SAMPLE_DOCUMENTS,
     FIRESTORE_UPDATE_TIME_COLUMN,
     GOOGLE_TOKEN_URI,
     IDENTITY_TOOLKIT_API_ROOT,
@@ -330,10 +332,14 @@ def _as_column(value: Any) -> Any:
     return value
 
 
+def _relative_document_path(document_name: str) -> str:
+    """Turn a full document resource name into the path Firestore addresses it by (`rooms/room1`)."""
+    return document_name.split("/documents/", 1)[1] if "/documents/" in document_name else document_name
+
+
 def flatten_firestore_document(document: dict[str, Any]) -> dict[str, Any]:
     """Turn one Firestore document into a flat row of top-level fields plus metadata columns."""
-    name = str(document.get("name") or "")
-    path = name.split("/documents/", 1)[1] if "/documents/" in name else name
+    path = _relative_document_path(str(document.get("name") or ""))
     fields = document.get("fields")
     if not isinstance(fields, dict):
         fields = {}
@@ -370,10 +376,21 @@ def _firestore_documents_root(credentials: FirebaseCredentials) -> str:
 
 
 def list_collection_ids(
-    session: requests.Session, tokens: AccessTokenProvider, credentials: FirebaseCredentials
+    session: requests.Session,
+    tokens: AccessTokenProvider,
+    credentials: FirebaseCredentials,
+    parent_document_path: Optional[str] = None,
 ) -> list[str]:
-    """List the root-level Firestore collections in the project's database."""
-    url = f"{_firestore_documents_root(credentials)}:listCollectionIds"
+    """List the Firestore collection ids directly under a parent.
+
+    With no parent this lists the root-level collections. With a document path (`rooms/room1`) it
+    lists that document's subcollection ids — the only way Firestore exposes subcollections.
+    """
+    root = _firestore_documents_root(credentials)
+    if parent_document_path:
+        url = f"{root}/{quote(parent_document_path, safe='/')}:listCollectionIds"
+    else:
+        url = f"{root}:listCollectionIds"
     collection_ids: list[str] = []
     page_token: Optional[str] = None
 
@@ -416,6 +433,60 @@ def iter_firestore_documents(
             break
         # Saved after yielding so a crash re-yields the last page instead of skipping it.
         resumable_source_manager.save_state(FirebaseResumeConfig(cursor=page_token))
+
+    resumable_source_manager.clear_state()
+
+
+def _run_query_documents(results: Any) -> list[dict[str, Any]]:
+    """Pull the documents out of a `runQuery` response, skipping readTime-only entries."""
+    return [
+        result["document"]
+        for result in results
+        if isinstance(result, dict) and isinstance(result.get("document"), dict)
+    ]
+
+
+def iter_firestore_collection_group(
+    session: requests.Session,
+    tokens: AccessTokenProvider,
+    credentials: FirebaseCredentials,
+    collection_id: str,
+    resumable_source_manager: ResumableSourceManager[FirebaseResumeConfig],
+    logger: FilteringBoundLogger,
+) -> Iterator[list[dict[str, Any]]]:
+    """Read every document in a Firestore subcollection.
+
+    `listDocuments` reads only a collection under a fixed path, so a subcollection like `messages`
+    that lives under many parent documents needs a collection-group query instead. `runQuery` with
+    `allDescendants=true` returns every document in any collection with this id, at any depth.
+    """
+    url = f"{_firestore_documents_root(credentials)}:runQuery"
+    # `runQuery` has no page token, so paging is done by ordering on the document name and resuming
+    # after the last one read. The cursor is that full document resource name.
+    cursor = _resume_cursor(resumable_source_manager, logger, f"Firestore collection group {collection_id}")
+
+    for _ in range(MAX_PAGES):
+        query: dict[str, Any] = {
+            "from": [{"collectionId": collection_id, "allDescendants": True}],
+            "orderBy": [{"field": {"fieldPath": "__name__"}, "direction": "ASCENDING"}],
+            "limit": FIRESTORE_PAGE_SIZE,
+        }
+        if cursor:
+            query["startAt"] = {"values": [{"referenceValue": cursor}], "before": False}
+        results = _request(session, tokens, "POST", url, json_body={"structuredQuery": query}) or []
+
+        documents = _run_query_documents(results)
+        if documents:
+            yield [flatten_firestore_document(document) for document in documents]
+
+        if len(documents) < FIRESTORE_PAGE_SIZE:
+            break
+        next_cursor = documents[-1].get("name")
+        if not next_cursor:
+            break
+        cursor = str(next_cursor)
+        # Saved after yielding so a crash re-yields the last page instead of skipping it.
+        resumable_source_manager.save_state(FirebaseResumeConfig(cursor=cursor))
 
     resumable_source_manager.clear_state()
 
@@ -543,11 +614,18 @@ def get_rows(
 
     api_session = _api_session(credentials)
 
-    collection_id = _resolve_firestore_collection(table_name)
-    if collection_id is not None:
-        yield from iter_firestore_documents(
-            api_session, tokens, credentials, collection_id, resumable_source_manager, logger
-        )
+    collection_path = _resolve_firestore_collection(table_name)
+    if collection_path is not None:
+        if "/" in collection_path:
+            # A subcollection path (`rooms/messages`) reads as a collection group keyed by its leaf id.
+            leaf_collection_id = collection_path.rsplit("/", 1)[-1]
+            yield from iter_firestore_collection_group(
+                api_session, tokens, credentials, leaf_collection_id, resumable_source_manager, logger
+            )
+        else:
+            yield from iter_firestore_documents(
+                api_session, tokens, credentials, collection_path, resumable_source_manager, logger
+            )
         return
 
     path = _resolve_realtime_database_path(credentials, table_name)
@@ -559,7 +637,10 @@ def get_rows(
 
 
 def _resolve_firestore_collection(table_name: str) -> Optional[str]:
-    """Recover the Firestore collection id a table name was built from."""
+    """Recover the Firestore collection-id path a table name was built from.
+
+    A root collection resolves to a single id (`rooms`); a subcollection to its path (`rooms/messages`).
+    """
     prefix = firestore_table_name("")
     if not table_name.startswith(prefix) or len(table_name) == len(prefix):
         return None
@@ -573,6 +654,85 @@ def _resolve_realtime_database_path(credentials: FirebaseCredentials, table_name
     return None
 
 
+def _sample_firestore_document_paths(
+    session: requests.Session,
+    tokens: AccessTokenProvider,
+    credentials: FirebaseCredentials,
+    collection_path: str,
+    limit: int,
+) -> list[str]:
+    """Return the paths of a few documents in a collection, to probe them for subcollections."""
+    if "/" in collection_path:
+        # A subcollection is spread across many parents, so a collection-group query samples it.
+        # Only the document names are needed here, so `select` keeps the response small.
+        leaf_collection_id = collection_path.rsplit("/", 1)[-1]
+        query = {
+            "from": [{"collectionId": leaf_collection_id, "allDescendants": True}],
+            "select": {"fields": [{"fieldPath": "__name__"}]},
+            "limit": limit,
+        }
+        results = (
+            _request(
+                session,
+                tokens,
+                "POST",
+                f"{_firestore_documents_root(credentials)}:runQuery",
+                json_body={"structuredQuery": query},
+            )
+            or []
+        )
+        documents = _run_query_documents(results)
+    else:
+        url = f"{_firestore_documents_root(credentials)}/{quote(collection_path, safe='')}"
+        payload = _request(session, tokens, "GET", url, params={"pageSize": limit}) or {}
+        documents = [doc for doc in payload.get("documents") or [] if isinstance(doc, dict)]
+
+    return [_relative_document_path(str(doc["name"])) for doc in documents if doc.get("name")]
+
+
+def discover_firestore_collections(
+    session: requests.Session, tokens: AccessTokenProvider, credentials: FirebaseCredentials
+) -> list[str]:
+    """Return every Firestore collection this source can read, as collection-id paths.
+
+    Root collections come from `listCollectionIds`. Subcollections are found by sampling documents
+    and asking each for its child collection ids, following nesting down to the depth cap. Because a
+    subcollection reads as a collection group keyed by its leaf id, each id is surfaced once — a
+    subcollection sharing an id with a root collection, or living under more than one parent, is not
+    listed twice.
+    """
+    ordered: list[str] = []
+    seen_ids: set[str] = set()
+    frontier: list[str] = []
+
+    for collection_id in list_collection_ids(session, tokens, credentials):
+        if collection_id not in seen_ids:
+            seen_ids.add(collection_id)
+            ordered.append(collection_id)
+            frontier.append(collection_id)
+
+    for _ in range(FIRESTORE_MAX_SUBCOLLECTION_DEPTH):
+        next_frontier: list[str] = []
+        for collection_path in frontier:
+            child_ids: set[str] = set()
+            for document_path in _sample_firestore_document_paths(
+                session, tokens, credentials, collection_path, FIRESTORE_SUBCOLLECTION_SAMPLE_DOCUMENTS
+            ):
+                child_ids.update(list_collection_ids(session, tokens, credentials, parent_document_path=document_path))
+            for child_id in sorted(child_ids):
+                if child_id in seen_ids:
+                    continue
+                seen_ids.add(child_id)
+                child_path = f"{collection_path}/{child_id}"
+                ordered.append(child_path)
+                next_frontier.append(child_path)
+        if not next_frontier:
+            break
+        frontier = next_frontier
+
+    return ordered
+
+
 def get_tables(credentials: FirebaseCredentials) -> list[str]:
     """List every table this source can sync: Auth users, Firestore collections, configured paths."""
     tables: list[str] = [AUTH_USERS_TABLE]
@@ -580,8 +740,8 @@ def get_tables(credentials: FirebaseCredentials) -> list[str]:
     tokens = AccessTokenProvider(_auth_session(credentials), credentials)
     api_session = _api_session(credentials)
     try:
-        collection_ids = list_collection_ids(api_session, tokens, credentials)
-        tables.extend(firestore_table_name(collection_id) for collection_id in collection_ids)
+        collection_paths = discover_firestore_collections(api_session, tokens, credentials)
+        tables.extend(firestore_table_name(collection_path) for collection_path in collection_paths)
     except requests.HTTPError as e:
         # A project with no Firestore database answers 404, a service account without the
         # Datastore role answers 403, and a default database provisioned in Datastore mode
@@ -621,12 +781,15 @@ def firebase_source(
     resumable_source_manager: ResumableSourceManager[FirebaseResumeConfig],
     logger: FilteringBoundLogger,
 ) -> SourceResponse:
-    is_firestore = _resolve_firestore_collection(table_name) is not None
+    collection_path = _resolve_firestore_collection(table_name)
+    is_firestore = collection_path is not None
 
     if table_name == AUTH_USERS_TABLE:
         primary_keys = AUTH_USERS_PRIMARY_KEY
-    elif is_firestore:
-        primary_keys = [FIRESTORE_ID_COLUMN]
+    elif collection_path is not None:
+        # A collection group can hold documents with the same id under different parents, so the
+        # full document path is the only unique key for a subcollection.
+        primary_keys = [FIRESTORE_PATH_COLUMN] if "/" in collection_path else [FIRESTORE_ID_COLUMN]
     else:
         primary_keys = [REALTIME_DATABASE_KEY_COLUMN]
 
