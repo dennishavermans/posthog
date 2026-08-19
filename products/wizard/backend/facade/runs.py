@@ -1,6 +1,10 @@
-from enum import StrEnum
-
 # Enums
+
+
+from enum import StrEnum
+from uuid import UUID
+
+from posthog.dataclasses import frozen
 
 
 class WizardRunStatus(StrEnum):
@@ -45,6 +49,23 @@ class InvalidTransitionMetadataError(Exception):
 
 # Inputs
 
-# Outputs
+
+@frozen
+class CreateWizardRunInput:
+    team_id: int
+    created_by_id: int
+    surface: WizardRunSurface
+
 
 # DTOs
+
+
+@frozen
+class WizardRunDTO:
+    id: UUID
+    team_id: int
+    created_by_id: int
+    surface: WizardRunSurface
+    status: WizardRunStatus
+    outcome: WizardRunOutcome | None
+    error_code: WizardRunErrorCode | None

@@ -14,7 +14,12 @@ from typing import Any
 
 from products.wizard.backend import metrics
 from products.wizard.backend.facade.contracts import UpsertWizardSessionInput, WizardSessionDTO
-from products.wizard.backend.logic import pubsub, sessions
+from products.wizard.backend.facade.runs import CreateWizardRunInput, WizardRunDTO
+from products.wizard.backend.logic import (
+    pubsub,
+    runs as run_service,
+    sessions,
+)
 
 
 def upsert(params: UpsertWizardSessionInput) -> tuple[WizardSessionDTO, bool]:
@@ -65,3 +70,10 @@ def record_latest_session_poll(raw_source: str | None, result: str) -> None:
     metrics.WIZARD_LATEST_SESSION_REQUESTS_TOTAL.labels(
         source=metrics.poll_source_label(raw_source), result=result
     ).inc()
+
+
+# Wizard Runs API
+
+
+def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
+    return run_service.create_run(params)
