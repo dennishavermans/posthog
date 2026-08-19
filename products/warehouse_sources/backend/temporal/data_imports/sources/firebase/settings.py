@@ -22,6 +22,9 @@ DEFAULT_DATABASE_ID: Final[str] = "(default)"
 
 AUTH_USERS_TABLE: Final[str] = "auth_users"
 FIRESTORE_TABLE_PREFIX: Final[str] = "firestore_"
+# A subcollection reads as a collection group (every collection with the id, under any parent), so
+# its own prefix keeps its name distinct from a root collection and states that scope to the user.
+FIRESTORE_COLLECTION_GROUP_TABLE_PREFIX: Final[str] = "firestore_collection_group_"
 REALTIME_DATABASE_TABLE_PREFIX: Final[str] = "realtime_database_"
 
 # Firestore caps a `listDocuments` page at 300 documents; Identity Platform caps `accounts:batchGet`
@@ -94,16 +97,14 @@ REDACTED_AUTH_USER_FIELDS: Final[frozenset[str]] = frozenset({"passwordHash", "s
 REALTIME_DATABASE_HOST_SUFFIXES: Final[tuple[str, ...]] = (".firebaseio.com", ".firebasedatabase.app")
 
 
-def firestore_table_name(collection_path: str) -> str:
-    """Table name for one Firestore collection. A root collection is a single id (`rooms`); a
-    subcollection is the path of collection ids down to it (`rooms/messages`).
+def firestore_table_name(collection_id: str) -> str:
+    """Table name for one root-level Firestore collection (`rooms`)."""
+    return f"{FIRESTORE_TABLE_PREFIX}{collection_id}"
 
-    The slash keeps root and subcollection tables distinct here, but downstream storage names flatten
-    it to `_`, so `rooms/messages` and a root collection literally named `rooms_messages` would share
-    a storage name. Firestore collection ids rarely contain `_` next to a real subcollection, so this
-    is left as a known edge, matching how the GitHub source already treats slashes in schema names.
-    """
-    return f"{FIRESTORE_TABLE_PREFIX}{collection_path}"
+
+def firestore_collection_group_table_name(collection_id: str) -> str:
+    """Table name for one Firestore subcollection, read as a collection group keyed by its id."""
+    return f"{FIRESTORE_COLLECTION_GROUP_TABLE_PREFIX}{collection_id}"
 
 
 def realtime_database_table_name(path: str) -> str:
