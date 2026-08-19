@@ -24,24 +24,14 @@ export const WizardRunsCreateBody = /* @__PURE__ */ zod.object({
     workspace: zod
         .union([
             zod.object({
-                type: zod
-                    .enum(['local_folder'])
-                    .describe('\* `local_folder` - local_folder')
-                    .enum(['local_folder'])
-                    .describe(
-                        "Selects a folder on the user's machine as the workspace.\n\n\* `local_folder` - local_folder"
-                    ),
+                type: zod.enum(['local_folder']).describe("Selects a folder on the user's machine as the workspace."),
                 project_name: zod
                     .string()
                     .max(wizardRunsCreateBodyWorkspaceOneOneProjectNameMax)
                     .describe('Name of the project in the local folder.'),
             }),
             zod.object({
-                type: zod
-                    .enum(['git_repository'])
-                    .describe('\* `git_repository` - git_repository')
-                    .enum(['git_repository'])
-                    .describe('Selects a GitHub repository as the workspace.\n\n\* `git_repository` - git_repository'),
+                type: zod.enum(['git_repository']).describe('Selects a GitHub repository as the workspace.'),
                 repository: zod
                     .string()
                     .max(wizardRunsCreateBodyWorkspaceOneTwoRepositoryMax)

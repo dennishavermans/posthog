@@ -46,9 +46,28 @@ from products.wizard.backend.presentation.run_throttles import (
 )
 
 
+class WizardWorkspaceTypeField(serializers.CharField):
+    workspace_type: WizardWorkspaceType
+
+    def to_internal_value(self, data: object) -> str:
+        value = super().to_internal_value(data)
+        if value != self.workspace_type.value:
+            self.fail("invalid")
+        return value
+
+
+@extend_schema_field({"type": "string", "const": WizardWorkspaceType.LOCAL_FOLDER.value})
+class LocalFolderWorkspaceTypeField(WizardWorkspaceTypeField):
+    workspace_type = WizardWorkspaceType.LOCAL_FOLDER
+
+
+@extend_schema_field({"type": "string", "const": WizardWorkspaceType.GIT_REPOSITORY.value})
+class GitRepositoryWorkspaceTypeField(WizardWorkspaceTypeField):
+    workspace_type = WizardWorkspaceType.GIT_REPOSITORY
+
+
 class LocalFolderWorkspaceSerializer(serializers.Serializer):
-    type = serializers.ChoiceField(
-        choices=[WizardWorkspaceType.LOCAL_FOLDER.value],
+    type = LocalFolderWorkspaceTypeField(
         help_text="Selects a folder on the user's machine as the workspace.",
     )
     project_name = serializers.CharField(
@@ -59,8 +78,7 @@ class LocalFolderWorkspaceSerializer(serializers.Serializer):
 
 
 class GitRepositoryWorkspaceSerializer(serializers.Serializer):
-    type = serializers.ChoiceField(
-        choices=[WizardWorkspaceType.GIT_REPOSITORY.value],
+    type = GitRepositoryWorkspaceTypeField(
         help_text="Selects a GitHub repository as the workspace.",
     )
     repository = serializers.CharField(

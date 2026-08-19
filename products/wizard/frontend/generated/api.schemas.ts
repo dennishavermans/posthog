@@ -20,8 +20,6 @@ export const RunEnvironmentEnumApi = {
 
 /**
  * Selects a folder on the user's machine as the workspace.
- *
- * * `local_folder` - local_folder
  */
 export type LocalFolderWorkspaceApiType = (typeof LocalFolderWorkspaceApiType)[keyof typeof LocalFolderWorkspaceApiType]
 
@@ -30,9 +28,7 @@ export const LocalFolderWorkspaceApiType = {
 } as const
 
 export interface LocalFolderWorkspaceApi {
-    /** Selects a folder on the user's machine as the workspace.
-     *
-     * * `local_folder` - local_folder */
+    /** Selects a folder on the user's machine as the workspace. */
     type: LocalFolderWorkspaceApiType
     /**
      * Name of the project in the local folder.
@@ -43,8 +39,6 @@ export interface LocalFolderWorkspaceApi {
 
 /**
  * Selects a GitHub repository as the workspace.
- *
- * * `git_repository` - git_repository
  */
 export type GitRepositoryWorkspaceApiType =
     (typeof GitRepositoryWorkspaceApiType)[keyof typeof GitRepositoryWorkspaceApiType]
@@ -54,9 +48,7 @@ export const GitRepositoryWorkspaceApiType = {
 } as const
 
 export interface GitRepositoryWorkspaceApi {
-    /** Selects a GitHub repository as the workspace.
-     *
-     * * `git_repository` - git_repository */
+    /** Selects a GitHub repository as the workspace. */
     type: GitRepositoryWorkspaceApiType
     /**
      * GitHub repository in owner/name format.
@@ -382,26 +374,6 @@ export interface UpsertWizardSessionRequestApi {
      */
     run_id?: string | null
 }
-
-/**
- * * `local_folder` - local_folder
- */
-export type LocalFolderWorkspaceTypeEnumApi =
-    (typeof LocalFolderWorkspaceTypeEnumApi)[keyof typeof LocalFolderWorkspaceTypeEnumApi]
-
-export const LocalFolderWorkspaceTypeEnumApi = {
-    LocalFolder: 'local_folder',
-} as const
-
-/**
- * * `git_repository` - git_repository
- */
-export type GitRepositoryWorkspaceTypeEnumApi =
-    (typeof GitRepositoryWorkspaceTypeEnumApi)[keyof typeof GitRepositoryWorkspaceTypeEnumApi]
-
-export const GitRepositoryWorkspaceTypeEnumApi = {
-    GitRepository: 'git_repository',
-} as const
 
 export type WizardSessionsListParams = {
     /**
