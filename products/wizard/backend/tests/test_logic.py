@@ -9,9 +9,18 @@ from posthog.models import Team, User
 
 from products.event_definitions.backend.models import EventDefinition
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import UpsertWizardSessionInput, WizardTaskDTO
-from products.wizard.backend.facade.enums import WizardSessionRunPhase, WizardSessionTaskStatus
-from products.wizard.backend.facade.errors import WizardSessionOwnershipError
+from products.wizard.backend.facade.contracts import (
+    CreateWizardRunInput,
+    LocalFolderWorkspace,
+    UpsertWizardSessionInput,
+    WizardTaskDTO,
+)
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardSessionRunPhase, WizardSessionTaskStatus
+from products.wizard.backend.facade.errors import (
+    WizardRunNotFoundError,
+    WizardSessionOwnershipError,
+    WizardSessionRunMismatchError,
+)
 from products.wizard.backend.metrics import WIZARD_SESSIONS_FINISHED_TOTAL
 from products.wizard.backend.tasks.tasks import sync_wizard_event_definitions
 
@@ -45,6 +54,103 @@ def test_upsert_creates_new_session(team):
     assert dto.run_phase == WizardSessionRunPhase.RUNNING
     assert len(dto.tasks) == 1
     assert dto.tasks[0].status == WizardSessionTaskStatus.IN_PROGRESS
+    assert dto.run_id is None
+
+
+@pytest.mark.django_db
+def test_upsert_binds_session_to_run(team, user):
+    run = wizard_facade.create_run(
+        CreateWizardRunInput(
+            team_id=team.id,
+            created_by_id=user.id,
+            environment=WizardRunEnvironment.LOCAL,
+            workspace=LocalFolderWorkspace(project_name="example-project"),
+        )
+    )
+
+    dto, _ = wizard_facade.upsert(_input(team.id, run_id=run.id, created_by_id=user.id))
+
+    assert dto.run_id == run.id
+    assert wizard_facade.get(team.id, dto.session_id) == dto
+
+
+@pytest.mark.django_db
+def test_upsert_preserves_run_when_legacy_update_omits_it(team, user):
+    run = wizard_facade.create_run(
+        CreateWizardRunInput(
+            team_id=team.id,
+            created_by_id=user.id,
+            environment=WizardRunEnvironment.LOCAL,
+            workspace=LocalFolderWorkspace(project_name="example-project"),
+        )
+    )
+    wizard_facade.upsert(_input(team.id, run_id=run.id, created_by_id=user.id))
+
+    updated, _ = wizard_facade.upsert(_input(team.id, created_by_id=user.id))
+
+    assert updated.run_id == run.id
+
+
+@pytest.mark.django_db
+def test_upsert_rejects_binding_session_to_another_run(team, user):
+    first_run = wizard_facade.create_run(
+        CreateWizardRunInput(
+            team_id=team.id,
+            created_by_id=user.id,
+            environment=WizardRunEnvironment.LOCAL,
+            workspace=LocalFolderWorkspace(project_name="first-project"),
+        )
+    )
+    second_run = wizard_facade.create_run(
+        CreateWizardRunInput(
+            team_id=team.id,
+            created_by_id=user.id,
+            environment=WizardRunEnvironment.LOCAL,
+            workspace=LocalFolderWorkspace(project_name="second-project"),
+        )
+    )
+    original, _ = wizard_facade.upsert(_input(team.id, run_id=first_run.id, created_by_id=user.id))
+
+    with pytest.raises(WizardSessionRunMismatchError):
+        wizard_facade.upsert(_input(team.id, run_id=second_run.id, created_by_id=user.id))
+
+    assert wizard_facade.get(team.id, original.session_id) == original
+
+
+@pytest.mark.django_db
+def test_upsert_rejects_run_from_another_team(team, user):
+    other_team = Team.objects.create(organization=team.organization, project=team.project, name="Other environment")
+    other_run = wizard_facade.create_run(
+        CreateWizardRunInput(
+            team_id=other_team.id,
+            created_by_id=user.id,
+            environment=WizardRunEnvironment.LOCAL,
+            workspace=LocalFolderWorkspace(project_name="other-project"),
+        )
+    )
+
+    with pytest.raises(WizardRunNotFoundError):
+        wizard_facade.upsert(_input(team.id, run_id=other_run.id, created_by_id=user.id))
+
+    assert wizard_facade.get(team.id, _input(team.id).session_id) is None
+
+
+@pytest.mark.django_db
+def test_upsert_rejects_run_created_by_another_user(team, user):
+    run = wizard_facade.create_run(
+        CreateWizardRunInput(
+            team_id=team.id,
+            created_by_id=user.id,
+            environment=WizardRunEnvironment.LOCAL,
+            workspace=LocalFolderWorkspace(project_name="example-project"),
+        )
+    )
+    other_user = User.objects.create_and_join(team.organization, "teammate@example.com", None)
+
+    with pytest.raises(WizardSessionOwnershipError):
+        wizard_facade.upsert(_input(team.id, run_id=run.id, created_by_id=other_user.id))
+
+    assert wizard_facade.get(team.id, _input(team.id).session_id) is None
 
 
 @pytest.mark.django_db

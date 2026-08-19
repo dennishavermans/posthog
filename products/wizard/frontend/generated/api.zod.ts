@@ -184,5 +184,9 @@ export const WizardSessionsCreateBody = /* @__PURE__ */ zod
             .record(zod.string(), zod.unknown())
             .nullish()
             .describe("Populated when run_phase='error'. Shape: { type: string, message: string }."),
+        run_id: zod
+            .uuid()
+            .nullish()
+            .describe('Wizard run ID returned when the setup agent starts. Older clients may omit it.'),
     })
     .describe('Input: validates the JSON the wizard CLI posts. team_id is derived from URL.')

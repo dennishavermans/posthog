@@ -99,6 +99,19 @@ Temporal workflow
 - Secrets are created and consumed inside activities. They must not enter Temporal inputs, results, logs, or persisted workspace metadata.
 - Large results are stored by reference. Temporal payloads contain IDs and small typed results only.
 
+## V0 state synchronization
+
+The npm Wizard posts state snapshots to `POST /api/projects/{team_id}/wizard/sessions/`.
+
+The existing payload remains valid.
+New clients include the optional `run_id` returned by `POST /api/projects/{team_id}/wizard/runs/`.
+A local Wizard creates that run before its first session update.
+A Wizard Worker receives the pre-created run ID as `POSTHOG_WIZARD_RUN_ID` and includes it in session updates.
+
+Once a session is linked, omitted IDs preserve the link and another ID cannot replace it.
+The backend verifies the run belongs to both the URL team and the authenticated run creator.
+Legacy clients may omit `run_id` until the npm package migration is complete.
+
 ## Current state
 
 - [x] Define run statuses: created, running, completed, failed, and canceled.
@@ -271,18 +284,18 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Handle duplicate workflow starts idempotently.
 - [x] Decide what happens when workflow dispatch fails after the run commits.
 - [x] Add an observable dispatch-failed state if operational recovery requires it.
-- [ ] Test dispatch through the facade while mocking only the Temporal client boundary.
+- [x] Test dispatch through the facade while mocking only the Temporal client boundary.
 
 ### 10. Reuse V0 state synchronization
 
-- [ ] Document the current state-update endpoint and payload used by the npm Wizard.
-- [ ] Pass the existing Wizard run ID to both local and cloud executions.
-- [ ] Ensure a local setup agent creates its run before sending updates.
+- [x] Document the current state-update endpoint and payload used by the npm Wizard.
+- [x] Pass the existing Wizard run ID to both local and cloud executions.
+- [x] Ensure a local setup agent creates its run before sending updates.
 - [x] Ensure a Wizard Worker receives the pre-created run ID.
-- [ ] Bind updates to both `team_id` and `run_id`.
-- [ ] Preserve the existing Wizard session API and frontend stream behavior.
-- [ ] Add a compatibility test for the existing state-update path.
-- [ ] Keep V1 append-only run state updates out of the V0 migration.
+- [x] Bind updates to both `team_id` and `run_id`.
+- [x] Preserve the existing Wizard session API and frontend stream behavior.
+- [x] Add a compatibility test for the existing state-update path.
+- [x] Keep V1 append-only run state updates out of the V0 migration.
 
 ### 11. Add presentation and API support
 

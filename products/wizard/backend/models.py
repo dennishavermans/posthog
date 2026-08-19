@@ -24,6 +24,13 @@ from products.wizard.backend.facade.enums import (
 
 class WizardSession(UUIDModel, TeamScopedRootMixin, CreatedMetaFields):
     team = models.ForeignKey("posthog.Team", on_delete=models.CASCADE, related_name="+")
+    run = models.ForeignKey(
+        "wizard.WizardRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sessions",
+    )
 
     # db_constraint=False because posthog_user is a hot table (a constrained FK would lock it).
     created_by = models.ForeignKey(

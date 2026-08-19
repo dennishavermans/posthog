@@ -301,6 +301,11 @@ export interface WizardSessionDTOApi {
     created_at: string
     updated_at: string
     is_stale: boolean
+    /**
+     * Wizard run that owns this state snapshot, or null for clients that predate Wizard runs.
+     * @nullable
+     */
+    run_id?: string | null
 }
 
 export interface PaginatedWizardSessionDTOListApi {
@@ -371,6 +376,11 @@ export interface UpsertWizardSessionRequestApi {
      * @nullable
      */
     error?: UpsertWizardSessionRequestApiError
+    /**
+     * Wizard run ID returned when the setup agent starts. Older clients may omit it.
+     * @nullable
+     */
+    run_id?: string | null
 }
 
 /**

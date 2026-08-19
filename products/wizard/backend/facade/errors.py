@@ -2,6 +2,10 @@ class WizardSessionOwnershipError(Exception):
     pass
 
 
+class WizardSessionRunMismatchError(Exception):
+    pass
+
+
 class MissingGitHubIntegrationError(Exception):
     pass
 

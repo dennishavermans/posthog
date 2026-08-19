@@ -14,8 +14,9 @@ from products.wizard.backend.facade.contracts import (
     WizardTaskDTO,
 )
 from products.wizard.backend.facade.enums import WizardSessionRunPhase, WizardSessionTaskStatus
-from products.wizard.backend.facade.errors import WizardSessionOwnershipError
+from products.wizard.backend.facade.errors import WizardSessionOwnershipError, WizardSessionRunMismatchError
 from products.wizard.backend.logic.pubsub import publish_session_update
+from products.wizard.backend.logic.run_store import get_run_model
 from products.wizard.backend.logic.utils import is_stale
 from products.wizard.backend.metrics import report_session_upserted
 from products.wizard.backend.models import WizardSession
@@ -41,6 +42,15 @@ def upsert_session(params: UpsertWizardSessionInput) -> tuple[WizardSessionDTO, 
             .first()
         )
         previous_run_phase = previous_session.run_phase if previous_session else None
+
+        run_id = previous_session.run_id if previous_session is not None else None
+        if params.run_id is not None:
+            run = get_run_model(params.team_id, params.run_id)
+            if run.created_by_id is not None and run.created_by_id != params.created_by_id:
+                raise WizardSessionOwnershipError
+            if run_id is not None and run_id != params.run_id:
+                raise WizardSessionRunMismatchError
+            run_id = params.run_id
 
         # A session belongs to the user who created it. A later push from a
         # different user would overwrite the run data while `created_by` stays
@@ -81,6 +91,7 @@ def upsert_session(params: UpsertWizardSessionInput) -> tuple[WizardSessionDTO, 
             "error": params.error,
             "pending_input": params.pending_input,
             "handoff_text": handoff_text,
+            "run_id": run_id,
         }
         # created_by only in create_defaults so a later push for the same run can't reattribute it.
         instance, created = WizardSession.objects.update_or_create(
@@ -159,6 +170,7 @@ def _to_dto(instance: WizardSession) -> WizardSessionDTO:
     return WizardSessionDTO(
         session_id=instance.session_id,
         team_id=instance.team_id,
+        run_id=instance.run_id,
         workflow_id=instance.workflow_id,
         skill_id=instance.skill_id,
         started_at=instance.started_at,
