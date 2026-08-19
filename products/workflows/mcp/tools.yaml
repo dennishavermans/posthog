@@ -75,21 +75,6 @@ tools:
     hog-flows-partial-update:
         operation: hog_flows_partial_update
         enabled: false
-    hog-flows-proposals-approve-create:
-        operation: hog_flows_proposals_approve_create
-        enabled: false
-    hog-flows-proposals-create:
-        operation: hog_flows_proposals_create
-        enabled: false
-    hog-flows-proposals-list:
-        operation: hog_flows_proposals_list
-        enabled: false
-    hog-flows-proposals-reject-create:
-        operation: hog_flows_proposals_reject_create
-        enabled: false
-    hog-flows-proposals-retrieve:
-        operation: hog_flows_proposals_retrieve
-        enabled: false
     hog-flows-publish-create:
         operation: hog_flows_publish_create
         enabled: false
@@ -305,7 +290,11 @@ tools:
             a failed invocation into workflows-logs for the step-by-step trace.
     workflows-list-proposals:
         operation: hog_flows_proposals_list
-        enabled: true
+        # Defined but not enabled: the exec-mode tool catalog is a few dozen characters below the
+        # claude.ai registry cap on the serialized inputSchema, and every enabled tool name is
+        # inlined there. Creating a suggestion is the seam that matters, and duplicate suggestions
+        # are already prevented server-side by the source_id uniqueness, so this one waits for room.
+        enabled: false
         scopes:
             - hog_flow:read
         annotations:
@@ -393,9 +382,14 @@ tools:
             edit. When adding or editing a conditional_branch, each condition needs a 'filters' wrapper:
             {filters:{properties:[...]}}, not {properties:[...]} on the condition. Re-test the changed path with
             workflows-test-run after patching.
-    workflows-propose-change:
+    workflows-suggest:
         operation: hog_flows_proposals_create
-        enabled: true
+        # Defined but not enabled yet. Every enabled tool's name is inlined in the exec command
+        # reference, whose serialized inputSchema sits ~15 characters below the claude.ai registry
+        # cap on master, so enabling any new tool breaks that cap regardless of how short its name
+        # is. The REST endpoint is the seam in the meantime; flip this on once the reference has
+        # room. Verified with services/mcp/tests/unit/instructions-formatter-snapshot.test.ts.
+        enabled: false
         scopes:
             - hog_flow:write
         annotations:

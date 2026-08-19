@@ -90,8 +90,10 @@ On `HogFlowViewSet`, so the operations generate as `hog_flows_proposals_*` and b
 
 The create endpoint takes no in-app-session state: an MCP caller with a personal API key can post a proposal with provenance and nothing else.
 
-Two of these are exposed as MCP tools in `products/workflows/mcp/tools.yaml`, both gated on the same flag: `workflows-propose-change` (create) and `workflows-list-proposals` (so an agent can see what was already rejected before proposing it again).
-**Approve and reject are deliberately not MCP tools.** An agent can propose; only a person resolves.
+Two MCP tools are defined in `products/workflows/mcp/tools.yaml`, `workflows-suggest` (create) and `workflows-list-proposals`, both **shipped disabled**.
+Every enabled tool's name is inlined in the exec command reference, whose serialized inputSchema sits about 15 characters below the claude.ai registry cap on master, so enabling any new tool trips that cap no matter how short its name is.
+Until the reference has room, the REST endpoint is the agent seam; a Scout needs one of these enabled, so this is a dependency for that step.
+**Approve and reject are deliberately not MCP tools at all.** An agent can propose; only a person resolves.
 
 ### Approve reuses the restore pattern
 
