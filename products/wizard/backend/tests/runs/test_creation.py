@@ -5,7 +5,7 @@ from django.db import transaction
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace, LocalFolderWorkspace
-from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.facade.errors import (
     InvalidRepositoryError,
     InvalidWorkspaceEnvironmentError,
@@ -104,6 +104,37 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
         )
 
     dispatch.assert_called_once_with(WizardRunActivityInput(team_id=team.id, run_id=run.id))
+    assert run.status == WizardRunStatus.CREATED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_cloud_run_persists_dispatch_failure(team, user) -> None:
+    with (
+        patch(
+            "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+            return_value=123,
+        ),
+        patch(
+            "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+            return_value=True,
+        ),
+        patch(
+            "products.wizard.backend.logic.runs.temporal_client.start_wizard_run_workflow",
+            side_effect=RuntimeError("Temporal unavailable"),
+        ),
+    ):
+        run = wizard_facade.create_run(
+            CreateWizardRunInput(
+                team_id=team.id,
+                created_by_id=user.id,
+                environment=WizardRunEnvironment.CLOUD,
+                workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
+            )
+        )
+
+    assert run.status == WizardRunStatus.FAILED
+    assert run.error_code == WizardRunErrorCode.DISPATCH_FAILED
+    assert wizard_facade.get_run(team.id, run.id) == run
 
 
 @pytest.mark.django_db(transaction=True)

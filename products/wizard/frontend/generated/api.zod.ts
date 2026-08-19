@@ -58,13 +58,15 @@ export const WizardRunsFailCreateBody = /* @__PURE__ */ zod.object({
     error_code: zod
         .union([
             zod
-                .enum(['timeout', 'execution_failed'])
-                .describe('\* `timeout` - timeout\n\* `execution_failed` - execution_failed'),
+                .enum(['timeout', 'execution_failed', 'dispatch_failed'])
+                .describe(
+                    '\* `timeout` - timeout\n\* `execution_failed` - execution_failed\n\* `dispatch_failed` - dispatch_failed'
+                ),
             zod.null(),
         ])
         .optional()
         .describe(
-            'Machine-readable reason the Wizard run failed.\n\n\* `timeout` - timeout\n\* `execution_failed` - execution_failed'
+            'Machine-readable reason the Wizard run failed.\n\n\* `timeout` - timeout\n\* `execution_failed` - execution_failed\n\* `dispatch_failed` - dispatch_failed'
         ),
 })
 

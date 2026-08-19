@@ -115,7 +115,7 @@ Temporal workflow
 - [x] Replace the temporary `repository` input shape with workspace contracts.
 - [x] Persist workspace metadata.
 - [x] Separate facade contracts, enums, errors, application logic, and pure run rules.
-- [ ] Add Temporal execution.
+- [x] Add Temporal execution.
 - [x] Add Run Artifacts.
 
 The active step is dispatching cloud runs after persistence.
@@ -269,8 +269,8 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Use `transaction.on_commit` for workflow dispatch.
 - [x] Keep local run creation free of Temporal dispatch.
 - [x] Handle duplicate workflow starts idempotently.
-- [ ] Decide what happens when workflow dispatch fails after the run commits.
-- [ ] Add an observable dispatch-failed state if operational recovery requires it.
+- [x] Decide what happens when workflow dispatch fails after the run commits.
+- [x] Add an observable dispatch-failed state if operational recovery requires it.
 - [ ] Test dispatch through the facade while mocking only the Temporal client boundary.
 
 ### 10. Reuse V0 state synchronization

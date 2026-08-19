@@ -1,3 +1,4 @@
+import logging
 from functools import partial
 from uuid import UUID
 
@@ -23,6 +24,8 @@ from products.wizard.backend.logic.run_store import get_run_model
 from products.wizard.backend.models import WizardRun
 from products.wizard.backend.temporal import client as temporal_client
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput
+
+logger = logging.getLogger(__name__)
 
 
 def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
@@ -57,12 +60,25 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
         if params.environment == WizardRunEnvironment.CLOUD:
             database_transaction.on_commit(
                 partial(
-                    temporal_client.start_wizard_run_workflow,
+                    _dispatch_cloud_run,
                     WizardRunActivityInput(team_id=params.team_id, run_id=created.id),
                 )
             )
 
+    if params.environment == WizardRunEnvironment.CLOUD:
+        created.refresh_from_db(fields=["status", "error_code", "updated_at"])
     return _to_dto(created)
+
+
+def _dispatch_cloud_run(input: WizardRunActivityInput) -> None:
+    try:
+        temporal_client.start_wizard_run_workflow(input)
+    except Exception:
+        logger.exception(
+            "wizard_run_dispatch_failed",
+            extra={"team_id": input.team_id, "run_id": str(input.run_id)},
+        )
+        fail_run(input.team_id, input.run_id, error_code=WizardRunErrorCode.DISPATCH_FAILED)
 
 
 def get_run(team_id: int, run_id: UUID) -> WizardRunDTO:
