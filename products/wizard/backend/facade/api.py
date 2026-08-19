@@ -20,6 +20,7 @@ from products.wizard.backend.facade.contracts import (
     WizardRunDTO,
     WizardSessionDTO,
 )
+from products.wizard.backend.facade.enums import WizardRunErrorCode
 from products.wizard.backend.logic import (
     pubsub,
     runs as run_service,
@@ -86,3 +87,24 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
 
 def get_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     return run_service.get_run(team_id, run_id)
+
+
+def start_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    return run_service.start_run(team_id, run_id)
+
+
+def complete_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    return run_service.complete_run(team_id, run_id)
+
+
+def fail_run(
+    team_id: int,
+    run_id: UUID,
+    *,
+    error_code: WizardRunErrorCode | None = None,
+) -> WizardRunDTO:
+    return run_service.fail_run(team_id, run_id, error_code=error_code)
+
+
+def cancel_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    return run_service.cancel_run(team_id, run_id)

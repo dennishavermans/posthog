@@ -210,15 +210,15 @@ This audit covers all Wizard run work completed before the environment and works
 
 - [x] Add an internal, team-scoped run lookup.
 - [x] Add a typed run-not-found error that does not disclose another team's run.
-- [ ] Lock the run row with `select_for_update` during lifecycle changes.
-- [ ] Persist created to running through the existing transition rules.
-- [ ] Persist successful completion. Run Artifacts represent any produced changes.
-- [ ] Persist failure with an optional typed error code.
-- [ ] Persist cancellation without terminal metadata.
-- [ ] Leave the stored row unchanged when a transition fails validation.
-- [ ] Make repeated or concurrent terminal updates deterministic.
-- [ ] Keep generic transition persistence private. Public operations express intent or are driven by execution.
-- [ ] Expose cancellation through the facade only when a user-facing cancellation flow is added.
+- [x] Lock the run row with `select_for_update` during lifecycle changes.
+- [x] Persist created to running through the existing transition rules.
+- [x] Persist successful completion. Run Artifacts represent any produced changes.
+- [x] Persist failure with an optional typed error code.
+- [x] Persist cancellation without terminal metadata.
+- [x] Leave the stored row unchanged when a transition fails validation.
+- [x] Make repeated or concurrent terminal updates deterministic.
+- [x] Keep generic transition persistence private. Public operations express intent or are driven by execution.
+- [ ] Expose cancellation through HTTP only when a user-facing cancellation flow is added.
 
 ### 6. Define Run Artifacts
 

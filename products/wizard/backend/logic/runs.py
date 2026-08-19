@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from django.db import transaction as database_transaction
+
 from products.tasks.backend.facade import repo_selection
 from products.wizard.backend.facade.contracts import (
     CreateWizardRunInput,
@@ -19,7 +21,7 @@ from products.wizard.backend.facade.errors import (
     RepositoryNotAccessibleError,
     WizardRunNotFoundError,
 )
-from products.wizard.backend.logic.run_domain import validate_workspace_environment
+from products.wizard.backend.logic.run_domain import transition, validate_workspace_environment
 from products.wizard.backend.models import WizardRun
 
 
@@ -58,6 +60,47 @@ def get_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     run = WizardRun.objects.for_team(team_id).filter(id=run_id).first()
     if run is None:
         raise WizardRunNotFoundError
+
+    return _to_dto(run)
+
+
+def start_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    return _transition_run(team_id, run_id, WizardRunStatus.RUNNING)
+
+
+def complete_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    return _transition_run(team_id, run_id, WizardRunStatus.COMPLETED)
+
+
+def fail_run(
+    team_id: int,
+    run_id: UUID,
+    *,
+    error_code: WizardRunErrorCode | None = None,
+) -> WizardRunDTO:
+    return _transition_run(team_id, run_id, WizardRunStatus.FAILED, error_code=error_code)
+
+
+def cancel_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    return _transition_run(team_id, run_id, WizardRunStatus.CANCELLED)
+
+
+def _transition_run(
+    team_id: int,
+    run_id: UUID,
+    next_status: WizardRunStatus,
+    *,
+    error_code: WizardRunErrorCode | None = None,
+) -> WizardRunDTO:
+    with database_transaction.atomic():
+        run = WizardRun.objects.for_team(team_id).select_for_update().filter(id=run_id).first()
+        if run is None:
+            raise WizardRunNotFoundError
+
+        next_status = transition(WizardRunStatus(run.status), next_status, error_code=error_code)
+        run.status = next_status.value
+        run.error_code = error_code.value if error_code is not None else None
+        run.save(update_fields=["status", "error_code", "updated_at"])
 
     return _to_dto(run)
 
