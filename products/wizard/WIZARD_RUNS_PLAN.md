@@ -290,7 +290,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Validate missing and unknown workspace discriminators without database access.
 - [x] Add one database-backed endpoint test as a serializer wiring guard.
 - [x] Add request and response schema annotations.
-- [ ] Add create, retrieve, and any required status endpoints through `routes.py`.
+- [x] Add create, retrieve, and any required status endpoints through `routes.py`.
 - [x] Enforce team scoping from request context.
 - [x] Return typed errors with actionable public messages.
 - [x] Regenerate OpenAPI and product frontend types after serializer changes.

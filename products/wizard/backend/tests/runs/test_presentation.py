@@ -10,7 +10,7 @@ from posthog.models import Team
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import CreateWizardRunInput, LocalFolderWorkspace
-from products.wizard.backend.facade.enums import WizardRunEnvironment
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
 from products.wizard.backend.models import WizardRun
 
 
@@ -142,3 +142,92 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(len(response.json()), 1)
         self.assertEqual(response.json()[0]["run_id"], created["id"])
         self.assertEqual(response.json()[0]["artifact_type"], "git_diff")
+
+    @parameterized.expand(
+        (
+            ("complete", {}, WizardRunStatus.COMPLETED, None),
+            ("fail", {"error_code": "timeout"}, WizardRunStatus.FAILED, "timeout"),
+            ("cancel", {}, WizardRunStatus.CANCELLED, None),
+        )
+    )
+    def test_transition_local_run(
+        self,
+        action_name: str,
+        payload: dict[str, str],
+        expected_status: WizardRunStatus,
+        expected_error_code: str | None,
+    ) -> None:
+        created = self.client.post(
+            self._url(),
+            {
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "example-project"},
+            },
+            format="json",
+        ).json()
+
+        response = self.client.post(self._url(f"{created['id']}/{action_name}/"), payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["status"], expected_status.value)
+        self.assertEqual(response.json()["error_code"], expected_error_code)
+
+    def test_transition_rejects_terminal_run(self) -> None:
+        created = self.client.post(
+            self._url(),
+            {
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "example-project"},
+            },
+            format="json",
+        ).json()
+        self.client.post(self._url(f"{created['id']}/complete/"), {}, format="json")
+
+        response = self.client.post(self._url(f"{created['id']}/cancel/"), {}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.json()["code"], "invalid_transition")
+
+    @patch(
+        "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+        return_value=True,
+    )
+    @patch(
+        "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+        return_value=123,
+    )
+    def test_transition_rejects_cloud_run(self, _resolve_integration, _repository_accessible) -> None:
+        created = self.client.post(
+            self._url(),
+            {
+                "environment": "cloud",
+                "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
+            },
+            format="json",
+        ).json()
+
+        response = self.client.post(self._url(f"{created['id']}/cancel/"), {}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.json()["code"], "cloud_run_managed")
+        self.assertEqual(wizard_facade.get_run(self.team.id, UUID(created["id"])).status, WizardRunStatus.CREATED)
+
+    def test_transition_does_not_disclose_another_teams_run(self) -> None:
+        other_team = Team.objects.create(
+            organization=self.team.organization,
+            project=self.team.project,
+            name="Other environment",
+        )
+        other_run = wizard_facade.create_run(
+            CreateWizardRunInput(
+                team_id=other_team.id,
+                created_by_id=self.user.id,
+                environment=WizardRunEnvironment.LOCAL,
+                workspace=LocalFolderWorkspace(project_name="other-project"),
+            )
+        )
+
+        response = self.client.post(self._url(f"{other_run.id}/complete/"), {}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(wizard_facade.get_run(other_team.id, other_run.id).status, WizardRunStatus.RUNNING)

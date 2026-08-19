@@ -14,6 +14,7 @@ import type {
     WizardRunApi,
     WizardRunArtifactApi,
     WizardRunCreateRequestApi,
+    WizardRunFailureRequestApi,
     WizardSessionDTOApi,
     WizardSessionsLatestRetrieveParams,
     WizardSessionsListParams,
@@ -73,6 +74,63 @@ export const wizardRunsArtifactsList = async (
     return apiMutator<WizardRunArtifactApi[]>(getWizardRunsArtifactsListUrl(projectId, runId), {
         ...options,
         method: 'GET',
+    })
+}
+
+export const getWizardRunsCancelCreateUrl = (projectId: string, runId: string) => {
+    return `/api/projects/${projectId}/wizard/runs/${runId}/cancel/`
+}
+
+/**
+ * Cancel a local Wizard run.
+ */
+export const wizardRunsCancelCreate = async (
+    projectId: string,
+    runId: string,
+    options?: RequestInit
+): Promise<WizardRunApi> => {
+    return apiMutator<WizardRunApi>(getWizardRunsCancelCreateUrl(projectId, runId), {
+        ...options,
+        method: 'POST',
+    })
+}
+
+export const getWizardRunsCompleteCreateUrl = (projectId: string, runId: string) => {
+    return `/api/projects/${projectId}/wizard/runs/${runId}/complete/`
+}
+
+/**
+ * Complete a local Wizard run.
+ */
+export const wizardRunsCompleteCreate = async (
+    projectId: string,
+    runId: string,
+    options?: RequestInit
+): Promise<WizardRunApi> => {
+    return apiMutator<WizardRunApi>(getWizardRunsCompleteCreateUrl(projectId, runId), {
+        ...options,
+        method: 'POST',
+    })
+}
+
+export const getWizardRunsFailCreateUrl = (projectId: string, runId: string) => {
+    return `/api/projects/${projectId}/wizard/runs/${runId}/fail/`
+}
+
+/**
+ * Fail a local Wizard run.
+ */
+export const wizardRunsFailCreate = async (
+    projectId: string,
+    runId: string,
+    wizardRunFailureRequestApi?: WizardRunFailureRequestApi,
+    options?: RequestInit
+): Promise<WizardRunApi> => {
+    return apiMutator<WizardRunApi>(getWizardRunsFailCreateUrl(projectId, runId), {
+        ...options,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(wizardRunFailureRequestApi),
     })
 }
 

@@ -177,6 +177,13 @@ export interface WizardRunArtifactApi {
     readonly created_at: string
 }
 
+export interface WizardRunFailureRequestApi {
+    /** Machine-readable reason the Wizard run failed.
+     *
+     * * `timeout` - timeout */
+    error_code?: ErrorCodeEnumApi | null
+}
+
 /**
  * The in-flight `wizard_ask` question. Typed rather than a free-form dict so the shape the
  * widget renders is enforced at the edge instead of trusted from the producer.

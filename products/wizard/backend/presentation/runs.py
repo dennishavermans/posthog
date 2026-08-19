@@ -1,4 +1,5 @@
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from functools import partial
 from typing import cast
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
+from posthog.exceptions import Conflict
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import (
@@ -27,6 +29,7 @@ from products.wizard.backend.facade.enums import (
     WizardWorkspaceType,
 )
 from products.wizard.backend.facade.errors import (
+    IllegalStatusTransitionError,
     InvalidRepositoryError,
     InvalidWorkspaceEnvironmentError,
     MissingGitHubIntegrationError,
@@ -123,6 +126,19 @@ class WizardRunCreateRequestSerializer(serializers.Serializer):
         )
 
 
+class WizardRunFailureRequestSerializer(serializers.Serializer):
+    error_code = serializers.ChoiceField(
+        required=False,
+        allow_null=True,
+        choices=[error_code.value for error_code in WizardRunErrorCode],
+        help_text="Machine-readable reason the Wizard run failed.",
+    )
+
+    def to_error_code(self) -> WizardRunErrorCode | None:
+        value = cast(str | None, self.validated_data.get("error_code"))
+        return WizardRunErrorCode(value) if value is not None else None
+
+
 class WizardRunSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True, help_text="Unique ID of the Wizard run.")
     team_id = serializers.IntegerField(read_only=True, help_text="Project that owns the Wizard run.")
@@ -178,7 +194,7 @@ class WizardRunErrorSerializer(serializers.Serializer):
 class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
     scope_object = "wizard_session"
     scope_object_read_actions = ["retrieve", "artifacts"]
-    scope_object_write_actions = ["create"]
+    scope_object_write_actions = ["create", "complete", "fail", "cancel"]
     http_method_names = ["get", "post", "head", "options"]
     lookup_field = "run_id"
     lookup_value_regex = "[0-9a-fA-F-]{36}"
@@ -234,6 +250,49 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
             raise NotFound("No Wizard run was found for this project.")
         return Response(WizardRunArtifactSerializer(artifacts, many=True).data)
 
+    @extend_schema(
+        request=None,
+        responses={
+            200: WizardRunSerializer,
+            404: OpenApiResponse(response=WizardRunErrorSerializer),
+            409: OpenApiResponse(response=WizardRunErrorSerializer),
+        },
+        description="Complete a local Wizard run.",
+    )
+    @action(detail=True, methods=["post"])
+    def complete(self, request: Request, *args: object, **kwargs: object) -> Response:
+        return self._transition_local_run(wizard_facade.complete_run, "completed")
+
+    @extend_schema(
+        request=WizardRunFailureRequestSerializer,
+        responses={
+            200: WizardRunSerializer,
+            400: OpenApiResponse(response=WizardRunErrorSerializer),
+            404: OpenApiResponse(response=WizardRunErrorSerializer),
+            409: OpenApiResponse(response=WizardRunErrorSerializer),
+        },
+        description="Fail a local Wizard run.",
+    )
+    @action(detail=True, methods=["post"])
+    def fail(self, request: Request, *args: object, **kwargs: object) -> Response:
+        serializer = WizardRunFailureRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        operation = partial(wizard_facade.fail_run, error_code=serializer.to_error_code())
+        return self._transition_local_run(operation, "failed")
+
+    @extend_schema(
+        request=None,
+        responses={
+            200: WizardRunSerializer,
+            404: OpenApiResponse(response=WizardRunErrorSerializer),
+            409: OpenApiResponse(response=WizardRunErrorSerializer),
+        },
+        description="Cancel a local Wizard run.",
+    )
+    @action(detail=True, methods=["post"])
+    def cancel(self, request: Request, *args: object, **kwargs: object) -> Response:
+        return self._transition_local_run(wizard_facade.cancel_run, "cancelled")
+
     def _get_run(self) -> WizardRunDTO:
         try:
             return wizard_facade.get_run(self.team_id, self._run_id())
@@ -242,3 +301,23 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
 
     def _run_id(self) -> UUID:
         return UUID(cast(str, self.kwargs["run_id"]))
+
+    def _local_run_id(self) -> UUID:
+        run = self._get_run()
+        if run.environment != WizardRunEnvironment.LOCAL:
+            raise Conflict("Cloud Wizard runs are managed by their worker.", code="cloud_run_managed")
+        return run.id
+
+    def _transition_local_run(
+        self,
+        operation: Callable[[int, UUID], WizardRunDTO],
+        next_status: str,
+    ) -> Response:
+        try:
+            run = operation(self.team_id, self._local_run_id())
+        except IllegalStatusTransitionError:
+            raise Conflict(
+                f"This Wizard run cannot be {next_status} from its current status.",
+                code="invalid_transition",
+            )
+        return Response(WizardRunSerializer(run).data)

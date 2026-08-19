@@ -52,6 +52,16 @@ export const WizardRunsCreateBody = /* @__PURE__ */ zod.object({
 })
 
 /**
+ * Fail a local Wizard run.
+ */
+export const WizardRunsFailCreateBody = /* @__PURE__ */ zod.object({
+    error_code: zod
+        .union([zod.enum(['timeout']).describe('\* `timeout` - timeout'), zod.null()])
+        .optional()
+        .describe('Machine-readable reason the Wizard run failed.\n\n\* `timeout` - timeout'),
+})
+
+/**
  * Upsert a wizard session. The `session_id` key is the idempotency anchor — reposting the same `session_id` replaces the existing row. Returns 201 on create, 200 on update.
  */
 export const wizardSessionsCreateBodyPendingInputOneIdMax = 255
