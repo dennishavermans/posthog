@@ -199,6 +199,7 @@ def test_execute_wizard_maps_worker_error(worker_error: Exception, error_type: s
         pytest.raises(ApplicationError) as error,
     ):
         get_run.return_value.program.command = ()
+        get_run.return_value.program.wizard_version = "2.60.0"
         async_to_sync(_run_execute_wizard)(workspace)
 
     execute.assert_called_once_with(
@@ -206,6 +207,7 @@ def test_execute_wizard_maps_worker_error(worker_error: Exception, error_type: s
             sandbox_id=workspace.sandbox_id,
             workspace_path=workspace.root_path,
             team_id=workspace.team_id,
+            wizard_version="2.60.0",
             program_command=(),
         )
     )

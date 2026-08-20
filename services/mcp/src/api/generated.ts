@@ -58070,6 +58070,8 @@ export namespace Schemas {
       readonly name: string;
       /** What the program does. */
       readonly description: string;
+      /** Exact Wizard package version used by the program. */
+      readonly wizard_version: string;
       /** Wizard CLI arguments used to start the program. */
       readonly command: readonly string[];
       /** Labels that categorize the program. */

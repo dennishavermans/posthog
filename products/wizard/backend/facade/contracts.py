@@ -113,6 +113,7 @@ class WizardProgram:
     id: str
     name: str
     description: str
+    wizard_version: str
     command: tuple[str, ...]
     tags: tuple[str, ...]
     required_programs: tuple[str, ...]

@@ -7,14 +7,20 @@ import posthoganalytics
 from products.wizard.backend.facade.contracts import WizardProgram
 from products.wizard.backend.facade.enums import WizardRunEnvironment
 from products.wizard.backend.facade.errors import WizardProgramNotAvailableError
+from products.wizard.backend.logic.registry.versions import (
+    DEFAULT_WIZARD_VERSION,
+    LEGACY_WIZARD_VERSION,
+    is_exact_wizard_version,
+)
 
 REGISTRY_FEATURE_FLAG = "wizard-program-registry"
-REGISTRY_VERSION = 1
+REGISTRY_VERSION = 2
 PROGRAM_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PROGRAM_FIELDS = {
     "id",
     "name",
     "description",
+    "wizard_version",
     "command",
     "tags",
     "required_programs",
@@ -24,6 +30,7 @@ POSTHOG_INTEGRATION_PROGRAM = WizardProgram(
     id="posthog-integration",
     name="PostHog integration",
     description="Set up PostHog SDK integration",
+    wizard_version=DEFAULT_WIZARD_VERSION,
     command=(),
     tags=(),
     required_programs=(),
@@ -67,6 +74,7 @@ def serialize_program(program: WizardProgram) -> dict[str, object]:
         "id": program.id,
         "name": program.name,
         "description": program.description,
+        "wizard_version": program.wizard_version,
         "command": list(program.command),
         "tags": list(program.tags),
         "required_programs": list(program.required_programs),
@@ -75,7 +83,7 @@ def serialize_program(program: WizardProgram) -> dict[str, object]:
 
 
 def deserialize_program(value: object) -> WizardProgram:
-    program = _parse_program(value)
+    program = _parse_program(value, allow_legacy_version=True)
     if program is None:
         raise ValueError("Invalid persisted Wizard program")
     return program
@@ -112,13 +120,14 @@ def _decode_payload(payload: object) -> object:
         return None
 
 
-def _parse_program(value: object) -> WizardProgram | None:
+def _parse_program(value: object, *, allow_legacy_version: bool = False) -> WizardProgram | None:
     if not isinstance(value, dict) or set(value) != PROGRAM_FIELDS:
         return None
 
     program_id = _parse_slug(value["id"])
     name = _parse_nonempty_string(value["name"])
     description = _parse_nonempty_string(value["description"])
+    wizard_version = _parse_wizard_version(value["wizard_version"], allow_legacy=allow_legacy_version)
     command = _parse_slug_list(value["command"])
     tags = _parse_slug_list(value["tags"])
     required_programs = _parse_slug_list(value["required_programs"])
@@ -127,6 +136,7 @@ def _parse_program(value: object) -> WizardProgram | None:
         program_id is None
         or name is None
         or description is None
+        or wizard_version is None
         or command is None
         or tags is None
         or required_programs is None
@@ -139,6 +149,7 @@ def _parse_program(value: object) -> WizardProgram | None:
         id=program_id,
         name=name,
         description=description,
+        wizard_version=wizard_version,
         command=command,
         tags=tags,
         required_programs=required_programs,
@@ -154,6 +165,16 @@ def _parse_nonempty_string(value: object) -> str | None:
 
 def _parse_slug(value: object) -> str | None:
     if not isinstance(value, str) or PROGRAM_ID_PATTERN.fullmatch(value) is None:
+        return None
+    return value
+
+
+def _parse_wizard_version(value: object, *, allow_legacy: bool) -> str | None:
+    if not isinstance(value, str):
+        return None
+    if allow_legacy and value == LEGACY_WIZARD_VERSION:
+        return value
+    if not is_exact_wizard_version(value):
         return None
     return value
 

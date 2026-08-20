@@ -23,6 +23,7 @@ def execute_wizard(input: PreparedGitRepositoryWorkspace) -> None:
                 sandbox_id=input.sandbox_id,
                 workspace_path=input.root_path,
                 team_id=input.team_id,
+                wizard_version=run.program.wizard_version,
                 program_command=run.program.command,
             )
         )

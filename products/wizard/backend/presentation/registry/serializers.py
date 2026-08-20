@@ -7,6 +7,9 @@ class WizardProgramSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True, help_text="Stable identifier used to select the program.")
     name = serializers.CharField(read_only=True, help_text="Display name of the program.")
     description = serializers.CharField(read_only=True, help_text="What the program does.")
+    wizard_version = serializers.CharField(
+        read_only=True, help_text="Exact Wizard package version used by the program."
+    )
     command = serializers.ListField(
         child=serializers.CharField(),
         read_only=True,

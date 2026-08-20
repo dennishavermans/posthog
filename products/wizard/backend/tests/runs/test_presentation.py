@@ -61,6 +61,7 @@ class TestWizardRunViewSet(APIBaseTest):
                     "id": "posthog-integration",
                     "name": "PostHog integration",
                     "description": "Set up PostHog SDK integration",
+                    "wizard_version": "2.60.0",
                     "command": [],
                     "tags": [],
                     "required_programs": [],
@@ -86,7 +87,7 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(response.json()["code"], "required")
 
     def test_create_rejects_unavailable_program(self) -> None:
-        with patch("posthoganalytics.get_feature_flag_payload", return_value={"version": 1, "programs": []}):
+        with patch("posthoganalytics.get_feature_flag_payload", return_value={"version": 2, "programs": []}):
             response = self.client.post(
                 self._url(),
                 {

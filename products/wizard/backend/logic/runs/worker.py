@@ -18,9 +18,9 @@ from products.tasks.backend.facade.sandbox import (
     get_sandbox_class,
     sandbox_repo_path,
 )
+from products.wizard.backend.logic.registry.versions import is_executable_wizard_version
 from products.wizard.backend.logic.runs import publishing
 
-WIZARD_PACKAGE = "@posthog/wizard@latest"
 WIZARD_TIMEOUT_SECONDS = 45 * 60
 WIZARD_TIMEOUT_EXIT_CODE = 124
 WIZARD_ERROR_DETAIL_LENGTH = 2000
@@ -51,6 +51,7 @@ class WizardExecutionRequest:
     sandbox_id: str
     workspace_path: str
     team_id: int
+    wizard_version: str
     program_command: tuple[str, ...]
 
 
@@ -126,7 +127,7 @@ def clone_repository(request: GitRepositoryCloneRequest) -> str:
 def execute_wizard(request: WizardExecutionRequest) -> None:
     sandbox = get_sandbox_class().get_by_id(request.sandbox_id)
     wizard_result = sandbox.execute(
-        _wizard_command(request.workspace_path, request.team_id, request.program_command),
+        _wizard_command(request.workspace_path, request.team_id, request.wizard_version, request.program_command),
         timeout_seconds=SANDBOX_EXECUTION_TIMEOUT_SECONDS,
     )
     if wizard_result.exit_code == WIZARD_TIMEOUT_EXIT_CODE:
@@ -185,13 +186,21 @@ def destroy_worker(sandbox_id: str) -> None:
     sandbox.destroy()
 
 
-def _wizard_command(repository_path: str, team_id: int, program_command: tuple[str, ...]) -> str:
+def _wizard_command(
+    repository_path: str,
+    team_id: int,
+    wizard_version: str,
+    program_command: tuple[str, ...],
+) -> str:
+    if not is_executable_wizard_version(wizard_version):
+        raise ValueError("Invalid Wizard version")
     if any(WIZARD_PROGRAM_COMMAND_PATTERN.fullmatch(argument) is None for argument in program_command):
         raise ValueError("Invalid Wizard program command")
+    wizard_package = shlex.quote(f"@posthog/wizard@{wizard_version}")
     parts = [
         f"cd {shlex.quote(repository_path)} &&",
         f"timeout -k 30 {WIZARD_TIMEOUT_SECONDS}",
-        f"npx --yes {WIZARD_PACKAGE}",
+        f"npx --yes {wizard_package}",
         *(shlex.quote(argument) for argument in program_command),
         "--headless-DONOTUSE-EXPERIMENTAL",
         "--install-dir .",
