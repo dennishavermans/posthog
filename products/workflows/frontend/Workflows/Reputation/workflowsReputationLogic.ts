@@ -7,6 +7,7 @@ import { hogFlowsReputationRetrieve } from 'products/workflows/frontend/generate
 import type {
     AwsTenantReputationApi,
     EmailSendingRatesApi,
+    IspSendingHealthApi,
     TeamEmailReputationResponseApi,
     WorkflowEmailSendingRatesApi,
 } from 'products/workflows/frontend/generated/api.schemas'
@@ -17,6 +18,7 @@ export interface workflowsReputationLogicValues {
     awsReputation: AwsTenantReputationApi | null
     reputationResponse: TeamEmailReputationResponseApi | null
     reputationResponseLoading: boolean
+    ispSendingHealth: readonly IspSendingHealthApi[]
     search: string
     teamReputation: EmailSendingRatesApi | null
     workflowSnapshots: readonly WorkflowEmailSendingRatesApi[]
@@ -54,6 +56,7 @@ export interface workflowsReputationLogicActions {
 export interface workflowsReputationLogicMeta {
     __keaTypeGenInternalSelectorTypes: {
         awsReputation: (reputationResponse: TeamEmailReputationResponseApi | null) => AwsTenantReputationApi | null
+        ispSendingHealth: (reputationResponse: TeamEmailReputationResponseApi | null) => readonly IspSendingHealthApi[]
         teamReputation: (reputationResponse: TeamEmailReputationResponseApi | null) => EmailSendingRatesApi | null
         workflowSnapshots: (
             reputationResponse: TeamEmailReputationResponseApi | null
@@ -123,6 +126,10 @@ export const workflowsReputationLogic = kea<workflowsReputationLogicType>([
             (s) => [s.reputationResponse],
             (response: TeamEmailReputationResponseApi | null): EmailSendingRatesApi | null =>
                 response?.reputation ?? null,
+        ],
+        ispSendingHealth: [
+            (s) => [s.reputationResponse],
+            (response: TeamEmailReputationResponseApi | null): readonly IspSendingHealthApi[] => response?.isps ?? [],
         ],
         workflowSnapshots: [
             (s) => [s.reputationResponse],

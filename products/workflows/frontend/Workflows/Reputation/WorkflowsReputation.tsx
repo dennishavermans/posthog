@@ -9,6 +9,7 @@ import type {
     AwsTenantReputationApi,
     AwsTenantReputationHealthEnumApi,
     EmailSendingRatesApi,
+    IspSendingHealthApi,
     WorkflowEmailSendingRatesApi,
 } from 'products/workflows/frontend/generated/api.schemas'
 
@@ -134,12 +135,74 @@ function AwsFindings({ aws }: { aws: AwsTenantReputationApi }): JSX.Element | nu
     )
 }
 
+function IspBreakdown({ isps }: { isps: readonly IspSendingHealthApi[] }): JSX.Element | null {
+    if (isps.length === 0) {
+        return null
+    }
+    return (
+        <div className="mt-4 space-y-2" data-attr="workflows-reputation-isp-breakdown">
+            <MetricLabel
+                label="By mailbox provider"
+                tooltip={`One provider filtering your email is invisible in the project-wide rates above, which pool every provider together. ${WINDOW_TOOLTIP}`}
+            />
+            <LemonTable
+                dataSource={[...isps]}
+                rowKey={(row) => row.isp}
+                columns={[
+                    {
+                        title: 'Provider',
+                        key: 'isp',
+                        render: (_, row: IspSendingHealthApi) => <span className="font-semibold">{row.isp}</span>,
+                    },
+                    {
+                        title: 'Delivery rate',
+                        key: 'delivery_rate',
+                        align: 'right',
+                        render: (_, row: IspSendingHealthApi) => (
+                            <Tooltip title="Emails this provider accepted, divided by emails sent to it. Accepting a message is not the same as putting it in the inbox: a provider can accept your email and still file it as spam.">
+                                <span className="tabular-nums cursor-default">{formatRate(row.delivery_rate)}</span>
+                            </Tooltip>
+                        ),
+                    },
+                    {
+                        title: 'Bounce rate',
+                        key: 'bounce_rate',
+                        align: 'right',
+                        render: (_, row: IspSendingHealthApi) => <RateCell rate={row.bounce_rate} kind="bounce" />,
+                    },
+                    {
+                        title: 'Complaint rate',
+                        key: 'complaint_rate',
+                        align: 'right',
+                        render: (_, row: IspSendingHealthApi) =>
+                            row.complaint_rate === null ? (
+                                <Tooltip title="This provider does not report spam complaints back to senders, so there is no rate to show. Watch its delivery rate instead.">
+                                    <span className="text-secondary cursor-default">Not reported</span>
+                                </Tooltip>
+                            ) : (
+                                <RateCell rate={row.complaint_rate} kind="complaint" />
+                            ),
+                    },
+                    {
+                        title: 'Emails sent',
+                        key: 'emails_sent',
+                        align: 'right',
+                        render: (_, row: IspSendingHealthApi) => humanFriendlyNumber(row.emails_sent),
+                    },
+                ]}
+            />
+        </div>
+    )
+}
+
 function TeamRatesCard({
     reputation,
     aws,
+    isps,
 }: {
     reputation: EmailSendingRatesApi | null
     aws: AwsTenantReputationApi | null
+    isps: readonly IspSendingHealthApi[]
 }): JSX.Element {
     return (
         <div className="border rounded p-4 bg-surface-primary">
@@ -180,12 +243,13 @@ function TeamRatesCard({
                 </div>
             )}
             {aws && <AwsFindings aws={aws} />}
+            <IspBreakdown isps={isps} />
         </div>
     )
 }
 
 export function WorkflowsReputation(): JSX.Element {
-    const { awsReputation, teamReputation, workflowSnapshots, reputationResponseLoading, search } =
+    const { awsReputation, teamReputation, ispSendingHealth, workflowSnapshots, reputationResponseLoading, search } =
         useValues(workflowsReputationLogic)
     const { setSearch } = useActions(workflowsReputationLogic)
 
@@ -203,7 +267,7 @@ export function WorkflowsReputation(): JSX.Element {
                 We judge and enforce reputation per project.
             </LemonBanner>
             {teamReputation || awsReputation ? (
-                <TeamRatesCard reputation={teamReputation} aws={awsReputation} />
+                <TeamRatesCard reputation={teamReputation} aws={awsReputation} isps={ispSendingHealth} />
             ) : (
                 !reputationResponseLoading && (
                     <div className="border rounded p-4 text-secondary">
