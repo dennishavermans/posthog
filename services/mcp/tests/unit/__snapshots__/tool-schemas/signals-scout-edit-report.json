@@ -120,6 +120,11 @@
             ],
             "description": "Optional new summary. Markdown is supported (headings, lists, code, links; images are not rendered); lead with one plain declarative sentence — it becomes the inbox card headline. The pipeline may later re-research and overwrite it."
         },
+        "supersedes_implementation": {
+            "default": false,
+            "description": "Set this only when your rewrite changes what the fix should be: a different root cause, a different file or layer, a materially wider or narrower scope. More evidence for the same fix is not a reason, because the report's open pull request already implements it. Setting it true closes that pull request and opens a new one, so a false positive throws away review someone may already have done. Only honored alongside a `title` or `summary` that actually changes, and only for the first few such rewrites.",
+            "type": "boolean"
+        },
         "title": {
             "anyOf": [
                 {
