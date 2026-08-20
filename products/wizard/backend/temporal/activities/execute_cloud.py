@@ -5,7 +5,7 @@ from posthog.temporal.common.utils import asyncify
 
 from products.tasks.backend.facade import repo_selection
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import GitRepositoryWorkspace
+from products.wizard.backend.facade.contracts import CreatePullRequestArtifactInput, GitRepositoryWorkspace
 from products.wizard.backend.facade.enums import WizardRunEnvironment
 from products.wizard.backend.logic import cloud_worker
 from products.wizard.backend.logic.cloud_worker import (
@@ -51,7 +51,7 @@ def execute_cloud_run(input: WizardRunActivityInput) -> None:
         )
 
     try:
-        diff = cloud_worker.execute_wizard_worker(
+        result = cloud_worker.execute_wizard_worker(
             WizardWorkerInput(
                 team_id=input.team_id,
                 created_by_id=run.created_by_id,
@@ -73,4 +73,16 @@ def execute_cloud_run(input: WizardRunActivityInput) -> None:
             non_retryable=True,
         ) from error
 
-    wizard_facade.create_git_diff_artifact(input.team_id, input.run_id, diff)
+    wizard_facade.create_git_diff_artifact(input.team_id, input.run_id, result.diff)
+    if result.pull_request is not None:
+        wizard_facade.create_pull_request_artifact(
+            CreatePullRequestArtifactInput(
+                team_id=input.team_id,
+                run_id=input.run_id,
+                url=result.pull_request.url,
+                number=result.pull_request.number,
+                repository=result.pull_request.repository,
+                head_branch=result.pull_request.head_branch,
+                base_branch=result.pull_request.base_branch,
+            )
+        )

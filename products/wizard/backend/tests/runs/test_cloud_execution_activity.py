@@ -5,12 +5,20 @@ from asgiref.sync import async_to_sync
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
+from products.tasks.backend.facade.repository import RepositoryPullRequest
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace, WizardRunDTO
-from products.wizard.backend.facade.enums import WizardRunEnvironment
+from products.wizard.backend.facade.contracts import (
+    CreateWizardRunInput,
+    GitRepositoryWorkspace,
+    WizardRunDTO,
+    WizardRunGitDiffArtifactDTO,
+    WizardRunPullRequestArtifactDTO,
+)
+from products.wizard.backend.facade.enums import WizardRunArtifactType, WizardRunEnvironment
 from products.wizard.backend.logic.cloud_worker import (
     WizardWorkerExecutionError,
     WizardWorkerInput,
+    WizardWorkerResult,
     WizardWorkerTimeoutError,
 )
 from products.wizard.backend.temporal.activities.execute_cloud import (
@@ -53,9 +61,16 @@ async def _run_execute_cloud_activity_async(input: WizardRunActivityInput) -> No
 
 @pytest.mark.django_db(transaction=True)
 @patch("products.wizard.backend.logic.artifacts.object_storage.write")
-def test_execute_cloud_run_rechecks_access_and_stores_diff(_write: MagicMock, team, user) -> None:
+def test_execute_cloud_run_rechecks_access_and_stores_artifacts(_write: MagicMock, team, user) -> None:
     run = _create_cloud_run(team.id, user.id)
     diff = b"diff --git a/a b/a\n"
+    pull_request = RepositoryPullRequest(
+        repository="posthog/posthog",
+        number=123,
+        url="https://github.com/posthog/posthog/pull/123",
+        head_branch="posthog/wizard-123",
+        base_branch="master",
+    )
 
     with (
         patch(
@@ -68,7 +83,7 @@ def test_execute_cloud_run_rechecks_access_and_stores_diff(_write: MagicMock, te
         ) as repository_accessible,
         patch(
             "products.wizard.backend.temporal.activities.execute_cloud.cloud_worker.execute_wizard_worker",
-            return_value=diff,
+            return_value=WizardWorkerResult(diff=diff, pull_request=pull_request),
         ) as execute_worker,
     ):
         _run_execute_cloud_activity(WizardRunActivityInput(team_id=team.id, run_id=run.id))
@@ -85,8 +100,17 @@ def test_execute_cloud_run_rechecks_access_and_stores_diff(_write: MagicMock, te
         )
     )
     artifacts = wizard_facade.list_run_artifacts(team.id, run.id)
-    assert len(artifacts) == 1
-    assert artifacts[0].size_bytes == len(diff)
+    assert {artifact.artifact_type for artifact in artifacts} == {
+        WizardRunArtifactType.GIT_DIFF,
+        WizardRunArtifactType.PULL_REQUEST,
+    }
+    git_diff_artifact = next(artifact for artifact in artifacts if isinstance(artifact, WizardRunGitDiffArtifactDTO))
+    assert git_diff_artifact.size_bytes == len(diff)
+    pull_request_artifact = next(
+        artifact for artifact in artifacts if isinstance(artifact, WizardRunPullRequestArtifactDTO)
+    )
+    assert pull_request_artifact.url == pull_request.url
+    assert pull_request_artifact.number == pull_request.number
 
 
 @pytest.mark.django_db(transaction=True)

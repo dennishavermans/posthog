@@ -8,6 +8,7 @@ from posthog.models.user import User
 from posthog.temporal.oauth import create_wizard_oauth_access_token_for_user
 from posthog.utils import get_instance_region
 
+from products.tasks.backend.facade import repository as repository_facade
 from products.tasks.backend.facade.repo_selection import get_github_token
 from products.tasks.backend.facade.sandbox import SandboxConfig, SandboxTemplate, get_sandbox_class, sandbox_repo_path
 
@@ -16,6 +17,9 @@ WIZARD_TIMEOUT_SECONDS = 45 * 60
 WIZARD_TIMEOUT_EXIT_CODE = 124
 SANDBOX_EXECUTION_TIMEOUT_SECONDS = WIZARD_TIMEOUT_SECONDS + 120
 SANDBOX_TTL_SECONDS = WIZARD_TIMEOUT_SECONDS + 300
+PULL_REQUEST_TITLE = "Set up PostHog"
+PULL_REQUEST_BODY = "This pull request contains changes created by Wizard, PostHog's setup agent."
+PULL_REQUEST_COMMIT_MESSAGE = "Set up PostHog"
 
 
 @frozen
@@ -25,6 +29,12 @@ class WizardWorkerInput:
     run_id: UUID
     github_integration_id: int
     repository: str
+
+
+@frozen
+class WizardWorkerResult:
+    diff: bytes
+    pull_request: repository_facade.RepositoryPullRequest | None
 
 
 class WizardWorkerExecutionError(Exception):
@@ -38,7 +48,7 @@ class WizardWorkerTimeoutError(Exception):
     pass
 
 
-def execute_wizard_worker(input: WizardWorkerInput) -> bytes:
+def execute_wizard_worker(input: WizardWorkerInput) -> WizardWorkerResult:
     user = User.objects.get(id=input.created_by_id)
     github_token = get_github_token(input.github_integration_id) or ""
     wizard_token = create_wizard_oauth_access_token_for_user(user, input.team_id)
@@ -82,7 +92,30 @@ def execute_wizard_worker(input: WizardWorkerInput) -> bytes:
             timeout_seconds=60,
         )
         _raise_for_failure("diff capture", diff_result.exit_code)
-        return diff_result.stdout.encode("utf-8")
+        diff = diff_result.stdout.encode("utf-8")
+        if not diff:
+            return WizardWorkerResult(diff=diff, pull_request=None)
+
+        branch = _pull_request_branch(input.run_id)
+        try:
+            commit = repository_facade.create_signed_commit(
+                sandbox,
+                repository=input.repository,
+                branch=branch,
+                message=PULL_REQUEST_COMMIT_MESSAGE,
+            )
+            pull_request = repository_facade.create_pull_request(
+                team_id=input.team_id,
+                integration_id=input.github_integration_id,
+                repository=input.repository,
+                head_branch=commit.branch,
+                title=PULL_REQUEST_TITLE,
+                body=PULL_REQUEST_BODY,
+                source="wizard",
+            )
+        except repository_facade.RepositoryPublishingError as error:
+            raise WizardWorkerExecutionError("publishing", 1) from error
+        return WizardWorkerResult(diff=diff, pull_request=pull_request)
     finally:
         sandbox.destroy()
 
@@ -104,6 +137,10 @@ def _wizard_command(repository_path: str, team_id: int) -> str:
 
 def _git_diff_command(repository_path: str) -> str:
     return f"cd {shlex.quote(repository_path)} && git add -N --all && git diff --binary --no-ext-diff HEAD"
+
+
+def _pull_request_branch(run_id: UUID) -> str:
+    return f"posthog/wizard-{run_id.hex[:12]}"
 
 
 def _wizard_region() -> str:
