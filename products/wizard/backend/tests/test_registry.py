@@ -12,6 +12,7 @@ POSTHOG_INTEGRATION_PROGRAM = WizardProgram(
     id="posthog-integration",
     name="PostHog integration",
     description="Set up PostHog SDK integration",
+    wizard_version="2.60.0",
     command=(),
     tags=(),
     required_programs=(),
@@ -22,6 +23,7 @@ AUDIT_PROGRAM_PAYLOAD = {
     "id": "web-analytics-audit",
     "name": "Web analytics audit",
     "description": "Audit a project's web analytics setup",
+    "wizard_version": "2.60.0",
     "command": ["audit", "web-analytics"],
     "tags": ["audit", "web-analytics"],
     "required_programs": ["posthog-integration"],
@@ -31,8 +33,8 @@ AUDIT_PROGRAM_PAYLOAD = {
 
 @parameterized.expand(
     [
-        ("object", {"version": 1, "programs": [AUDIT_PROGRAM_PAYLOAD]}),
-        ("json_string", json.dumps({"version": 1, "programs": [AUDIT_PROGRAM_PAYLOAD]})),
+        ("object", {"version": 2, "programs": [AUDIT_PROGRAM_PAYLOAD]}),
+        ("json_string", json.dumps({"version": 2, "programs": [AUDIT_PROGRAM_PAYLOAD]})),
     ]
 )
 def test_registry_returns_personalized_programs(_name: str, payload: object) -> None:
@@ -44,6 +46,7 @@ def test_registry_returns_personalized_programs(_name: str, payload: object) -> 
             id="web-analytics-audit",
             name="Web analytics audit",
             description="Audit a project's web analytics setup",
+            wizard_version="2.60.0",
             command=("audit", "web-analytics"),
             tags=("audit", "web-analytics"),
             required_programs=("posthog-integration",),
@@ -61,7 +64,7 @@ def test_registry_returns_personalized_programs(_name: str, payload: object) -> 
 
 
 def test_registry_preserves_valid_empty_program_list() -> None:
-    with patch("posthoganalytics.get_feature_flag_payload", return_value={"version": 1, "programs": []}):
+    with patch("posthoganalytics.get_feature_flag_payload", return_value={"version": 2, "programs": []}):
         programs = wizard_facade.get_registry(distinct_id="user-distinct-id", organization_id="organization-id")
 
     assert programs == ()
@@ -71,12 +74,26 @@ def test_registry_preserves_valid_empty_program_list() -> None:
     [
         ("missing_payload", None),
         ("invalid_json", "{"),
-        ("unsupported_version", {"version": 2, "programs": []}),
-        ("duplicate_ids", {"version": 1, "programs": [AUDIT_PROGRAM_PAYLOAD, AUDIT_PROGRAM_PAYLOAD]}),
+        ("unsupported_version", {"version": 1, "programs": []}),
+        ("duplicate_ids", {"version": 2, "programs": [AUDIT_PROGRAM_PAYLOAD, AUDIT_PROGRAM_PAYLOAD]}),
+        (
+            "missing_wizard_version",
+            {
+                "version": 2,
+                "programs": [{key: value for key, value in AUDIT_PROGRAM_PAYLOAD.items() if key != "wizard_version"}],
+            },
+        ),
+        (
+            "mutable_wizard_version",
+            {
+                "version": 2,
+                "programs": [{**AUDIT_PROGRAM_PAYLOAD, "wizard_version": "latest"}],
+            },
+        ),
         (
             "invalid_program",
             {
-                "version": 1,
+                "version": 2,
                 "programs": [
                     AUDIT_PROGRAM_PAYLOAD,
                     {**AUDIT_PROGRAM_PAYLOAD, "id": "invalid-program", "command": ["--override"]},
@@ -86,7 +103,7 @@ def test_registry_preserves_valid_empty_program_list() -> None:
         (
             "unknown_environment",
             {
-                "version": 1,
+                "version": 2,
                 "programs": [
                     {**AUDIT_PROGRAM_PAYLOAD, "supported_environments": ["hosted"]},
                 ],

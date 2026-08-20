@@ -12,12 +12,13 @@ class TestWizardRegistryViewSet(APIBaseTest):
 
     def test_list_returns_personalized_unpaginated_registry(self) -> None:
         payload = {
-            "version": 1,
+            "version": 2,
             "programs": [
                 {
                     "id": "web-analytics-audit",
                     "name": "Web analytics audit",
                     "description": "Audit a project's web analytics setup",
+                    "wizard_version": "2.60.0",
                     "command": ["audit", "web-analytics"],
                     "tags": ["audit", "web-analytics"],
                     "required_programs": ["posthog-integration"],

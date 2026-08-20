@@ -19,12 +19,13 @@ async def _run_execute_wizard(input: PreparedGitRepositoryWorkspace) -> None:
 @pytest.mark.django_db(transaction=True)
 def test_execute_wizard_uses_persisted_program_snapshot(team, user) -> None:
     registry_payload = {
-        "version": 1,
+        "version": 2,
         "programs": [
             {
                 "id": "web-analytics-audit",
                 "name": "Web analytics audit",
                 "description": "Audit a project's web analytics setup",
+                "wizard_version": "2.60.0",
                 "command": ["audit", "web-analytics"],
                 "tags": ["audit", "web-analytics"],
                 "required_programs": ["posthog-integration"],
@@ -73,6 +74,7 @@ def test_execute_wizard_uses_persisted_program_snapshot(team, user) -> None:
             sandbox_id="worker-id",
             workspace_path="/tmp/workspace/repos/posthog/posthog",
             team_id=team.id,
+            wizard_version="2.60.0",
             program_command=("audit", "web-analytics"),
         )
     )

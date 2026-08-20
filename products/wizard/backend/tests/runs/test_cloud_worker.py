@@ -92,11 +92,11 @@ def test_clone_repository_rejects_clone_failure(
 
 @parameterized.expand(
     (
-        ("default", (), "npx --yes @posthog/wizard@latest --headless-DONOTUSE-EXPERIMENTAL"),
+        ("default", (), "npx --yes @posthog/wizard@2.60.0 --headless-DONOTUSE-EXPERIMENTAL"),
         (
             "nested",
             ("audit", "web-analytics"),
-            "npx --yes @posthog/wizard@latest audit web-analytics --headless-DONOTUSE-EXPERIMENTAL",
+            "npx --yes @posthog/wizard@2.60.0 audit web-analytics --headless-DONOTUSE-EXPERIMENTAL",
         ),
     )
 )
@@ -111,6 +111,7 @@ def test_execute_wizard_uses_selected_program(
         sandbox_id="worker-id",
         workspace_path="/tmp/workspace/repos/posthog/posthog",
         team_id=7,
+        wizard_version="2.60.0",
         program_command=program_command,
     )
     sandbox = get_sandbox_class.return_value.get_by_id.return_value
@@ -131,10 +132,27 @@ def test_execute_wizard_rejects_program_options(get_sandbox_class: MagicMock) ->
         sandbox_id="worker-id",
         workspace_path="/tmp/workspace/repos/posthog/posthog",
         team_id=7,
+        wizard_version="2.60.0",
         program_command=("--base-url",),
     )
 
     with pytest.raises(ValueError, match="Invalid Wizard program command"):
+        execute_wizard(request)
+
+    get_sandbox_class.return_value.get_by_id.return_value.execute.assert_not_called()
+
+
+@patch("products.wizard.backend.logic.runs.worker.get_sandbox_class")
+def test_execute_wizard_rejects_mutable_version(get_sandbox_class: MagicMock) -> None:
+    request = WizardExecutionRequest(
+        sandbox_id="worker-id",
+        workspace_path="/tmp/workspace/repos/posthog/posthog",
+        team_id=7,
+        wizard_version="^2.60.0",
+        program_command=(),
+    )
+
+    with pytest.raises(ValueError, match="Invalid Wizard version"):
         execute_wizard(request)
 
     get_sandbox_class.return_value.get_by_id.return_value.execute.assert_not_called()
@@ -146,6 +164,7 @@ def test_execute_wizard_maps_command_timeout(get_sandbox_class: MagicMock) -> No
         sandbox_id="worker-id",
         workspace_path="/tmp/workspace/repos/posthog/posthog",
         team_id=7,
+        wizard_version="2.60.0",
         program_command=(),
     )
     get_sandbox_class.return_value.get_by_id.return_value.execute.return_value = _execution_result(exit_code=124)

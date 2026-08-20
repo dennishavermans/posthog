@@ -26,12 +26,13 @@ PROGRAM_DEFINITION = {
     "id": "web-analytics-audit",
     "name": "Web analytics audit",
     "description": "Audit a project's web analytics setup",
+    "wizard_version": "2.60.0",
     "command": ["audit", "web-analytics"],
     "tags": ["audit", "web-analytics"],
     "required_programs": ["posthog-integration"],
     "supported_environments": ["local"],
 }
-PROGRAM_PAYLOAD = {"version": 1, "programs": [PROGRAM_DEFINITION]}
+PROGRAM_PAYLOAD = {"version": 2, "programs": [PROGRAM_DEFINITION]}
 
 
 @pytest.mark.django_db
@@ -51,6 +52,7 @@ def test_create_run_persists_resolved_program(team, user) -> None:
         id="web-analytics-audit",
         name="Web analytics audit",
         description="Audit a project's web analytics setup",
+        wizard_version="2.60.0",
         command=("audit", "web-analytics"),
         tags=("audit", "web-analytics"),
         required_programs=("posthog-integration",),
