@@ -16,6 +16,7 @@ import { template as hubspotCompanyTemplate } from './_destinations/hubspot/hubs
 import { template as klimeTemplate } from './_destinations/klime/klime.template'
 import { template as linearTemplate } from './_destinations/linear/linear.template'
 import { template as linkedinAdsTemplate } from './_destinations/linkedin_ads/linkedin.template'
+import { template as metaAdsTemplate } from './_destinations/meta_ads/meta.template'
 import { template as microsoftAdsTemplate } from './_destinations/microsoft_ads/microsoft.template'
 import { template as nativeWebhookTemplate } from './_destinations/native_webhook/webhook.template'
 import { template as openaiAdsTemplate } from './_destinations/openai_ads/openai.template'
@@ -34,6 +35,7 @@ import { template as posthogSetHogflowVariableTemplate } from './_destinations/p
 import { template as pushTemplate } from './_destinations/push/push.template'
 import { template as redditAdsTemplate } from './_destinations/reddit_ads/reddit.template'
 import { template as retainTemplate } from './_destinations/retain/retain.template'
+import { template as slackTemplate } from './_destinations/slack/slack.template'
 import { template as snapchatAdsTemplate } from './_destinations/snapchat_ads/snapchat.template'
 import { template as tiktokAdsTemplate } from './_destinations/tiktok_ads/tiktok.template'
 import { template as twilioTemplate } from './_destinations/twilio/twilio.template'
@@ -63,6 +65,7 @@ import { template as logRedactAttributesTemplate } from './_transformations_log/
 export const HOG_FUNCTION_TEMPLATES_COMING_SOON: HogFunctionTemplate[] = allComingSoonTemplates
 
 export const HOG_FUNCTION_TEMPLATES_DESTINATIONS: HogFunctionTemplate[] = [
+    slackTemplate,
     webhookTemplate,
     tiktokAdsTemplate,
     snapchatAdsTemplate,
@@ -70,6 +73,7 @@ export const HOG_FUNCTION_TEMPLATES_DESTINATIONS: HogFunctionTemplate[] = [
     githubTemplate,
     gitlabTemplate,
     googleAdsTemplate,
+    metaAdsTemplate,
     linkedinAdsTemplate,
     microsoftAdsTemplate,
     openaiAdsTemplate,

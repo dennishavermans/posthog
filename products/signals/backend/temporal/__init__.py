@@ -53,6 +53,13 @@ from products.signals.backend.temporal.reingestion import (
     restore_grouping_pause_activity,
     soft_delete_report_signals_activity,
 )
+from products.signals.backend.temporal.report_canvas import (
+    SignalReportCanvasWorkflow,
+    fail_report_canvas_generation_activity,
+    poll_report_canvas_generation_activity,
+    report_canvases_enabled_activity,
+    start_report_canvas_generation_activity,
+)
 from products.signals.backend.temporal.report_safety_judge import report_safety_judge_activity
 from products.signals.backend.temporal.safety_filter import safety_filter_activity
 from products.signals.backend.temporal.signal_queries import (
@@ -72,6 +79,7 @@ from products.signals.backend.temporal.summary import (
     mark_report_ready_activity,
     maybe_autostart_implementation_activity,
     publish_report_completed_activity,
+    report_has_assigned_signals_activity,
     report_is_candidate_activity,
     reset_report_to_potential_activity,
     revert_report_to_candidate_activity,
@@ -92,6 +100,7 @@ WORKFLOWS = [
     RunSignalsScoutWorkflow,
     SignalsScoutCoordinatorWorkflow,
     SignalReportInboxNotificationWorkflow,
+    SignalReportCanvasWorkflow,
 ]
 
 ACTIVITIES = [
@@ -125,7 +134,12 @@ ACTIVITIES = [
     maybe_autostart_implementation_activity,
     implementation_buffer_seconds_activity,
     report_is_candidate_activity,
+    fail_report_canvas_generation_activity,
+    report_canvases_enabled_activity,
+    start_report_canvas_generation_activity,
+    poll_report_canvas_generation_activity,
     publish_report_completed_activity,
+    report_has_assigned_signals_activity,
     revert_report_to_candidate_activity,
     delete_team_reports_activity,
     get_grouping_paused_state_activity,

@@ -24,7 +24,7 @@ export function DashboardHeader({ loading = false }: { loading?: boolean }): JSX
     const { setDashboardMode, loadDashboard } = useActions(dashboardLogic)
     const { updateDashboard } = useActions(dashboardsModel)
 
-    const isLoading = loading || dashboardLoading
+    const isLoading = !dashboard && (loading || dashboardLoading)
 
     if (!dashboard && !isLoading) {
         return null
@@ -89,7 +89,11 @@ export function DashboardHeader({ loading = false }: { loading?: boolean }): JSX
                                   text: dashboard.name,
                                   icon: iconForType('dashboard'),
                               },
-                              callback: () => loadDashboard({ action: DashboardLoadAction.Update }),
+                              callback: (toolOutput: { dashboard_id?: string | number }) => {
+                                  if (Number(toolOutput?.dashboard_id) === dashboard.id) {
+                                      loadDashboard({ action: DashboardLoadAction.Update })
+                                  }
+                              },
                           }
                         : undefined
                 }
