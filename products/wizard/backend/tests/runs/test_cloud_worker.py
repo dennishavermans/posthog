@@ -4,6 +4,8 @@ from uuid import uuid4
 import pytest
 from unittest.mock import MagicMock, patch
 
+from parameterized import parameterized
+
 from products.tasks.backend.facade.repository import RepositoryPullRequest
 from products.tasks.backend.facade.sandbox import SandboxNotFoundError
 from products.wizard.backend.logic.runs.worker import (
@@ -88,12 +90,28 @@ def test_clone_repository_rejects_clone_failure(
         clone_repository(request)
 
 
+@parameterized.expand(
+    (
+        ("default", (), "npx --yes @posthog/wizard@latest --headless-DONOTUSE-EXPERIMENTAL"),
+        (
+            "nested",
+            ("audit", "web-analytics"),
+            "npx --yes @posthog/wizard@latest audit web-analytics --headless-DONOTUSE-EXPERIMENTAL",
+        ),
+    )
+)
 @patch("products.wizard.backend.logic.runs.worker.get_sandbox_class")
-def test_execute_wizard_uses_prepared_workspace(get_sandbox_class: MagicMock) -> None:
+def test_execute_wizard_uses_selected_program(
+    _name: str,
+    program_command: tuple[str, ...],
+    expected_invocation: str,
+    get_sandbox_class: MagicMock,
+) -> None:
     request = WizardExecutionRequest(
         sandbox_id="worker-id",
         workspace_path="/tmp/workspace/repos/posthog/posthog",
         team_id=7,
+        program_command=program_command,
     )
     sandbox = get_sandbox_class.return_value.get_by_id.return_value
     sandbox.execute.return_value = _execution_result()
@@ -103,8 +121,23 @@ def test_execute_wizard_uses_prepared_workspace(get_sandbox_class: MagicMock) ->
     get_sandbox_class.return_value.get_by_id.assert_called_once_with(request.sandbox_id)
     command = sandbox.execute.call_args.args[0]
     assert command.startswith(f"cd {request.workspace_path} &&")
-    assert "npx --yes @posthog/wizard@latest" in command
+    assert expected_invocation in command
     assert "wizard-secret" not in command
+
+
+@patch("products.wizard.backend.logic.runs.worker.get_sandbox_class")
+def test_execute_wizard_rejects_program_options(get_sandbox_class: MagicMock) -> None:
+    request = WizardExecutionRequest(
+        sandbox_id="worker-id",
+        workspace_path="/tmp/workspace/repos/posthog/posthog",
+        team_id=7,
+        program_command=("--base-url",),
+    )
+
+    with pytest.raises(ValueError, match="Invalid Wizard program command"):
+        execute_wizard(request)
+
+    get_sandbox_class.return_value.get_by_id.return_value.execute.assert_not_called()
 
 
 @patch("products.wizard.backend.logic.runs.worker.get_sandbox_class")
@@ -113,6 +146,7 @@ def test_execute_wizard_maps_command_timeout(get_sandbox_class: MagicMock) -> No
         sandbox_id="worker-id",
         workspace_path="/tmp/workspace/repos/posthog/posthog",
         team_id=7,
+        program_command=(),
     )
     get_sandbox_class.return_value.get_by_id.return_value.execute.return_value = _execution_result(exit_code=124)
 
