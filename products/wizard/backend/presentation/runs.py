@@ -53,7 +53,7 @@ class WizardWorkspaceTypeField(serializers.CharField):
     workspace_type: WizardWorkspaceType
 
     def to_internal_value(self, data: object) -> str:
-        value = super().to_internal_value(data)
+        value = super().to_internal_value(cast(str, data))
         if value != self.workspace_type.value:
             self.fail("invalid")
         return value

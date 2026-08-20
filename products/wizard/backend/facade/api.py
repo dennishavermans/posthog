@@ -20,6 +20,7 @@ from products.wizard.backend.facade.contracts import (
     UpsertWizardSessionInput,
     WizardRunArtifactDTO,
     WizardRunDTO,
+    WizardRunGitDiffArtifactDTO,
     WizardRunPullRequestArtifactDTO,
     WizardSessionDTO,
 )
@@ -111,7 +112,7 @@ def cancel_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     return run_service.cancel_run(team_id, run_id)
 
 
-def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> WizardRunArtifactDTO | None:
+def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> WizardRunGitDiffArtifactDTO | None:
     return artifacts.create_git_diff_artifact(team_id, run_id, content)
 
 
