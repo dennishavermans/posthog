@@ -72,6 +72,7 @@ from products.signals.backend.scout_report import (
     ScoutReportSignal,
     append_report_note,
     create_scout_report,
+    get_content_revision_count,
     get_scout_report_status,
     get_scout_report_title,
     record_content_revision,
@@ -1262,6 +1263,14 @@ def _do_edit_report(
                 attribution=attribution,
                 author=run.skill_name,
             )
+    # `content_revision_count` is the report's running total, the number the scout reasons about the
+    # cap with. A revision above already set it to the report's new total; every other edit shape — a
+    # note, a reviewer change, cleared charts, or a restatement that diffed to nothing — leaves that
+    # total untouched, so read it back rather than echoing the 0 initializer as if the report had never
+    # been revised. `is_content_revision` stays keyed on whether *this* edit rewrote the content.
+    is_content_revision = bool(updated_fields)
+    if not is_content_revision:
+        content_revision_count = get_content_revision_count(team_id=team.id, report_id=report_id)
     # Re-run autostart when reviewers changed or the rewrite claimed the fix changed. It's idempotent
     # (a report with an implementation task already started no-ops unless the decision above lets it
     # supersede), but a report that was missing a qualifying reviewer can now open a draft PR. Fired
@@ -1304,7 +1313,7 @@ def _do_edit_report(
         reviewers_set=reviewers_set,
         charts_set=charts_set,
         report_title=report_title,
-        is_content_revision=content_revision_count > 0,
+        is_content_revision=is_content_revision,
         content_revision_count=content_revision_count,
         supersedes_implementation=supersede_recorded,
         corroboration_collapsed=corroboration_collapsed,
