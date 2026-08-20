@@ -1,0 +1,118 @@
+from temporalio import activity
+from temporalio.exceptions import ApplicationError
+
+from posthog.temporal.common.utils import asyncify
+
+from products.tasks.backend.facade import repo_selection
+from products.wizard.backend.facade import api as wizard_facade
+from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, WizardRunDTO
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardWorkspaceType
+from products.wizard.backend.logic import cloud_worker
+from products.wizard.backend.logic.cloud_worker import GitRepositoryCloneRequest, WizardWorkerProvisionRequest
+from products.wizard.backend.temporal.activities.errors import (
+    WIZARD_REPOSITORY_ACCESS_ERROR_TYPE,
+    WIZARD_RUN_CONFIGURATION_ERROR_TYPE,
+    WIZARD_WORKER_EXECUTION_ERROR_TYPE,
+)
+from products.wizard.backend.temporal.contracts import (
+    PreparedGitRepositoryWorkspace,
+    ProvisionedWizardWorker,
+    WizardRunActivityInput,
+)
+
+
+@activity.defn(name="wizard_provision_worker")
+@asyncify
+def provision_worker(input: WizardRunActivityInput) -> ProvisionedWizardWorker:
+    run = _get_cloud_run(input)
+    if run.created_by_id is None:
+        raise ApplicationError(
+            "Wizard run creator is no longer available.",
+            type=WIZARD_RUN_CONFIGURATION_ERROR_TYPE,
+            non_retryable=True,
+        )
+    if not isinstance(run.workspace, GitRepositoryWorkspace):
+        raise ApplicationError(
+            "Wizard run does not have a supported cloud workspace.",
+            type=WIZARD_RUN_CONFIGURATION_ERROR_TYPE,
+            non_retryable=True,
+        )
+
+    sandbox_id = cloud_worker.provision_worker(
+        WizardWorkerProvisionRequest(
+            team_id=input.team_id,
+            created_by_id=run.created_by_id,
+            run_id=input.run_id,
+        )
+    )
+    return ProvisionedWizardWorker(
+        team_id=input.team_id,
+        run_id=input.run_id,
+        sandbox_id=sandbox_id,
+        workspace_type=WizardWorkspaceType.GIT_REPOSITORY,
+    )
+
+
+@activity.defn(name="wizard_clone_repository")
+@asyncify
+def clone_repository(input: ProvisionedWizardWorker) -> PreparedGitRepositoryWorkspace:
+    run = _get_cloud_run(WizardRunActivityInput(team_id=input.team_id, run_id=input.run_id))
+    if not isinstance(run.workspace, GitRepositoryWorkspace):
+        raise ApplicationError(
+            "Wizard run does not have a Git repository workspace.",
+            type=WIZARD_RUN_CONFIGURATION_ERROR_TYPE,
+            non_retryable=True,
+        )
+
+    integration_id = repo_selection.resolve_team_github_integration_id(input.team_id)
+    if integration_id is None or not repo_selection.repository_accessible_via_integration(
+        input.team_id,
+        integration_id,
+        run.workspace.repository,
+    ):
+        raise ApplicationError(
+            "GitHub access to the Wizard run repository is unavailable.",
+            type=WIZARD_REPOSITORY_ACCESS_ERROR_TYPE,
+            non_retryable=True,
+        )
+
+    try:
+        root_path = cloud_worker.clone_repository(
+            GitRepositoryCloneRequest(
+                sandbox_id=input.sandbox_id,
+                github_integration_id=integration_id,
+                repository=run.workspace.repository,
+            )
+        )
+    except cloud_worker.WizardWorkerExecutionError as error:
+        raise ApplicationError(
+            "Wizard Worker could not prepare the repository.",
+            type=WIZARD_WORKER_EXECUTION_ERROR_TYPE,
+            non_retryable=True,
+        ) from error
+
+    return PreparedGitRepositoryWorkspace(
+        team_id=input.team_id,
+        run_id=input.run_id,
+        sandbox_id=input.sandbox_id,
+        repository=run.workspace.repository,
+        root_path=root_path,
+        github_integration_id=integration_id,
+    )
+
+
+@activity.defn(name="wizard_destroy_worker")
+@asyncify
+def destroy_worker(input: ProvisionedWizardWorker) -> None:
+    cloud_worker.destroy_worker(input.sandbox_id)
+
+
+def _get_cloud_run(input: WizardRunActivityInput) -> WizardRunDTO:
+    run = wizard_facade.get_run(input.team_id, input.run_id)
+    if run.environment != WizardRunEnvironment.CLOUD:
+        raise ApplicationError(
+            "Wizard Worker requires a cloud run.",
+            type=WIZARD_RUN_CONFIGURATION_ERROR_TYPE,
+            non_retryable=True,
+        )
+    return run

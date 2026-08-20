@@ -1,0 +1,37 @@
+from temporalio import activity
+from temporalio.exceptions import ApplicationError
+
+from posthog.temporal.common.utils import asyncify
+
+from products.wizard.backend.logic import cloud_worker
+from products.wizard.backend.logic.cloud_worker import WizardExecutionRequest
+from products.wizard.backend.temporal.activities.errors import (
+    WIZARD_WORKER_EXECUTION_ERROR_TYPE,
+    WIZARD_WORKER_TIMEOUT_ERROR_TYPE,
+)
+from products.wizard.backend.temporal.contracts import PreparedGitRepositoryWorkspace
+
+
+@activity.defn(name="wizard_execute")
+@asyncify
+def execute_wizard(input: PreparedGitRepositoryWorkspace) -> None:
+    try:
+        cloud_worker.execute_wizard(
+            WizardExecutionRequest(
+                sandbox_id=input.sandbox_id,
+                workspace_path=input.root_path,
+                team_id=input.team_id,
+            )
+        )
+    except cloud_worker.WizardWorkerTimeoutError as error:
+        raise ApplicationError(
+            "Wizard Worker timed out.",
+            type=WIZARD_WORKER_TIMEOUT_ERROR_TYPE,
+            non_retryable=True,
+        ) from error
+    except cloud_worker.WizardWorkerExecutionError as error:
+        raise ApplicationError(
+            "Wizard Worker execution failed.",
+            type=WIZARD_WORKER_EXECUTION_ERROR_TYPE,
+            non_retryable=True,
+        ) from error

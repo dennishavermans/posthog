@@ -1,6 +1,6 @@
 # Wizard runs implementation plan
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 
 ## Working agreement
 
@@ -79,12 +79,18 @@ presentation
             -> Temporal client
 
 Temporal workflow
-    -> Wizard activities
-        -> logic/runs.py
+    -> lifecycle activities -> logic/runs.py
+    -> Wizard Worker activities
+        -> provision Wizard Worker
+        -> prepare workspace based on workspace type
+        -> execute setup agent
+        -> create Run Artifacts
+        -> clean up Wizard Worker
         -> logic/cloud_worker.py
             -> Tasks sandbox facade
             -> Tasks repository-selection facade
             -> Tasks repository-publishing facade
+        -> facade/api.py -> logic/artifacts.py
 ```
 
 - `products/wizard/backend/facade/api.py` remains Wizard's only public Python interface.
@@ -98,6 +104,8 @@ Temporal workflow
 - Tasks exposes generic sandbox and repository helpers. Wizard must not add Wizard-specific behavior to Tasks or import Tasks models and internal logic.
 - Temporal workflows remain deterministic and do not access Django, GitHub, Sandbox, or the network.
 - Temporal activities perform database and external operations.
+- Temporal records workspace preparation, setup agent execution, artifact creation, and worker cleanup as separate activities.
+- The workflow selects the workspace preparation activity from the recorded workspace type.
 - Secrets are created and consumed inside activities. They must not enter Temporal inputs, results, logs, or persisted workspace metadata.
 - Large results are stored by reference. Temporal payloads contain IDs and small typed results only.
 
@@ -254,7 +262,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Define a small workflow input containing `team_id` and `run_id`.
 - [x] Create `products/wizard/backend/temporal/workflows/execute_run.py`.
 - [x] Create `products/wizard/backend/temporal/activities/lifecycle.py`.
-- [x] Create `products/wizard/backend/temporal/activities/execute_cloud.py`.
+- [x] Split workspace preparation, setup agent execution, artifact creation, and worker cleanup into separate activity modules.
 - [x] Create `products/wizard/backend/temporal/client.py`.
 - [x] Register workflows and activities in `products/wizard/backend/temporal/__init__.py`.
 - [x] Confirm how the shared Temporal worker discovers product-owned registrations.
@@ -265,17 +273,18 @@ This audit covers all Wizard run work completed before the environment and works
 ### 8. Implement the cloud workflow
 
 - [x] Mark the run as running in a lifecycle activity.
-- [x] Load and validate the Git-repository workspace in the execution activity.
-- [x] Resolve the current GitHub integration and authorize the repository again.
-- [x] Create short-lived GitHub and Wizard credentials inside the execution activity.
-- [x] Keep Wizard Worker command, environment, resource, timeout, and diff behavior in `logic/cloud_worker.py`.
-- [x] Provision, execute in, and destroy sandboxes through the generic Tasks sandbox facade.
+- [x] Load the workspace type during Wizard Worker provisioning.
+- [x] Select repository cloning in the workflow from the recorded workspace type.
+- [x] Resolve the current GitHub integration and authorize the repository in the cloning activity.
+- [x] Create short-lived GitHub and Wizard credentials inside the activities that consume them.
+- [x] Keep Wizard Worker environment, repository, command, handoff, and cleanup behavior in `logic/cloud_worker.py`.
+- [x] Provision, prepare, execute in, and destroy sandboxes through separate activities using the generic Tasks sandbox facade.
 - [x] Resolve repository credentials through the generic Tasks repository-selection facade.
 - [x] Clone the repository into a stable sandbox workspace path.
 - [x] Run the npm Wizard in headless mode with the Wizard run ID.
 - [x] Apply explicit execution and sandbox TTL timeouts.
-- [x] Clean up the sandbox in `finally` for success, failure, and timeout.
-- [x] Collect a Git diff and persist a Run Artifact reference.
+- [x] Clean up the Wizard Worker in `finally` for success, failure, and cancellation.
+- [x] Collect a Git diff and persist a Run Artifact reference in the handoff activity.
 - [x] Skip repository publishing when the setup agent produces no changes.
 - [x] Create a signed commit on a deterministic branch for runs with changes.
 - [x] Open or reuse a pull request for the run branch.
