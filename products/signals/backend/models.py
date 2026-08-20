@@ -235,6 +235,12 @@ class SignalReport(UUIDModel):
     signals_at_run = models.IntegerField(default=0)
     # How many times the summary workflow has run for this report (incremented on each CANDIDATE -> IN_PROGRESS).
     run_count = models.IntegerField(default=0)
+    # The research pass whose summary the report's current implementation PR was built from. A later
+    # pass may supersede that PR, but only once: auto-start creates a replacement only when
+    # `run_count` has moved past this, which is what stops one decision opening two pull requests.
+    # Null for reports implemented before superseding existed — safe, because those reports also have
+    # no `implementation_decision` artefact and the supersede path requires one.
+    implemented_at_run_count = models.IntegerField(null=True, blank=True)
 
     # LLM-generated during signal matching
     title = models.TextField(null=True, blank=True)
@@ -858,6 +864,7 @@ class SignalReportArtefact(UUIDModel):
         SUMMARY_CHANGE = "summary_change"
         CODE_REVIEW = "code_review"
         RELATED_TO = "related_to"
+        IMPLEMENTATION_DECISION = "implementation_decision"
 
     # Every artefact is an append-only, point-in-time log entry — nothing is mutated in place by
     # the producers. The two sets below classify *what an entry means*, not how it is written:
@@ -877,6 +884,7 @@ class SignalReportArtefact(UUIDModel):
             ArtefactType.PRIORITY_JUDGMENT,
             ArtefactType.REPO_SELECTION,
             ArtefactType.SUGGESTED_REVIEWERS,
+            ArtefactType.IMPLEMENTATION_DECISION,
         }
     )
     LOG_ARTEFACT_TYPES: frozenset[str] = frozenset(

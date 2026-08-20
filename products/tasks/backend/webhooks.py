@@ -14,6 +14,10 @@ from posthog.models.instance_setting import get_instance_setting
 from posthog.models.integration import Integration
 from posthog.models.team.team import Team
 
+from products.signals.backend.implementation_pr import (
+    close_superseded_implementation_prs,
+    report_has_newer_implementation_task,
+)
 from products.signals.backend.models import InvalidStatusTransition, SignalReport
 from products.signals.backend.report_generation.resolve_reviewers import resolve_org_github_login_to_users
 from products.tasks.backend.facade.api import post_pr_created_thread_update, signal_workflow_completion
@@ -259,6 +263,12 @@ def handle_pull_request_event(payload: dict) -> HttpResponse:
         event_uuid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{pr_url}:{analytics_event}"))
         _capture_pr_event(payload, task_run, analytics_event, event_uuid)
 
+    if task_run and action == "opened":
+        # Hand over from the PR this one replaces, now that the replacement exists. Doing it here,
+        # rather than polling after the task is created, means the report is never left without an
+        # open PR: if the replacement run never opens one, nothing closes.
+        _close_superseded_signal_report_prs(task_run, pr_url)
+
     if task_run and action == "closed" and merged:
         # Only trust the merge for the run that actually claims this PR URL. The pr_url backstop
         # above already covers branch-matched internal PRs, so requiring equality here keeps a
@@ -279,7 +289,11 @@ def handle_pull_request_event(payload: dict) -> HttpResponse:
         # Ungated for the same reason as the merge branch's resolve call: a closed-unmerged PR
         # archives (suppresses) its report so it leaves the inbox instead of lingering.
         _transition_signal_reports_for_task(
-            task_run.task_id, pr_url, SignalReport.Status.SUPPRESSED, "github_pr_webhook_signal_report_archived"
+            task_run.task_id,
+            pr_url,
+            SignalReport.Status.SUPPRESSED,
+            "github_pr_webhook_signal_report_archived",
+            skip_superseded=True,
         )
 
     return HttpResponse(status=200)
@@ -708,8 +722,49 @@ def _resolve_external_team(payload: dict) -> Team | None:
     return integration.team if integration else None
 
 
+def _close_superseded_signal_report_prs(task_run: TaskRun, pr_url: str) -> None:
+    """Close the earlier implementation PRs of any signal report this run's task belongs to.
+
+    Best-effort: a failed handover leaves both PRs open, which someone can sort out, whereas raising
+    would fail a webhook GitHub retries.
+    """
+    try:
+        report_ids = list(
+            SignalReport.objects.filter(SignalReport.reports_for_task_filter(task_run.task_id)).values_list(
+                "id", flat=True
+            )
+        )
+        for report_id in report_ids:
+            closed = close_superseded_implementation_prs(
+                team_id=task_run.team_id,
+                report_id=str(report_id),
+                task_id=str(task_run.task_id),
+                pr_url=pr_url,
+            )
+            if closed:
+                logger.info(
+                    "github_pr_webhook_signal_report_pr_superseded",
+                    report_id=str(report_id),
+                    task_id=str(task_run.task_id),
+                    pr_url=pr_url,
+                    closed=closed,
+                )
+    except Exception:
+        logger.warning(
+            "github_pr_webhook_signal_report_supersede_failed",
+            task_id=str(task_run.task_id),
+            pr_url=pr_url,
+            exc_info=True,
+        )
+
+
 def _transition_signal_reports_for_task(
-    task_id: uuid.UUID, pr_url: str, target_status: SignalReport.Status, success_log_event: str
+    task_id: uuid.UUID,
+    pr_url: str,
+    target_status: SignalReport.Status,
+    success_log_event: str,
+    *,
+    skip_superseded: bool = False,
 ) -> None:
     """Transition signal reports linked to a task's PR to ``target_status``.
 
@@ -717,6 +772,10 @@ def _transition_signal_reports_for_task(
     (suppresses) them so they leave the inbox instead of lingering as if work were still pending.
     Kept tolerant: a single bad transition should not fail the whole webhook, since GitHub retries
     5xx responses and we've already acknowledged the PR event.
+
+    ``skip_superseded`` spares a report whose fix moved to a later implementation task. Closing a
+    superseded PR looks identical to abandoning one from GitHub's side, so without this the handover
+    would archive the very report it is trying to keep working.
     """
     reports = (
         SignalReport.objects.filter(SignalReport.reports_for_task_filter(task_id))
@@ -731,6 +790,14 @@ def _transition_signal_reports_for_task(
     )
 
     for report in reports:
+        if skip_superseded and report_has_newer_implementation_task(report.team_id, str(report.id), str(task_id)):
+            logger.info(
+                "github_pr_webhook_signal_report_archive_skipped_superseded",
+                report_id=str(report.id),
+                task_id=str(task_id),
+                pr_url=pr_url,
+            )
+            continue
         try:
             updated_fields = report.transition_to(target_status)
         except InvalidStatusTransition:
