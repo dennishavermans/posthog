@@ -57,14 +57,13 @@ All other environment and workspace combinations are invalid unless explicitly a
 - Pass the Wizard run ID to the npm setup agent.
 - Reuse the current Wizard state-update system.
 - Persist run lifecycle status and error code.
-- Produce a Git diff Run Artifact or a reference to it.
+- Produce Git diff and pull request Run Artifacts for cloud Git-repository runs with changes.
 - Preserve the existing Wizard session API during migration.
 
 ### Future
 
 - Uploaded-archive workspaces.
 - Updated-archive artifacts.
-- Pull-request artifacts.
 - Append-only state updates owned by individual Wizard runs.
 - Multiple execution attempts and an attempt-level audit trail.
 - Additional workspace kinds and artifact kinds when a concrete use case requires them.
@@ -85,6 +84,7 @@ Temporal workflow
         -> logic/cloud_worker.py
             -> Tasks sandbox facade
             -> Tasks repository-selection facade
+            -> Tasks repository-publishing facade
 ```
 
 - `products/wizard/backend/facade/api.py` remains Wizard's only public Python interface.
@@ -237,14 +237,16 @@ This audit covers all Wizard run work completed before the environment and works
 
 ### 6. Define Run Artifacts
 
-- [x] Add `WizardRunArtifactType` with the V0 `GIT_DIFF` type.
+- [x] Add `WizardRunArtifactType` with the V0 `GIT_DIFF` and `PULL_REQUEST` types.
 - [x] Decide whether metadata belongs in a separate team-scoped artifact model or an object-storage manifest.
 - [x] Store large diffs in object storage and persist a reference.
 - [x] Never return large diff contents through a Temporal activity result.
 - [x] Associate every artifact with one run and team.
 - [x] Return typed artifact metadata through the Wizard facade.
 - [x] Define the no-changes result without creating an empty artifact.
-- [x] Reserve pull-request and updated-archive artifact types for their implementation phases.
+- [x] Persist pull request identity and repository metadata without treating the PR as stored file content.
+- [x] Return artifact-specific DTOs and a polymorphic API response.
+- [x] Reserve the updated-archive artifact type for its implementation phase.
 
 ### 7. Add Temporal contracts and registration
 
@@ -274,6 +276,10 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Apply explicit execution and sandbox TTL timeouts.
 - [x] Clean up the sandbox in `finally` for success, failure, and timeout.
 - [x] Collect a Git diff and persist a Run Artifact reference.
+- [x] Skip repository publishing when the setup agent produces no changes.
+- [x] Create a signed commit on a deterministic branch for runs with changes.
+- [x] Open or reuse a pull request for the run branch.
+- [x] Persist the pull request as a Run Artifact alongside the Git diff.
 - [x] Complete the run and associate any produced Run Artifacts.
 - [x] Map sandbox or activity timeout to the timeout error code.
 - [x] Map other execution failures to a typed error code before enabling broad retries.
