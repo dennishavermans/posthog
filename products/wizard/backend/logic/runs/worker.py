@@ -1,3 +1,4 @@
+import re
 import shlex
 from uuid import UUID
 
@@ -23,6 +24,7 @@ WIZARD_PACKAGE = "@posthog/wizard@latest"
 WIZARD_TIMEOUT_SECONDS = 45 * 60
 WIZARD_TIMEOUT_EXIT_CODE = 124
 WIZARD_ERROR_DETAIL_LENGTH = 2000
+WIZARD_PROGRAM_COMMAND_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 SANDBOX_EXECUTION_TIMEOUT_SECONDS = WIZARD_TIMEOUT_SECONDS + 120
 SANDBOX_TTL_SECONDS = WIZARD_TIMEOUT_SECONDS + 300
 PULL_REQUEST_TITLE = "Set up PostHog"
@@ -49,6 +51,7 @@ class WizardExecutionRequest:
     sandbox_id: str
     workspace_path: str
     team_id: int
+    program_command: tuple[str, ...]
 
 
 @frozen
@@ -123,7 +126,7 @@ def clone_repository(request: GitRepositoryCloneRequest) -> str:
 def execute_wizard(request: WizardExecutionRequest) -> None:
     sandbox = get_sandbox_class().get_by_id(request.sandbox_id)
     wizard_result = sandbox.execute(
-        _wizard_command(request.workspace_path, request.team_id),
+        _wizard_command(request.workspace_path, request.team_id, request.program_command),
         timeout_seconds=SANDBOX_EXECUTION_TIMEOUT_SECONDS,
     )
     if wizard_result.exit_code == WIZARD_TIMEOUT_EXIT_CODE:
@@ -182,11 +185,14 @@ def destroy_worker(sandbox_id: str) -> None:
     sandbox.destroy()
 
 
-def _wizard_command(repository_path: str, team_id: int) -> str:
+def _wizard_command(repository_path: str, team_id: int, program_command: tuple[str, ...]) -> str:
+    if any(WIZARD_PROGRAM_COMMAND_PATTERN.fullmatch(argument) is None for argument in program_command):
+        raise ValueError("Invalid Wizard program command")
     parts = [
         f"cd {shlex.quote(repository_path)} &&",
         f"timeout -k 30 {WIZARD_TIMEOUT_SECONDS}",
         f"npx --yes {WIZARD_PACKAGE}",
+        *(shlex.quote(argument) for argument in program_command),
         "--headless-DONOTUSE-EXPERIMENTAL",
         "--install-dir .",
         f"--region {shlex.quote(_wizard_region())}",
