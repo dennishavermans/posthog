@@ -764,6 +764,9 @@ const scoutEditReport = (): ToolBase<typeof ScoutEditReportSchema, Schemas.EditR
         if (params.charts !== undefined) {
             body['charts'] = params.charts
         }
+        if (params.supersedes_implementation !== undefined) {
+            body['supersedes_implementation'] = params.supersedes_implementation
+        }
         const result = await context.api.request<Schemas.EditReportResponse>({
             method: 'POST',
             path: `/api/projects/${encodeURIComponent(String(projectId))}/signals/scout/runs/${encodeURIComponent(String(params.run_id))}/edit-report/`,
@@ -1397,6 +1400,9 @@ const signalsScoutEditReport = (): ToolBase<typeof SignalsScoutEditReportSchema,
         }
         if (params.charts !== undefined) {
             body['charts'] = params.charts
+        }
+        if (params.supersedes_implementation !== undefined) {
+            body['supersedes_implementation'] = params.supersedes_implementation
         }
         const result = await context.api.request<Schemas.EditReportResponse>({
             method: 'POST',

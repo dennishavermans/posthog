@@ -1044,7 +1044,9 @@ class SignalScoutRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
             "ANY of the project's inbox reports, not just scout-authored ones — so the edit is attributed to "
             "this scout. Setting reviewers is how you rescue a report that surfaced routed to no one: it "
             "replaces the reviewer list and re-runs autostart, so a report missing a qualifying reviewer can "
-            "open a draft PR. Title/summary edits are best-effort: the pipeline may later re-research them."
+            "open a draft PR. Title/summary edits are best-effort: the pipeline may later re-research them. "
+            "Set `supersedes_implementation` alongside a rewrite when the fix itself changed, and the report's "
+            "open pull request is closed and replaced with one built from the new summary."
         ),
         operation_id="signals_scout_edit_report",
     )
@@ -1069,6 +1071,7 @@ class SignalScoutRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
                 append_note=data.get("append_note"),
                 suggested_reviewers=_to_reviewer_inputs(data.get("suggested_reviewers")),
                 charts=_to_report_charts(data.get("charts")),
+                supersedes_implementation=bool(data.get("supersedes_implementation")),
             )
         except InvalidScoutReportError as exc:
             raise exceptions.ValidationError({"detail": str(exc)})
@@ -1080,6 +1083,10 @@ class SignalScoutRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
                     "note_appended": result.note_appended,
                     "reviewers_set": result.reviewers_set,
                     "charts_set": result.charts_set,
+                    "is_content_revision": result.is_content_revision,
+                    "content_revision_count": result.content_revision_count,
+                    "supersedes_implementation": result.supersedes_implementation,
+                    "corroboration_collapsed": result.corroboration_collapsed,
                 }
             ).data,
             status=status.HTTP_200_OK,

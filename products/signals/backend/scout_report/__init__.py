@@ -9,6 +9,7 @@ code never touches `SignalReport` or the embeddings pipeline directly.
 from products.signals.backend.report_charts import MAX_REPORT_CHARTS
 from products.signals.backend.scout_report.persistence import (
     MAX_REPORT_SIGNALS,
+    AppendedNote,
     InvalidScoutReportError,
     PersistedScoutReport,
     ScoutReportSignal,
@@ -16,6 +17,8 @@ from products.signals.backend.scout_report.persistence import (
     create_scout_report,
     get_scout_report_status,
     get_scout_report_title,
+    record_content_revision,
+    record_implementation_decision,
     record_report_edit,
     record_scout_run_task_artefact,
     set_report_charts,
@@ -27,6 +30,7 @@ from products.signals.backend.scout_report.persistence import (
 __all__ = [
     "MAX_REPORT_CHARTS",
     "MAX_REPORT_SIGNALS",
+    "AppendedNote",
     "InvalidScoutReportError",
     "PersistedScoutReport",
     "ScoutReportSignal",
@@ -34,8 +38,10 @@ __all__ = [
     "create_scout_report",
     "get_scout_report_status",
     "get_scout_report_title",
+    "record_content_revision",
     "record_report_edit",
     "record_scout_run_task_artefact",
+    "record_implementation_decision",
     "set_report_charts",
     "set_scout_report_reviewers",
     "soft_delete_scout_signal",

@@ -190,6 +190,14 @@ class SignalUserAutonomyConfig(UUIDModel):
         verbose_name_plural = "Signal user autonomy configs"
 
 
+# How many times a scout may rewrite one report's title or summary and still earn a replacement
+# pull request, and how many revalidation notes a report keeps as separate entries before they
+# collapse into a count. Both bound the same thing: a scout runs on its own schedule, so nothing
+# about a report going quiet stops it writing to that report.
+MAX_SCOUT_CONTENT_REVISIONS = 4
+MAX_SCOUT_REPORT_NOTES = 4
+
+
 class InvalidStatusTransition(Exception):
     def __init__(self, from_status: str, to_status: str):
         self.from_status = from_status
@@ -241,6 +249,18 @@ class SignalReport(UUIDModel):
     # Null for reports implemented before superseding existed — safe, because those reports also have
     # no `implementation_decision` artefact and the supersede path requires one.
     implemented_at_run_count = models.IntegerField(null=True, blank=True)
+    # How many times a scout has rewritten this report's title or summary. Its own counter rather
+    # than `run_count`, which feeds Temporal workflow IDs and must never gain a second producer.
+    # Only a real diff counts, so a scout restating what the report already says does not tick it.
+    content_revision_count = models.IntegerField(default=0, db_default=0)
+    # The revision the report's current implementation PR was built from, the scout-side twin of
+    # `implemented_at_run_count`. Null for reports implemented before scout superseding existed.
+    implemented_at_revision_count = models.IntegerField(null=True, blank=True)
+    # How many notes a scout has appended to this report. Most scout notes say the finding still
+    # holds, so the first `MAX_SCOUT_REPORT_NOTES` land as entries in the work log and the rest live
+    # only as this count, which the inbox renders as one line instead of a wall of near-identical
+    # entries.
+    corroboration_count = models.IntegerField(default=0, db_default=0)
 
     # LLM-generated during signal matching
     title = models.TextField(null=True, blank=True)
