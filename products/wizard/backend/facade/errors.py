@@ -22,6 +22,14 @@ class InvalidRepositoryError(Exception):
     pass
 
 
+class WizardProgramNotAvailableError(Exception):
+    pass
+
+
+class WizardProgramEnvironmentNotSupportedError(Exception):
+    pass
+
+
 class IllegalStatusTransitionError(Exception):
     pass
 

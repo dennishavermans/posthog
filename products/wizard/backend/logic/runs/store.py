@@ -3,6 +3,7 @@ from uuid import UUID
 from products.wizard.backend.facade.contracts import WizardRunDTO
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.facade.errors import WizardRunNotFoundError
+from products.wizard.backend.logic import registry as registry_service
 from products.wizard.backend.logic.runs.workspaces import deserialize_workspace
 from products.wizard.backend.models import WizardRun
 
@@ -26,6 +27,7 @@ def to_dto(run: WizardRun) -> WizardRunDTO:
         created_by_id=run.created_by_id,
         environment=WizardRunEnvironment(run.environment),
         workspace=deserialize_workspace(run.workspace_type, run.workspace),
+        program=registry_service.deserialize_program(run.program),
         status=WizardRunStatus(run.status),
         error_code=WizardRunErrorCode(run.error_code) if run.error_code else None,
     )

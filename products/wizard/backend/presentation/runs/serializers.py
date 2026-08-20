@@ -22,6 +22,7 @@ from products.wizard.backend.facade.enums import (
     WizardWorkspaceType,
 )
 from products.wizard.backend.facade.errors import InvalidRepositoryError
+from products.wizard.backend.presentation.registry.serializers import WizardProgramSerializer
 
 
 class WizardWorkspaceTypeField(serializers.CharField):
@@ -178,6 +179,7 @@ class WizardRunSerializer(serializers.Serializer):
         help_text="Where the setup agent runs.",
     )
     workspace = WizardWorkspaceField(read_only=True, help_text="Project that the setup agent works on.")
+    program = WizardProgramSerializer(read_only=True, help_text="Registry program selected for this run.")
     status = serializers.ChoiceField(
         read_only=True,
         choices=[run_status.value for run_status in WizardRunStatus],

@@ -6,6 +6,7 @@ import posthoganalytics
 
 from products.wizard.backend.facade.contracts import WizardProgram
 from products.wizard.backend.facade.enums import WizardRunEnvironment
+from products.wizard.backend.facade.errors import WizardProgramNotAvailableError
 
 REGISTRY_FEATURE_FLAG = "wizard-program-registry"
 REGISTRY_VERSION = 1
@@ -51,6 +52,33 @@ def get_registry(*, distinct_id: str, organization_id: str) -> tuple[WizardProgr
     if registry is None:
         return FALLBACK_REGISTRY
     return registry
+
+
+def get_program(*, program_id: str, distinct_id: str, organization_id: str) -> WizardProgram:
+    programs = get_registry(distinct_id=distinct_id, organization_id=organization_id)
+    program = next((program for program in programs if program.id == program_id), None)
+    if program is None:
+        raise WizardProgramNotAvailableError
+    return program
+
+
+def serialize_program(program: WizardProgram) -> dict[str, object]:
+    return {
+        "id": program.id,
+        "name": program.name,
+        "description": program.description,
+        "command": list(program.command),
+        "tags": list(program.tags),
+        "required_programs": list(program.required_programs),
+        "supported_environments": [environment.value for environment in program.supported_environments],
+    }
+
+
+def deserialize_program(value: object) -> WizardProgram:
+    program = _parse_program(value)
+    if program is None:
+        raise ValueError("Invalid persisted Wizard program")
+    return program
 
 
 def _parse_registry(payload: object) -> tuple[WizardProgram, ...] | None:

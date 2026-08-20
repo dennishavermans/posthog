@@ -4,6 +4,8 @@ from uuid import UUID
 
 from django.db import transaction as database_transaction
 
+from posthog.models import Team, User
+
 from products.tasks.backend.facade import repo_selection
 from products.wizard.backend.facade.contracts import (
     CreateWizardRunInput,
@@ -13,7 +15,12 @@ from products.wizard.backend.facade.contracts import (
     WizardRunPage,
 )
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
-from products.wizard.backend.facade.errors import MissingGitHubIntegrationError, RepositoryNotAccessibleError
+from products.wizard.backend.facade.errors import (
+    MissingGitHubIntegrationError,
+    RepositoryNotAccessibleError,
+    WizardProgramEnvironmentNotSupportedError,
+)
+from products.wizard.backend.logic import registry as registry_service
 from products.wizard.backend.logic.runs.store import get_run_model, to_dto
 from products.wizard.backend.logic.runs.transitions import transition
 from products.wizard.backend.logic.runs.workspaces import (
@@ -30,6 +37,15 @@ logger = logging.getLogger(__name__)
 
 def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
     validate_workspace_environment(params.environment, params.workspace)
+    user = User.objects.only("distinct_id").get(id=params.created_by_id)
+    team = Team.objects.only("organization_id").get(id=params.team_id)
+    program = registry_service.get_program(
+        program_id=params.program_id,
+        distinct_id=user.distinct_id,
+        organization_id=str(team.organization_id),
+    )
+    if params.environment not in program.supported_environments:
+        raise WizardProgramEnvironmentNotSupportedError
 
     if isinstance(params.workspace, GitRepositoryWorkspace):
         validate_git_repository(params.workspace.repository)
@@ -55,6 +71,7 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
             environment=params.environment.value,
             workspace_type=workspace_type.value,
             workspace=workspace_metadata,
+            program=registry_service.serialize_program(program),
             status=initial_status.value,
         )
         if params.environment == WizardRunEnvironment.CLOUD:

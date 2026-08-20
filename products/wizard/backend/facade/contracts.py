@@ -135,6 +135,7 @@ class WizardRunDTO:
     created_by_id: int | None
     environment: WizardRunEnvironment
     workspace: WizardWorkspace
+    program: WizardProgram
     status: WizardRunStatus
     error_code: WizardRunErrorCode | None
 

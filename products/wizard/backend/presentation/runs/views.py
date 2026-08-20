@@ -23,6 +23,8 @@ from products.wizard.backend.facade.errors import (
     InvalidWorkspaceEnvironmentError,
     MissingGitHubIntegrationError,
     RepositoryNotAccessibleError,
+    WizardProgramEnvironmentNotSupportedError,
+    WizardProgramNotAvailableError,
     WizardRunNotFoundError,
 )
 from products.wizard.backend.presentation.runs.pagination import WizardRunPagination
@@ -75,6 +77,10 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
             raise ValidationError({"detail": "Choose a workspace supported by this run environment."})
         except InvalidRepositoryError:
             raise ValidationError({"detail": "Enter a repository in owner/name format."})
+        except WizardProgramNotAvailableError:
+            raise ValidationError({"detail": "Choose an available Wizard program."})
+        except WizardProgramEnvironmentNotSupportedError:
+            raise ValidationError({"detail": "Choose a Wizard program supported by this run environment."})
         except (MissingGitHubIntegrationError, RepositoryNotAccessibleError):
             raise ValidationError({"detail": "Connect GitHub with access to this repository, then try again."})
         return Response(WizardRunSerializer(run).data, status=status.HTTP_201_CREATED)

@@ -103,6 +103,8 @@ class WizardRun(UUIDModel, TeamScopedRootMixin, CreatedMetaFields, UpdatedMetaFi
 
     workspace = models.JSONField()
 
+    program = models.JSONField()
+
     status = models.CharField(
         max_length=20,
         choices=[(status.value, status.value) for status in WizardRunStatus],

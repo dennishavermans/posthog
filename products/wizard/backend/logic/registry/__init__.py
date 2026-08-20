@@ -1,3 +1,8 @@
-from products.wizard.backend.logic.registry.service import get_registry
+from products.wizard.backend.logic.registry.service import (
+    deserialize_program,
+    get_program,
+    get_registry,
+    serialize_program,
+)
 
-__all__ = ["get_registry"]
+__all__ = ["deserialize_program", "get_program", "get_registry", "serialize_program"]
