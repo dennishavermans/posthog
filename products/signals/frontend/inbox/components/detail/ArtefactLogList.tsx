@@ -12,6 +12,7 @@ import {
     IconListTreeConnected,
     IconPeople,
     IconPencil,
+    IconPullRequest,
     IconSearch,
     IconShield,
     IconTerminal,
@@ -44,6 +45,7 @@ import {
     CodeReferenceContent,
     CommitContent,
     DismissalContent,
+    ImplementationDecisionContent,
     LineReferenceContent,
     NoteContent,
     RelatedToContent,
@@ -128,6 +130,7 @@ const ARTEFACT_MARKER: Record<string, ComponentType<{ className?: string }>> = {
     summary_change: IconPencil,
     related_to: IconListTreeConnected,
     code_review: IconListCheck,
+    implementation_decision: IconPullRequest,
 }
 
 function dismissReasonLabel(reason: string): string {
@@ -451,6 +454,10 @@ function renderArtefactBody({
             return <RelatedReportBody content={content as RelatedToContent} />
         case 'code_review':
             return <CodeReviewBody content={content as CodeReviewContent} />
+        case 'implementation_decision': {
+            const c = content as ImplementationDecisionContent
+            return c.reason ? <ReasoningBody text={c.reason} /> : null
+        }
         case 'title_change': {
             const c = content as TitleChangeContent
             return <ContentChangeBody previous={c.old_title} current={c.new_title ?? ''} />
