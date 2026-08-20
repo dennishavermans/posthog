@@ -19,6 +19,7 @@ from products.wizard.backend.facade.contracts import (
     CreateWizardRunInput,
     ListWizardRunsInput,
     UpsertWizardSessionInput,
+    WizardProgram,
     WizardRunArtifactDTO,
     WizardRunDTO,
     WizardRunGitDiffArtifactDTO,
@@ -28,6 +29,7 @@ from products.wizard.backend.facade.contracts import (
 )
 from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.logic import (
+    registry as registry_service,
     runs as run_service,
     sessions,
 )
@@ -83,6 +85,10 @@ def record_latest_session_poll(raw_source: str | None, result: str) -> None:
     metrics.WIZARD_LATEST_SESSION_REQUESTS_TOTAL.labels(
         source=metrics.poll_source_label(raw_source), result=result
     ).inc()
+
+
+def get_registry(*, distinct_id: str, organization_id: str) -> tuple[WizardProgram, ...]:
+    return registry_service.get_registry(distinct_id=distinct_id, organization_id=organization_id)
 
 
 def create_run(params: CreateWizardRunInput) -> WizardRunDTO:

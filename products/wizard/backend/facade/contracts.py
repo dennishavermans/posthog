@@ -109,6 +109,17 @@ type WizardWorkspace = LocalFolderWorkspace | GitRepositoryWorkspace
 
 
 @frozen
+class WizardProgram:
+    id: str
+    name: str
+    description: str
+    command: tuple[str, ...]
+    tags: tuple[str, ...]
+    required_programs: tuple[str, ...]
+    supported_environments: tuple[WizardRunEnvironment, ...]
+
+
+@frozen
 class CreateWizardRunInput:
     team_id: int
     created_by_id: int
