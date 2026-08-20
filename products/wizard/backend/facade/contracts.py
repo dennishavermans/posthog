@@ -128,6 +128,19 @@ class WizardRunDTO:
 
 
 @frozen
+class ListWizardRunsInput:
+    team_id: int
+    offset: int
+    limit: int
+
+
+@frozen
+class WizardRunPage:
+    results: tuple[WizardRunDTO, ...]
+    count: int
+
+
+@frozen
 class CreatePullRequestArtifactInput:
     team_id: int
     run_id: UUID

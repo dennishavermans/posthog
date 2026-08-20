@@ -7,7 +7,7 @@ from django.db import transaction
 
 from products.wizard.backend.facade.contracts import WizardSessionDTO, WizardTaskDTO
 from products.wizard.backend.facade.enums import WizardSessionRunPhase, WizardSessionTaskStatus
-from products.wizard.backend.logic.pubsub import channel_name, publish_session_update
+from products.wizard.backend.logic.sessions.pubsub import channel_name, publish_session_update
 
 
 def _dto(team_id: int = 1) -> WizardSessionDTO:
@@ -55,7 +55,7 @@ def test_channel_name_rejects_unsafe_ids():
 def test_publish_session_update_publishes_after_commit():
     """In transaction.atomic, the publish should defer to on_commit."""
     redis_mock = MagicMock()
-    with patch("products.wizard.backend.logic.pubsub.get_client", return_value=redis_mock):
+    with patch("products.wizard.backend.logic.sessions.pubsub.get_client", return_value=redis_mock):
         with transaction.atomic():
             publish_session_update(_dto())
             assert redis_mock.publish.call_count == 0  # not yet committed
@@ -72,7 +72,7 @@ def test_publish_session_update_publishes_after_commit():
 @pytest.mark.django_db
 def test_publish_session_update_does_not_publish_on_rollback():
     redis_mock = MagicMock()
-    with patch("products.wizard.backend.logic.pubsub.get_client", return_value=redis_mock):
+    with patch("products.wizard.backend.logic.sessions.pubsub.get_client", return_value=redis_mock):
         try:
             with transaction.atomic():
                 publish_session_update(_dto())
@@ -89,7 +89,7 @@ def test_publish_session_update_swallows_redis_errors():
     redis_mock = MagicMock()
     redis_mock.publish.side_effect = ConnectionError("redis is down")
 
-    with patch("products.wizard.backend.logic.pubsub.get_client", return_value=redis_mock):
+    with patch("products.wizard.backend.logic.sessions.pubsub.get_client", return_value=redis_mock):
         with transaction.atomic():
             publish_session_update(_dto())
         # If the exception escaped on_commit, this assertion wouldn't run.

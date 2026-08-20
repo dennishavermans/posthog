@@ -59,16 +59,6 @@ export interface GitRepositoryWorkspaceApi {
 
 export type WizardWorkspaceApi = LocalFolderWorkspaceApi | GitRepositoryWorkspaceApi
 
-export interface WizardRunCreateRequestApi {
-    /** Where the setup agent runs.
-     *
-     * * `local` - local
-     * * `cloud` - cloud */
-    environment: RunEnvironmentEnumApi
-    /** Project that the setup agent works on. */
-    workspace: WizardWorkspaceApi
-}
-
 /**
  * * `created` - created
  * * `running` - running
@@ -132,6 +122,25 @@ export interface WizardRunApi {
     readonly error_code: ErrorCodeEnumApi | null
 }
 
+export interface PaginatedWizardRunListApi {
+    count: number
+    /** @nullable */
+    next?: string | null
+    /** @nullable */
+    previous?: string | null
+    results: WizardRunApi[]
+}
+
+export interface WizardRunCreateRequestApi {
+    /** Where the setup agent runs.
+     *
+     * * `local` - local
+     * * `cloud` - cloud */
+    environment: RunEnvironmentEnumApi
+    /** Project that the setup agent works on. */
+    workspace: WizardWorkspaceApi
+}
+
 export interface WizardRunErrorApi {
     /** Error category. */
     readonly type: string
@@ -144,6 +153,35 @@ export interface WizardRunErrorApi {
      * @nullable
      */
     readonly attr: string | null
+}
+
+/**
+ * * `completed` - completed
+ * * `failed` - failed
+ * * `cancelled` - cancelled
+ */
+export type WizardRunStatusUpdateRequestStatusEnumApi =
+    (typeof WizardRunStatusUpdateRequestStatusEnumApi)[keyof typeof WizardRunStatusUpdateRequestStatusEnumApi]
+
+export const WizardRunStatusUpdateRequestStatusEnumApi = {
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled',
+} as const
+
+export interface PatchedWizardRunStatusUpdateRequestApi {
+    /** New terminal status for the Wizard run.
+     *
+     * * `completed` - completed
+     * * `failed` - failed
+     * * `cancelled` - cancelled */
+    status?: WizardRunStatusUpdateRequestStatusEnumApi
+    /** Machine-readable reason the Wizard run failed.
+     *
+     * * `timeout` - timeout
+     * * `execution_failed` - execution_failed
+     * * `dispatch_failed` - dispatch_failed */
+    error_code?: ErrorCodeEnumApi | null
 }
 
 /**
@@ -215,15 +253,6 @@ export interface WizardRunPullRequestArtifactApi {
 }
 
 export type WizardRunArtifactApi = WizardRunGitDiffArtifactApi | WizardRunPullRequestArtifactApi
-
-export interface WizardRunFailureRequestApi {
-    /** Machine-readable reason the Wizard run failed.
-     *
-     * * `timeout` - timeout
-     * * `execution_failed` - execution_failed
-     * * `dispatch_failed` - dispatch_failed */
-    error_code?: ErrorCodeEnumApi | null
-}
 
 /**
  * The in-flight `wizard_ask` question. Typed rather than a free-form dict so the shape the
@@ -435,6 +464,17 @@ export type WizardRunPullRequestArtifactArtifactTypeEnumApi =
 export const WizardRunPullRequestArtifactArtifactTypeEnumApi = {
     PullRequest: 'pull_request',
 } as const
+
+export type WizardRunsListParams = {
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number
+    /**
+     * The initial index from which to return the results.
+     */
+    offset?: number
+}
 
 export type WizardSessionsListParams = {
     /**

@@ -17,7 +17,7 @@ from products.wizard.backend.facade.contracts import (
     WizardRunPullRequestArtifactDTO,
 )
 from products.wizard.backend.facade.enums import WizardRunArtifactType, WizardRunEnvironment, WizardWorkspaceType
-from products.wizard.backend.logic.cloud_worker import (
+from products.wizard.backend.logic.runs.worker import (
     GitRepositoryCloneRequest,
     GitRepositoryHandoffRequest,
     WizardExecutionRequest,
@@ -44,11 +44,11 @@ from products.wizard.backend.temporal.contracts import (
 def _create_cloud_run(team_id: int, user_id: int) -> WizardRunDTO:
     with (
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
             return_value=123,
         ),
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
             return_value=True,
         ),
     ):
@@ -202,7 +202,7 @@ def test_execute_wizard_maps_worker_error(worker_error: Exception, error_type: s
 
 
 @pytest.mark.django_db(transaction=True)
-@patch("products.wizard.backend.logic.artifacts.object_storage.write")
+@patch("products.wizard.backend.logic.runs.artifacts.object_storage.write")
 def test_create_run_artifacts_persists_git_diff_and_pull_request(_write: MagicMock, team, user) -> None:
     run = _create_cloud_run(team.id, user.id)
     workspace = _workspace(run)

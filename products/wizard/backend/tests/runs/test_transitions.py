@@ -4,7 +4,7 @@ import pytest
 
 from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.facade.errors import IllegalStatusTransitionError, InvalidTransitionMetadataError
-from products.wizard.backend.logic.run_domain import transition
+from products.wizard.backend.logic.runs.transitions import transition
 
 ALLOWED_TRANSITIONS = (
     (WizardRunStatus.CREATED, WizardRunStatus.RUNNING),

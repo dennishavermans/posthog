@@ -123,11 +123,11 @@ class TestWizardRunViewSet(APIBaseTest):
         integration_id = None if scenario == "missing_integration" else 123
         with (
             patch(
-                "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+                "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
                 return_value=integration_id,
             ),
             patch(
-                "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+                "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
                 return_value=False,
             ),
         ):
@@ -144,11 +144,11 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(response.json()["detail"], "Connect GitHub with access to this repository, then try again.")
 
     @patch(
-        "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
         return_value=True,
     )
     @patch(
-        "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
         return_value=123,
     )
     @override_settings(WIZARD_CLOUD_RUN_OAUTH_CLIENT_ID="")
@@ -166,11 +166,11 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
 
     @patch(
-        "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
         return_value=True,
     )
     @patch(
-        "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
         return_value=123,
     )
     def test_cloud_run_rejects_automated_token(self, _resolve_integration, _repository_accessible) -> None:
@@ -188,38 +188,7 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
 
-    @patch(
-        "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
-        return_value=True,
-    )
-    @patch(
-        "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
-        return_value=123,
-    )
-    def test_cloud_run_creation_is_rate_limited(self, _resolve_integration, _repository_accessible) -> None:
-        payload = {
-            "environment": "cloud",
-            "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
-        }
-
-        responses = [self.client.post(self._url(), payload, format="json") for _ in range(3)]
-
-        self.assertEqual(
-            [response.status_code for response in responses],
-            [status.HTTP_201_CREATED, status.HTTP_201_CREATED, status.HTTP_429_TOO_MANY_REQUESTS],
-        )
-
-    def test_local_run_creation_does_not_use_cloud_rate_limit(self) -> None:
-        payload = {
-            "environment": "local",
-            "workspace": {"type": "local_folder", "project_name": "example-project"},
-        }
-
-        responses = [self.client.post(self._url(), payload, format="json") for _ in range(3)]
-
-        self.assertEqual([response.status_code for response in responses], [status.HTTP_201_CREATED] * 3)
-
-    @patch("products.wizard.backend.logic.artifacts.object_storage.write")
+    @patch("products.wizard.backend.logic.runs.artifacts.object_storage.write")
     def test_list_run_artifacts(self, _write) -> None:
         created = self.client.post(
             self._url(),
@@ -282,14 +251,13 @@ class TestWizardRunViewSet(APIBaseTest):
 
     @parameterized.expand(
         (
-            ("complete", {}, WizardRunStatus.COMPLETED, None),
-            ("fail", {"error_code": "timeout"}, WizardRunStatus.FAILED, "timeout"),
-            ("cancel", {}, WizardRunStatus.CANCELLED, None),
+            ({"status": "completed"}, WizardRunStatus.COMPLETED, None),
+            ({"status": "failed", "error_code": "timeout"}, WizardRunStatus.FAILED, "timeout"),
+            ({"status": "cancelled"}, WizardRunStatus.CANCELLED, None),
         )
     )
     def test_transition_local_run(
         self,
-        action_name: str,
         payload: dict[str, str],
         expected_status: WizardRunStatus,
         expected_error_code: str | None,
@@ -303,7 +271,7 @@ class TestWizardRunViewSet(APIBaseTest):
             format="json",
         ).json()
 
-        response = self.client.post(self._url(f"{created['id']}/{action_name}/"), payload, format="json")
+        response = self.client.patch(self._url(created["id"]), payload, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json()["status"], expected_status.value)
@@ -318,9 +286,9 @@ class TestWizardRunViewSet(APIBaseTest):
             },
             format="json",
         ).json()
-        self.client.post(self._url(f"{created['id']}/complete/"), {}, format="json")
+        self.client.patch(self._url(created["id"]), {"status": "completed"}, format="json")
 
-        response = self.client.post(self._url(f"{created['id']}/cancel/"), {}, format="json")
+        response = self.client.patch(self._url(created["id"]), {"status": "cancelled"}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(response.json()["code"], "invalid_transition")
@@ -337,17 +305,17 @@ class TestWizardRunViewSet(APIBaseTest):
         other_user = User.objects.create_and_join(self.organization, "teammate@example.com", None)
         self.client.force_login(other_user)
 
-        response = self.client.post(self._url(f"{created['id']}/complete/"), {}, format="json")
+        response = self.client.patch(self._url(created["id"]), {"status": "completed"}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(wizard_facade.get_run(self.team.id, UUID(created["id"])).status, WizardRunStatus.RUNNING)
 
     @patch(
-        "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
         return_value=True,
     )
     @patch(
-        "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
         return_value=123,
     )
     def test_transition_rejects_cloud_run(self, _resolve_integration, _repository_accessible) -> None:
@@ -360,7 +328,7 @@ class TestWizardRunViewSet(APIBaseTest):
             format="json",
         ).json()
 
-        response = self.client.post(self._url(f"{created['id']}/cancel/"), {}, format="json")
+        response = self.client.patch(self._url(created["id"]), {"status": "cancelled"}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(response.json()["code"], "cloud_run_managed")
@@ -381,7 +349,7 @@ class TestWizardRunViewSet(APIBaseTest):
             )
         )
 
-        response = self.client.post(self._url(f"{other_run.id}/complete/"), {}, format="json")
+        response = self.client.patch(self._url(str(other_run.id)), {"status": "completed"}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertEqual(wizard_facade.get_run(other_team.id, other_run.id).status, WizardRunStatus.RUNNING)

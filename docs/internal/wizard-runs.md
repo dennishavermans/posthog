@@ -43,16 +43,17 @@ Successful output is represented by Run Artifacts rather than an outcome field.
 Run endpoints are scoped to the project in the URL:
 
 ```text
-POST /api/projects/{project_id}/wizard/runs/
-GET  /api/projects/{project_id}/wizard/runs/{run_id}/
-GET  /api/projects/{project_id}/wizard/runs/{run_id}/artifacts/
-POST /api/projects/{project_id}/wizard/runs/{run_id}/complete/
-POST /api/projects/{project_id}/wizard/runs/{run_id}/fail/
-POST /api/projects/{project_id}/wizard/runs/{run_id}/cancel/
+GET   /api/projects/{project_id}/wizard/runs/
+POST  /api/projects/{project_id}/wizard/runs/
+GET   /api/projects/{project_id}/wizard/runs/{run_id}/
+PATCH /api/projects/{project_id}/wizard/runs/{run_id}/
+GET   /api/projects/{project_id}/wizard/runs/{run_id}/artifacts/
 ```
 
+The PATCH request accepts a terminal `status`: `completed`, `failed`, or `cancelled`.
+Failed runs can also include an `error_code`.
 Local agents can create runs and update runs they created.
-Cloud creation requires a signed-in browser session, enabled cloud execution, and the cloud-specific rate limits.
+Cloud creation requires a signed-in browser session and enabled cloud execution.
 Cloud lifecycle updates are owned by the Wizard Worker.
 
 Run lookups, transitions, session binding, and artifact access verify the project boundary.
@@ -71,9 +72,10 @@ The Worker:
 1. Resolves short-lived GitHub and Wizard credentials inside the activity.
 2. Provisions an isolated sandbox through the generic Tasks sandbox facade.
 3. Clones the repository.
-4. Runs the headless Wizard with `POSTHOG_WIZARD_RUN_ID`.
+4. Runs the headless Wizard against the prepared workspace.
 5. Captures a binary Git diff.
-6. Destroys the sandbox.
+6. Creates a signed commit and opens or reuses a pull request when the workspace changed.
+7. Destroys the sandbox.
 
 Tokens do not enter Temporal inputs, workflow history, run metadata, or logs.
 Wizard owns the Worker command, environment, credentials, resource limits, timeouts, and diff behavior.
@@ -86,7 +88,8 @@ The database stores its object-storage path, byte size, SHA-256 hash, type, proj
 The public API returns artifact metadata and does not return diff bytes through Temporal.
 
 No artifact is created when the workspace has no changes.
-Pull requests and updated archives remain future artifact types.
+For a Git-repository workspace with changes, V0 also stores the pull request URL, number, repository, source branch, and target branch.
+Updated archives remain a future artifact type.
 
 ## State synchronization
 
@@ -96,9 +99,9 @@ The existing Wizard session endpoint remains active during migration:
 POST /api/projects/{project_id}/wizard/sessions/
 ```
 
-New agents include the optional `run_id` in session updates.
+The endpoint accepts an optional `run_id` for clients that can associate their state with a run.
 The backend verifies that the run belongs to the same project and creator.
 Once a session is linked to a run, later updates cannot bind it to another run.
-Legacy clients can continue omitting `run_id`.
+The V0 cloud execution keeps using the legacy state stream without injecting the run ID into the npm agent environment.
 
 The existing `/api/wizard/cloud_run` onboarding flow remains Tasks-backed until its TaskRun progress and pull-request UI have a replacement based on Wizard runs and Run Artifacts.

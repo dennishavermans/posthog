@@ -42,9 +42,16 @@ export const WizardRunsCreateBody = /* @__PURE__ */ zod.object({
 })
 
 /**
- * Fail a local Wizard run.
+ * Change the terminal status of a local Wizard run.
  */
-export const WizardRunsFailCreateBody = /* @__PURE__ */ zod.object({
+export const WizardRunsPartialUpdateBody = /* @__PURE__ */ zod.object({
+    status: zod
+        .enum(['completed', 'failed', 'cancelled'])
+        .describe('\* `completed` - completed\n\* `failed` - failed\n\* `cancelled` - cancelled')
+        .optional()
+        .describe(
+            'New terminal status for the Wizard run.\n\n\* `completed` - completed\n\* `failed` - failed\n\* `cancelled` - cancelled'
+        ),
     error_code: zod
         .union([
             zod

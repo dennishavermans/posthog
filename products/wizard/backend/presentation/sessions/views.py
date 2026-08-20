@@ -40,11 +40,11 @@ from products.wizard.backend.facade.errors import (
     WizardSessionOwnershipError,
     WizardSessionRunMismatchError,
 )
-from products.wizard.backend.presentation.serializers import (
+from products.wizard.backend.presentation.sessions.pagination import pagination_window
+from products.wizard.backend.presentation.sessions.serializers import (
     UpsertWizardSessionRequestSerializer,
     WizardSessionSerializer,
 )
-from products.wizard.backend.presentation.utils import pagination_window
 
 logger = structlog.get_logger(__name__)
 

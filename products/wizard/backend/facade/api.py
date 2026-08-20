@@ -17,20 +17,22 @@ from products.wizard.backend import metrics
 from products.wizard.backend.facade.contracts import (
     CreatePullRequestArtifactInput,
     CreateWizardRunInput,
+    ListWizardRunsInput,
     UpsertWizardSessionInput,
     WizardRunArtifactDTO,
     WizardRunDTO,
     WizardRunGitDiffArtifactDTO,
+    WizardRunPage,
     WizardRunPullRequestArtifactDTO,
     WizardSessionDTO,
 )
-from products.wizard.backend.facade.enums import WizardRunErrorCode
+from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.logic import (
-    artifacts,
-    pubsub,
     runs as run_service,
     sessions,
 )
+from products.wizard.backend.logic.runs import artifacts
+from products.wizard.backend.logic.sessions import pubsub
 
 
 def upsert(params: UpsertWizardSessionInput) -> tuple[WizardSessionDTO, bool]:
@@ -91,6 +93,10 @@ def get_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     return run_service.get_run(team_id, run_id)
 
 
+def list_runs(params: ListWizardRunsInput) -> WizardRunPage:
+    return run_service.list_runs(params)
+
+
 def start_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     return run_service.start_run(team_id, run_id)
 
@@ -110,6 +116,16 @@ def fail_run(
 
 def cancel_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     return run_service.cancel_run(team_id, run_id)
+
+
+def transition_run(
+    team_id: int,
+    run_id: UUID,
+    status: WizardRunStatus,
+    *,
+    error_code: WizardRunErrorCode | None = None,
+) -> WizardRunDTO:
+    return run_service.transition_run(team_id, run_id, status, error_code=error_code)
 
 
 def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> WizardRunGitDiffArtifactDTO | None:

@@ -54,11 +54,11 @@ def test_create_run_rejects_unsupported_environment_workspace(team, user) -> Non
 def test_cloud_run_starts_created(team, user) -> None:
     with (
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
             return_value=123,
         ),
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
             return_value=True,
         ),
     ):
@@ -82,15 +82,15 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
 
     with (
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
             return_value=123,
         ),
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
             return_value=True,
         ),
         patch(
-            "products.wizard.backend.logic.runs.temporal_client.start_wizard_run_workflow",
+            "products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow",
             side_effect=assert_run_exists,
         ) as dispatch,
     ):
@@ -111,15 +111,15 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
 def test_cloud_run_persists_dispatch_failure(team, user) -> None:
     with (
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
             return_value=123,
         ),
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
             return_value=True,
         ),
         patch(
-            "products.wizard.backend.logic.runs.temporal_client.start_wizard_run_workflow",
+            "products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow",
             side_effect=RuntimeError("Temporal unavailable"),
         ),
     ):
@@ -141,14 +141,14 @@ def test_cloud_run_persists_dispatch_failure(team, user) -> None:
 def test_cloud_run_rollback_prevents_dispatch(team, user) -> None:
     with (
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
             return_value=123,
         ),
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
             return_value=True,
         ),
-        patch("products.wizard.backend.logic.runs.temporal_client.start_wizard_run_workflow") as dispatch,
+        patch("products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow") as dispatch,
         transaction.atomic(),
     ):
         wizard_facade.create_run(
@@ -166,7 +166,7 @@ def test_cloud_run_rollback_prevents_dispatch(team, user) -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_local_run_does_not_dispatch(team, user) -> None:
-    with patch("products.wizard.backend.logic.runs.temporal_client.start_wizard_run_workflow") as dispatch:
+    with patch("products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow") as dispatch:
         wizard_facade.create_run(
             CreateWizardRunInput(
                 team_id=team.id,
@@ -182,7 +182,7 @@ def test_local_run_does_not_dispatch(team, user) -> None:
 @pytest.mark.django_db
 def test_cloud_run_requires_github_integration(team, user) -> None:
     with patch(
-        "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
         return_value=None,
     ):
         with pytest.raises(MissingGitHubIntegrationError):
@@ -202,11 +202,11 @@ def test_cloud_run_requires_github_integration(team, user) -> None:
 def test_cloud_run_rejects_inaccessible_repository(team, user) -> None:
     with (
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
             return_value=123,
         ),
         patch(
-            "products.wizard.backend.logic.runs.repo_selection.repository_accessible_via_integration",
+            "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
             return_value=False,
         ),
     ):
@@ -224,7 +224,9 @@ def test_cloud_run_rejects_inaccessible_repository(team, user) -> None:
 @pytest.mark.parametrize("repository", ("posthog", "/posthog", "posthog/", "posthog/posthog/extra"))
 @pytest.mark.django_db
 def test_cloud_run_rejects_invalid_repository_before_github_lookup(team, user, repository: str) -> None:
-    with patch("products.wizard.backend.logic.runs.repo_selection.resolve_team_github_integration_id") as resolve:
+    with patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id"
+    ) as resolve:
         with pytest.raises(InvalidRepositoryError):
             wizard_facade.create_run(
                 CreateWizardRunInput(

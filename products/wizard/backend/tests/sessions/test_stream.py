@@ -9,7 +9,7 @@ from asgiref.sync import sync_to_async
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import UpsertWizardSessionInput, WizardTaskDTO
 from products.wizard.backend.facade.enums import WizardSessionRunPhase, WizardSessionTaskStatus
-from products.wizard.backend.presentation.views import _wizard_session_event_stream
+from products.wizard.backend.presentation.sessions.views import _wizard_session_event_stream
 
 
 class _StopStream(Exception):
@@ -76,7 +76,7 @@ def _patch_subscribe(pubsub_mock):
     cm_factory, exit_marker = _async_subscribe_cm(pubsub_mock)
     return (
         patch(
-            "products.wizard.backend.presentation.views.wizard_facade.subscribe_to_updates",
+            "products.wizard.backend.presentation.sessions.views.wizard_facade.subscribe_to_updates",
             cm_factory,
         ),
         exit_marker,
@@ -158,7 +158,7 @@ async def test_stream_emits_heartbeat_when_idle(team):
     # Force heartbeat threshold to zero so any idle tick emits one.
     with (
         patcher,
-        patch("products.wizard.backend.presentation.views.SSE_HEARTBEAT_INTERVAL_SECONDS", 0.0),
+        patch("products.wizard.backend.presentation.sessions.views.SSE_HEARTBEAT_INTERVAL_SECONDS", 0.0),
     ):
         gen = _wizard_session_event_stream(team_id=team.id, workflow_id="missing", skill_id="missing")
         events = await _drain(gen, max_events=4)
@@ -177,7 +177,7 @@ async def test_stream_terminates_on_max_duration(team):
     patcher, exit_marker = _patch_subscribe(pubsub_mock)
     with (
         patcher,
-        patch("products.wizard.backend.presentation.views.SSE_MAX_DURATION_SECONDS", 0),
+        patch("products.wizard.backend.presentation.sessions.views.SSE_MAX_DURATION_SECONDS", 0),
     ):
         gen = _wizard_session_event_stream(team_id=team.id, workflow_id="missing", skill_id="missing")
         events = await _drain(gen, max_events=5)

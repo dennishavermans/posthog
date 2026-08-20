@@ -11,7 +11,7 @@ from products.wizard.backend.facade.contracts import (
     WizardRunPullRequestArtifactDTO,
 )
 from products.wizard.backend.facade.enums import WizardRunArtifactType
-from products.wizard.backend.logic.run_store import get_run_model
+from products.wizard.backend.logic.runs.store import get_run_model
 from products.wizard.backend.models import WizardRunArtifact
 
 GIT_DIFF_CONTENT_TYPE = "text/x-diff; charset=utf-8"

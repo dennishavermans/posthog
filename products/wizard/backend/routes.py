@@ -1,7 +1,7 @@
 from posthog.api.routing import RouterRegistry
 
-from products.wizard.backend.presentation.runs import WizardRunViewSet
-from products.wizard.backend.presentation.views import WizardSessionViewSet
+from products.wizard.backend.presentation.runs.views import WizardRunViewSet
+from products.wizard.backend.presentation.sessions.views import WizardSessionViewSet
 
 
 def register_routes(routers: RouterRegistry) -> None:

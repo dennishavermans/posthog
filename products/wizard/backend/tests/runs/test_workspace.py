@@ -3,7 +3,7 @@ import pytest
 from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, LocalFolderWorkspace, WizardWorkspace
 from products.wizard.backend.facade.enums import WizardRunEnvironment
 from products.wizard.backend.facade.errors import InvalidWorkspaceEnvironmentError
-from products.wizard.backend.logic.run_domain import validate_workspace_environment
+from products.wizard.backend.logic.runs.workspaces import validate_workspace_environment
 
 
 @pytest.mark.parametrize(

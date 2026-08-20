@@ -6,7 +6,7 @@ from parameterized import parameterized
 
 from products.wizard.backend.facade.contracts import STALE_AFTER
 from products.wizard.backend.facade.enums import WizardSessionRunPhase
-from products.wizard.backend.logic.utils import is_stale
+from products.wizard.backend.logic.sessions.staleness import is_stale
 
 _NOW = datetime(2026, 5, 19, 12, 0, 0, tzinfo=UTC)
 
@@ -25,5 +25,5 @@ class TestIsStale:
     )
     def test_is_stale(self, _label: str, run_phase: WizardSessionRunPhase, age: timedelta, expected: bool) -> None:
         updated_at = _NOW - age
-        with patch("products.wizard.backend.logic.utils.timezone.now", return_value=_NOW):
+        with patch("products.wizard.backend.logic.sessions.staleness.timezone.now", return_value=_NOW):
             assert is_stale(run_phase, updated_at) is expected

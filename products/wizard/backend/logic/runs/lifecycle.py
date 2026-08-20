@@ -8,19 +8,19 @@ from products.tasks.backend.facade import repo_selection
 from products.wizard.backend.facade.contracts import (
     CreateWizardRunInput,
     GitRepositoryWorkspace,
-    LocalFolderWorkspace,
+    ListWizardRunsInput,
     WizardRunDTO,
-    WizardWorkspace,
+    WizardRunPage,
 )
-from products.wizard.backend.facade.enums import (
-    WizardRunEnvironment,
-    WizardRunErrorCode,
-    WizardRunStatus,
-    WizardWorkspaceType,
-)
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.facade.errors import MissingGitHubIntegrationError, RepositoryNotAccessibleError
-from products.wizard.backend.logic.run_domain import transition, validate_git_repository, validate_workspace_environment
-from products.wizard.backend.logic.run_store import get_run_model
+from products.wizard.backend.logic.runs.store import get_run_model, to_dto
+from products.wizard.backend.logic.runs.transitions import transition
+from products.wizard.backend.logic.runs.workspaces import (
+    serialize_workspace,
+    validate_git_repository,
+    validate_workspace_environment,
+)
 from products.wizard.backend.models import WizardRun
 from products.wizard.backend.temporal import client as temporal_client
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput
@@ -43,7 +43,7 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
         ):
             raise RepositoryNotAccessibleError
 
-    workspace_type, workspace_metadata = _serialize_workspace(params.workspace)
+    workspace_type, workspace_metadata = serialize_workspace(params.workspace)
     initial_status = (
         WizardRunStatus.RUNNING if params.environment == WizardRunEnvironment.LOCAL else WizardRunStatus.CREATED
     )
@@ -67,7 +67,7 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
 
     if params.environment == WizardRunEnvironment.CLOUD:
         created.refresh_from_db(fields=["status", "error_code", "updated_at"])
-    return _to_dto(created)
+    return to_dto(created)
 
 
 def _dispatch_cloud_run(input: WizardRunActivityInput) -> None:
@@ -82,15 +82,21 @@ def _dispatch_cloud_run(input: WizardRunActivityInput) -> None:
 
 
 def get_run(team_id: int, run_id: UUID) -> WizardRunDTO:
-    return _to_dto(get_run_model(team_id, run_id))
+    return to_dto(get_run_model(team_id, run_id))
+
+
+def list_runs(params: ListWizardRunsInput) -> WizardRunPage:
+    runs = WizardRun.objects.for_team(params.team_id).order_by("-created_at")
+    page = runs[params.offset : params.offset + params.limit]
+    return WizardRunPage(results=tuple(to_dto(run) for run in page), count=runs.count())
 
 
 def start_run(team_id: int, run_id: UUID) -> WizardRunDTO:
-    return _transition_run(team_id, run_id, WizardRunStatus.RUNNING)
+    return transition_run(team_id, run_id, WizardRunStatus.RUNNING)
 
 
 def complete_run(team_id: int, run_id: UUID) -> WizardRunDTO:
-    return _transition_run(team_id, run_id, WizardRunStatus.COMPLETED)
+    return transition_run(team_id, run_id, WizardRunStatus.COMPLETED)
 
 
 def fail_run(
@@ -99,14 +105,14 @@ def fail_run(
     *,
     error_code: WizardRunErrorCode | None = None,
 ) -> WizardRunDTO:
-    return _transition_run(team_id, run_id, WizardRunStatus.FAILED, error_code=error_code)
+    return transition_run(team_id, run_id, WizardRunStatus.FAILED, error_code=error_code)
 
 
 def cancel_run(team_id: int, run_id: UUID) -> WizardRunDTO:
-    return _transition_run(team_id, run_id, WizardRunStatus.CANCELLED)
+    return transition_run(team_id, run_id, WizardRunStatus.CANCELLED)
 
 
-def _transition_run(
+def transition_run(
     team_id: int,
     run_id: UUID,
     next_status: WizardRunStatus,
@@ -120,45 +126,4 @@ def _transition_run(
         run.error_code = error_code.value if error_code is not None else None
         run.save(update_fields=["status", "error_code", "updated_at"])
 
-    return _to_dto(run)
-
-
-def _to_dto(run: WizardRun) -> WizardRunDTO:
-    return WizardRunDTO(
-        id=run.id,
-        team_id=run.team_id,
-        created_by_id=run.created_by_id,
-        environment=WizardRunEnvironment(run.environment),
-        workspace=_deserialize_workspace(run.workspace_type, run.workspace),
-        status=WizardRunStatus(run.status),
-        error_code=WizardRunErrorCode(run.error_code) if run.error_code else None,
-    )
-
-
-def _serialize_workspace(workspace: WizardWorkspace) -> tuple[WizardWorkspaceType, dict[str, str]]:
-    match workspace:
-        case LocalFolderWorkspace(project_name=project_name):
-            return WizardWorkspaceType.LOCAL_FOLDER, {"project_name": project_name}
-        case GitRepositoryWorkspace(repository=repository):
-            return WizardWorkspaceType.GIT_REPOSITORY, {"repository": repository}
-    raise ValueError("Unsupported Wizard workspace")
-
-
-def _deserialize_workspace(workspace_type: str, metadata: object) -> WizardWorkspace:
-    match WizardWorkspaceType(workspace_type):
-        case WizardWorkspaceType.LOCAL_FOLDER:
-            return LocalFolderWorkspace(project_name=_workspace_metadata_value(metadata, "project_name"))
-        case WizardWorkspaceType.GIT_REPOSITORY:
-            return GitRepositoryWorkspace(repository=_workspace_metadata_value(metadata, "repository"))
-    raise ValueError("Unsupported Wizard workspace type")
-
-
-def _workspace_metadata_value(metadata: object, key: str) -> str:
-    if not isinstance(metadata, dict):
-        raise ValueError("Wizard workspace metadata must be an object")
-
-    value: object = metadata.get(key)
-    if not isinstance(value, str):
-        raise ValueError(f"Wizard workspace metadata field {key!r} must be a string")
-
-    return value
+    return to_dto(run)

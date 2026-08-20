@@ -9,17 +9,49 @@ import { apiMutator } from '../../../../frontend/src/lib/api-orval-mutator'
  * OpenAPI spec version: 1.0.0
  */
 import type {
+    PaginatedWizardRunListApi,
     PaginatedWizardSessionDTOListApi,
+    PatchedWizardRunStatusUpdateRequestApi,
     UpsertWizardSessionRequestApi,
     WizardRunApi,
     WizardRunArtifactApi,
     WizardRunCreateRequestApi,
-    WizardRunFailureRequestApi,
+    WizardRunsListParams,
     WizardSessionDTOApi,
     WizardSessionsLatestRetrieveParams,
     WizardSessionsListParams,
     WizardSessionsStreamRetrieveParams,
 } from './api.schemas'
+
+export const getWizardRunsListUrl = (projectId: string, params?: WizardRunsListParams) => {
+    const normalizedParams = new URLSearchParams()
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? 'null' : String(value))
+        }
+    })
+
+    const stringifiedParams = normalizedParams.toString()
+
+    return stringifiedParams.length > 0
+        ? `/api/projects/${projectId}/wizard/runs/?${stringifiedParams}`
+        : `/api/projects/${projectId}/wizard/runs/`
+}
+
+/**
+ * List Wizard runs for this project, ordered from newest to oldest.
+ */
+export const wizardRunsList = async (
+    projectId: string,
+    params?: WizardRunsListParams,
+    options?: RequestInit
+): Promise<PaginatedWizardRunListApi> => {
+    return apiMutator<PaginatedWizardRunListApi>(getWizardRunsListUrl(projectId, params), {
+        ...options,
+        method: 'GET',
+    })
+}
 
 export const getWizardRunsCreateUrl = (projectId: string) => {
     return `/api/projects/${projectId}/wizard/runs/`
@@ -59,6 +91,27 @@ export const wizardRunsRetrieve = async (
     })
 }
 
+export const getWizardRunsPartialUpdateUrl = (projectId: string, runId: string) => {
+    return `/api/projects/${projectId}/wizard/runs/${runId}/`
+}
+
+/**
+ * Change the terminal status of a local Wizard run.
+ */
+export const wizardRunsPartialUpdate = async (
+    projectId: string,
+    runId: string,
+    patchedWizardRunStatusUpdateRequestApi?: PatchedWizardRunStatusUpdateRequestApi,
+    options?: RequestInit
+): Promise<WizardRunApi> => {
+    return apiMutator<WizardRunApi>(getWizardRunsPartialUpdateUrl(projectId, runId), {
+        ...options,
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(patchedWizardRunStatusUpdateRequestApi),
+    })
+}
+
 export const getWizardRunsArtifactsListUrl = (projectId: string, runId: string) => {
     return `/api/projects/${projectId}/wizard/runs/${runId}/artifacts/`
 }
@@ -74,63 +127,6 @@ export const wizardRunsArtifactsList = async (
     return apiMutator<WizardRunArtifactApi[]>(getWizardRunsArtifactsListUrl(projectId, runId), {
         ...options,
         method: 'GET',
-    })
-}
-
-export const getWizardRunsCancelCreateUrl = (projectId: string, runId: string) => {
-    return `/api/projects/${projectId}/wizard/runs/${runId}/cancel/`
-}
-
-/**
- * Cancel a local Wizard run.
- */
-export const wizardRunsCancelCreate = async (
-    projectId: string,
-    runId: string,
-    options?: RequestInit
-): Promise<WizardRunApi> => {
-    return apiMutator<WizardRunApi>(getWizardRunsCancelCreateUrl(projectId, runId), {
-        ...options,
-        method: 'POST',
-    })
-}
-
-export const getWizardRunsCompleteCreateUrl = (projectId: string, runId: string) => {
-    return `/api/projects/${projectId}/wizard/runs/${runId}/complete/`
-}
-
-/**
- * Complete a local Wizard run.
- */
-export const wizardRunsCompleteCreate = async (
-    projectId: string,
-    runId: string,
-    options?: RequestInit
-): Promise<WizardRunApi> => {
-    return apiMutator<WizardRunApi>(getWizardRunsCompleteCreateUrl(projectId, runId), {
-        ...options,
-        method: 'POST',
-    })
-}
-
-export const getWizardRunsFailCreateUrl = (projectId: string, runId: string) => {
-    return `/api/projects/${projectId}/wizard/runs/${runId}/fail/`
-}
-
-/**
- * Fail a local Wizard run.
- */
-export const wizardRunsFailCreate = async (
-    projectId: string,
-    runId: string,
-    wizardRunFailureRequestApi?: WizardRunFailureRequestApi,
-    options?: RequestInit
-): Promise<WizardRunApi> => {
-    return apiMutator<WizardRunApi>(getWizardRunsFailCreateUrl(projectId, runId), {
-        ...options,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...options?.headers },
-        body: JSON.stringify(wizardRunFailureRequestApi),
     })
 }
 

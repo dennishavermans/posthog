@@ -204,7 +204,7 @@ def test_upsert_handoff_text_survives_pushes_without_it(team):
 
 
 @pytest.mark.django_db
-@patch("products.wizard.backend.logic.sessions.sync_wizard_event_definitions.delay")
+@patch("products.wizard.backend.logic.sessions.lifecycle.sync_wizard_event_definitions.delay")
 def test_upsert_with_same_session_id_replaces_state(_mock_sync, team):
     _, first_created = wizard_facade.upsert(_input(team.id))
     assert first_created is True
@@ -302,7 +302,7 @@ def test_completed_transition_caps_valid_unique_event_definitions(team, django_c
 
 @pytest.mark.django_db
 @patch(
-    "products.wizard.backend.logic.sessions.sync_wizard_event_definitions.delay",
+    "products.wizard.backend.logic.sessions.lifecycle.sync_wizard_event_definitions.delay",
     side_effect=RuntimeError("task dispatch failed"),
 )
 def test_event_definition_dispatch_failure_does_not_break_completed_upsert(
@@ -323,7 +323,7 @@ def test_event_definition_dispatch_failure_does_not_break_completed_upsert(
 
 @pytest.mark.django_db
 def test_event_definition_task_recovers_after_transient_failure(team):
-    with patch("products.wizard.backend.logic.sessions.sync_wizard_event_definitions.delay"):
+    with patch("products.wizard.backend.logic.sessions.lifecycle.sync_wizard_event_definitions.delay"):
         session, _ = wizard_facade.upsert(
             _input(
                 team.id,
@@ -348,7 +348,7 @@ def test_event_definition_task_recovers_after_transient_failure(team):
 
 @pytest.mark.django_db
 def test_event_definition_task_uses_latest_completed_session_state(team):
-    with patch("products.wizard.backend.logic.sessions.sync_wizard_event_definitions.delay"):
+    with patch("products.wizard.backend.logic.sessions.lifecycle.sync_wizard_event_definitions.delay"):
         session, _ = wizard_facade.upsert(
             _input(
                 team.id,
@@ -378,7 +378,7 @@ def test_event_definition_task_reuses_definition_from_sibling_environment(team, 
         created_at=None,
         last_seen_at=None,
     )
-    with patch("products.wizard.backend.logic.sessions.sync_wizard_event_definitions.delay"):
+    with patch("products.wizard.backend.logic.sessions.lifecycle.sync_wizard_event_definitions.delay"):
         session, _ = wizard_facade.upsert(
             _input(
                 sibling_team.id,
@@ -519,7 +519,7 @@ def test_list_for_team_returns_sessions_ordered_by_started_at_desc(team):
 
 
 @pytest.mark.django_db
-@patch("products.wizard.backend.logic.sessions.sync_wizard_event_definitions.delay")
+@patch("products.wizard.backend.logic.sessions.lifecycle.sync_wizard_event_definitions.delay")
 def test_upsert_counts_a_terminal_transition_exactly_once(_mock_sync, team):
     counter = WIZARD_SESSIONS_FINISHED_TOTAL.labels(workflow="other", outcome="completed")
     before = counter._value.get()

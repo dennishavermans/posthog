@@ -58050,6 +58050,80 @@ export namespace Schemas {
     }
 
     /**
+     * * `local` - local
+     * * `cloud` - cloud
+     */
+    export type RunEnvironmentEnum = typeof RunEnvironmentEnum[keyof typeof RunEnvironmentEnum];
+
+
+    export const RunEnvironmentEnum = {
+      Local: 'local',
+      Cloud: 'cloud',
+    } as const;
+
+    export type WizardWorkspace = LocalFolderWorkspace | GitRepositoryWorkspace;
+
+    /**
+     * * `created` - created
+     * * `running` - running
+     * * `completed` - completed
+     * * `failed` - failed
+     * * `cancelled` - cancelled
+     */
+    export type WizardRunStatusEnum = typeof WizardRunStatusEnum[keyof typeof WizardRunStatusEnum];
+
+
+    export const WizardRunStatusEnum = {
+      Created: 'created',
+      Running: 'running',
+      Completed: 'completed',
+      Failed: 'failed',
+      Cancelled: 'cancelled',
+    } as const;
+
+    export interface WizardRun {
+      /** Unique ID of the Wizard run. */
+      readonly id: string;
+      /** Project that owns the Wizard run. */
+      readonly team_id: number;
+      /**
+         * User who created the Wizard run, or null if that user no longer exists.
+         * @nullable
+         */
+      readonly created_by_id: number | null;
+      /** Where the setup agent runs.
+       *
+       * * `local` - local
+       * * `cloud` - cloud */
+      readonly environment: RunEnvironmentEnum;
+      /** Project that the setup agent works on. */
+      readonly workspace: WizardWorkspace;
+      /** Current lifecycle status of the Wizard run.
+       *
+       * * `created` - created
+       * * `running` - running
+       * * `completed` - completed
+       * * `failed` - failed
+       * * `cancelled` - cancelled */
+      readonly status: WizardRunStatusEnum;
+      /** Machine-readable failure reason, or null if the run has not failed.
+       *
+       * * `timeout` - timeout
+       * * `execution_failed` - execution_failed
+       * * `dispatch_failed` - dispatch_failed */
+      readonly error_code: ErrorCodeEnum | null;
+    }
+
+    export interface PaginatedWizardRunList {
+      count: number;
+      /** @nullable */
+      next?: string | null;
+      /** @nullable */
+      previous?: string | null;
+      results: WizardRun[];
+    }
+
+    /**
      * The in-flight `wizard_ask` question. Typed rather than a free-form dict so the shape the
      * widget renders is enforced at the edge instead of trusted from the producer.
      */
@@ -66428,6 +66502,35 @@ export namespace Schemas {
       variants?: unknown;
     }
 
+    /**
+     * * `completed` - completed
+     * * `failed` - failed
+     * * `cancelled` - cancelled
+     */
+    export type WizardRunStatusUpdateRequestStatusEnum = typeof WizardRunStatusUpdateRequestStatusEnum[keyof typeof WizardRunStatusUpdateRequestStatusEnum];
+
+
+    export const WizardRunStatusUpdateRequestStatusEnum = {
+      Completed: 'completed',
+      Failed: 'failed',
+      Cancelled: 'cancelled',
+    } as const;
+
+    export interface PatchedWizardRunStatusUpdateRequest {
+      /** New terminal status for the Wizard run.
+       *
+       * * `completed` - completed
+       * * `failed` - failed
+       * * `cancelled` - cancelled */
+      status?: WizardRunStatusUpdateRequestStatusEnum;
+      /** Machine-readable reason the Wizard run failed.
+       *
+       * * `timeout` - timeout
+       * * `execution_failed` - execution_failed
+       * * `dispatch_failed` - dispatch_failed */
+      error_code?: ErrorCodeEnum | null;
+    }
+
     export interface PathCleaningPreviewExample {
       /** A real sampled path before the suggested rules are applied. */
       before: string;
@@ -73585,18 +73688,6 @@ export namespace Schemas {
       /** True when a run for this action was already in progress (scheduled or manual), so this request coalesced onto it rather than starting a second run. */
       already_running: boolean;
     }
-
-    /**
-     * * `local` - local
-     * * `cloud` - cloud
-     */
-    export type RunEnvironmentEnum = typeof RunEnvironmentEnum[keyof typeof RunEnvironmentEnum];
-
-
-    export const RunEnvironmentEnum = {
-      Local: 'local',
-      Cloud: 'cloud',
-    } as const;
 
     export interface RunFailureLogs {
       /** Failed CI jobs of this run with their thinned failure logs, grouped by job. */
@@ -84774,59 +84865,6 @@ export namespace Schemas {
       started_at?: string | null;
     }
 
-    export type WizardWorkspace = LocalFolderWorkspace | GitRepositoryWorkspace;
-
-    /**
-     * * `created` - created
-     * * `running` - running
-     * * `completed` - completed
-     * * `failed` - failed
-     * * `cancelled` - cancelled
-     */
-    export type WizardRunStatusEnum = typeof WizardRunStatusEnum[keyof typeof WizardRunStatusEnum];
-
-
-    export const WizardRunStatusEnum = {
-      Created: 'created',
-      Running: 'running',
-      Completed: 'completed',
-      Failed: 'failed',
-      Cancelled: 'cancelled',
-    } as const;
-
-    export interface WizardRun {
-      /** Unique ID of the Wizard run. */
-      readonly id: string;
-      /** Project that owns the Wizard run. */
-      readonly team_id: number;
-      /**
-         * User who created the Wizard run, or null if that user no longer exists.
-         * @nullable
-         */
-      readonly created_by_id: number | null;
-      /** Where the setup agent runs.
-       *
-       * * `local` - local
-       * * `cloud` - cloud */
-      readonly environment: RunEnvironmentEnum;
-      /** Project that the setup agent works on. */
-      readonly workspace: WizardWorkspace;
-      /** Current lifecycle status of the Wizard run.
-       *
-       * * `created` - created
-       * * `running` - running
-       * * `completed` - completed
-       * * `failed` - failed
-       * * `cancelled` - cancelled */
-      readonly status: WizardRunStatusEnum;
-      /** Machine-readable failure reason, or null if the run has not failed.
-       *
-       * * `timeout` - timeout
-       * * `execution_failed` - execution_failed
-       * * `dispatch_failed` - dispatch_failed */
-      readonly error_code: ErrorCodeEnum | null;
-    }
-
     /**
      * Format of the changes produced by the run.
      *
@@ -84929,15 +84967,6 @@ export namespace Schemas {
          * @nullable
          */
       readonly attr: string | null;
-    }
-
-    export interface WizardRunFailureRequest {
-      /** Machine-readable reason the Wizard run failed.
-       *
-       * * `timeout` - timeout
-       * * `execution_failed` - execution_failed
-       * * `dispatch_failed` - dispatch_failed */
-      error_code?: ErrorCodeEnum | null;
     }
 
     /**
@@ -97699,6 +97728,17 @@ export namespace Schemas {
     };
 
     export type WebVitalsRetrieve200 = { [key: string]: unknown };
+
+    export type WizardRunsListParams = {
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number;
+    /**
+     * The initial index from which to return the results.
+     */
+    offset?: number;
+    };
 
     export type WizardSessionsListParams = {
     /**

@@ -54,7 +54,6 @@ All other environment and workspace combinations are invalid unless explicitly a
 - Require a team GitHub integration for Git-repository cloud runs.
 - Verify that the integration can access the requested repository.
 - Execute cloud runs in a Tasks sandbox through a Temporal workflow.
-- Pass the Wizard run ID to the npm setup agent.
 - Reuse the current Wizard state-update system.
 - Persist run lifecycle status and error code.
 - Produce Git diff and pull request Run Artifacts for cloud Git-repository runs with changes.
@@ -73,33 +72,36 @@ All other environment and workspace combinations are invalid unless explicitly a
 ```text
 presentation
     -> facade/api.py
-        -> logic/runs.py
-            -> logic/run_domain.py
+        -> logic/runs/lifecycle.py
+            -> logic/runs/transitions.py
+            -> logic/runs/workspaces.py
+            -> logic/runs/store.py
             -> Wizard models
             -> Temporal client
 
 Temporal workflow
-    -> lifecycle activities -> logic/runs.py
+    -> lifecycle activities -> logic/runs/lifecycle.py
     -> Wizard Worker activities
         -> provision Wizard Worker
         -> prepare workspace based on workspace type
         -> execute setup agent
         -> create Run Artifacts
         -> clean up Wizard Worker
-        -> logic/cloud_worker.py
+        -> logic/runs/worker.py
+            -> logic/runs/publishing.py
             -> Tasks sandbox facade
             -> Tasks repository-selection facade
             -> Tasks repository-publishing facade
-        -> facade/api.py -> logic/artifacts.py
+        -> facade/api.py -> logic/runs/artifacts.py
 ```
 
 - `products/wizard/backend/facade/api.py` remains Wizard's only public Python interface.
 - Public inputs and DTOs live in `products/wizard/backend/facade/contracts.py`.
 - Public enums and serialized discriminators live in `products/wizard/backend/facade/enums.py`.
 - Public typed errors live in `products/wizard/backend/facade/errors.py`.
-- Application orchestration and persistence live in `products/wizard/backend/logic/runs.py`.
-- Pure run rules live in `products/wizard/backend/logic/run_domain.py`.
-- Wizard Worker policy and execution live in `products/wizard/backend/logic/cloud_worker.py`.
+- Application orchestration and persistence live under `products/wizard/backend/logic/runs/`.
+- Pure run rules live in `products/wizard/backend/logic/runs/transitions.py` and `workspaces.py`.
+- Wizard Worker policy and execution live in `products/wizard/backend/logic/runs/worker.py`.
 - `WizardSessionRunPhase` belongs to the legacy state stream; `WizardRunStatus` belongs to the persisted run lifecycle.
 - Tasks exposes generic sandbox and repository helpers. Wizard must not add Wizard-specific behavior to Tasks or import Tasks models and internal logic.
 - Temporal workflows remain deterministic and do not access Django, GitHub, Sandbox, or the network.
@@ -114,9 +116,8 @@ Temporal workflow
 The npm Wizard posts state snapshots to `POST /api/projects/{team_id}/wizard/sessions/`.
 
 The existing payload remains valid.
-New clients include the optional `run_id` returned by `POST /api/projects/{team_id}/wizard/runs/`.
-A local Wizard creates that run before its first session update.
-A Wizard Worker receives the pre-created run ID as `POSTHOG_WIZARD_RUN_ID` and includes it in session updates.
+The backend accepts the optional `run_id` returned by `POST /api/projects/{team_id}/wizard/runs/` when a client can associate its session with a run.
+V0 cloud execution does not inject that ID into the npm agent environment, so its legacy state stream remains independent from the persisted run lifecycle.
 
 Once a session is linked, omitted IDs preserve the link and another ID cannot replace it.
 The backend verifies the run belongs to both the URL team and the authenticated run creator.
@@ -150,7 +151,7 @@ This audit covers all Wizard run work completed before the environment and works
 | Existing work                                     | Decision          | Required follow-up                                                                                                       |
 | ------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `WizardRun` UUID, team, creator, and timestamps   | Keep              | Make `created_by_id` nullable in the DTO because the model uses `SET_NULL`.                                              |
-| Run status enum and transition matrix             | Keep              | Move the pure rules to `logic/run_domain.py` after the workspace refactor.                                               |
+| Run status enum and transition matrix             | Keep              | Keep the pure rules in `logic/runs/transitions.py`.                                                                      |
 | Separate outcome and error code                   | Replace           | Run Artifacts represent successful output. Keep error codes for failed runs and remove outcome.                          |
 | `WizardRunSurface`                                | Replace           | Use `WizardRunEnvironment` everywhere, including persistence and DTOs.                                                   |
 | `LocalWizardRunTarget` and `CloudWizardRunTarget` | Remove            | Replace them with typed local-folder and Git-repository workspaces.                                                      |
@@ -163,7 +164,7 @@ This audit covers all Wizard run work completed before the environment and works
 | Existing local creation test                      | Keep and adapt    | Supply `LocalFolderWorkspace(project_name=...)` and assert the returned workspace.                                       |
 | Existing cloud admission tests                    | Keep and adapt    | Supply `GitRepositoryWorkspace(repository=...)` and mock only facade-owned return values.                                |
 | Initial `WizardRun` migration                     | Keep              | Add linear follow-up migrations for environment and workspace fields. Inspect SQL before applying.                       |
-| Existing Wizard state system                      | Keep for V0       | Correlate updates with the Wizard run ID without introducing state-history models yet.                                   |
+| Existing Wizard state system                      | Keep for V0       | Keep it independent from cloud run lifecycle state while accepting optional run binding from capable clients.            |
 
 ### Reconciliation order
 
@@ -241,7 +242,7 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Leave the stored row unchanged when a transition fails validation.
 - [x] Make repeated or concurrent terminal updates deterministic.
 - [x] Keep generic transition persistence private. Public operations express intent or are driven by execution.
-- [x] Expose cancellation through HTTP for local setup-agent control.
+- [x] Expose local terminal status changes through one PATCH endpoint.
 
 ### 6. Define Run Artifacts
 
@@ -277,11 +278,11 @@ This audit covers all Wizard run work completed before the environment and works
 - [x] Select repository cloning in the workflow from the recorded workspace type.
 - [x] Resolve the current GitHub integration and authorize the repository in the cloning activity.
 - [x] Create short-lived GitHub and Wizard credentials inside the activities that consume them.
-- [x] Keep Wizard Worker environment, repository, command, handoff, and cleanup behavior in `logic/cloud_worker.py`.
+- [x] Keep Wizard Worker environment, repository, command, handoff, and cleanup behavior under `logic/runs/`.
 - [x] Provision, prepare, execute in, and destroy sandboxes through separate activities using the generic Tasks sandbox facade.
 - [x] Resolve repository credentials through the generic Tasks repository-selection facade.
 - [x] Clone the repository into a stable sandbox workspace path.
-- [x] Run the npm Wizard in headless mode with the Wizard run ID.
+- [x] Run the npm Wizard in headless mode against the prepared workspace.
 - [x] Apply explicit execution and sandbox TTL timeouts.
 - [x] Clean up the Wizard Worker in `finally` for success, failure, and cancellation.
 - [x] Collect a Git diff and persist a Run Artifact reference in the handoff activity.
@@ -308,9 +309,8 @@ This audit covers all Wizard run work completed before the environment and works
 ### 10. Reuse V0 state synchronization
 
 - [x] Document the current state-update endpoint and payload used by the npm Wizard.
-- [x] Pass the existing Wizard run ID to both local and cloud executions.
-- [x] Ensure a local setup agent creates its run before sending updates.
-- [x] Ensure a Wizard Worker receives the pre-created run ID.
+- [x] Keep the optional run binding accepted by the existing state-update endpoint.
+- [x] Keep V0 cloud state synchronization independent from the persisted run lifecycle.
 - [x] Bind updates to both `team_id` and `run_id`.
 - [x] Preserve the existing Wizard session API and frontend stream behavior.
 - [x] Add a compatibility test for the existing state-update path.
@@ -318,7 +318,7 @@ This audit covers all Wizard run work completed before the environment and works
 
 ### 11. Add presentation and API support
 
-- [x] Add discriminated workspace serializers under `products/wizard/backend/presentation/runs.py`.
+- [x] Add discriminated workspace serializers under `products/wizard/backend/presentation/runs/serializers.py`.
 - [x] Validate missing and unknown workspace discriminators without database access.
 - [x] Add one database-backed endpoint test as a serializer wiring guard.
 - [x] Add request and response schema annotations.
@@ -345,8 +345,8 @@ This audit covers all Wizard run work completed before the environment and works
 
 ### 13. Focused cleanup before review
 
-- [x] Extract pure transition and environment/workspace rules to `logic/run_domain.py`.
-- [x] Keep `logic/runs.py` as the application service.
+- [x] Extract transition and environment/workspace rules into focused modules under `logic/runs/`.
+- [x] Split run and legacy session presentation into feature-owned packages.
 - [x] Remove temporary compatibility names while preserving the intentional legacy `WizardSessionRunPhase` name.
 - [x] Review and preserve the local manual harness files `backend/test.py` and `backend/test2.py` outside the tracked diff.
 - [x] Remove comments that restate code.

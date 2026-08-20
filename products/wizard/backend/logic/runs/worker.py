@@ -17,10 +17,12 @@ from products.tasks.backend.facade.sandbox import (
     get_sandbox_class,
     sandbox_repo_path,
 )
+from products.wizard.backend.logic.runs import publishing
 
 WIZARD_PACKAGE = "@posthog/wizard@latest"
 WIZARD_TIMEOUT_SECONDS = 45 * 60
 WIZARD_TIMEOUT_EXIT_CODE = 124
+WIZARD_ERROR_DETAIL_LENGTH = 2000
 SANDBOX_EXECUTION_TIMEOUT_SECONDS = WIZARD_TIMEOUT_SECONDS + 120
 SANDBOX_TTL_SECONDS = WIZARD_TIMEOUT_SECONDS + 300
 PULL_REQUEST_TITLE = "Set up PostHog"
@@ -66,10 +68,14 @@ class WizardWorkerResult:
 
 
 class WizardWorkerExecutionError(Exception):
-    def __init__(self, stage: str, exit_code: int) -> None:
+    def __init__(self, stage: str, exit_code: int, detail: str | None = None) -> None:
         self.stage = stage
         self.exit_code = exit_code
-        super().__init__(f"Wizard Worker {stage} failed with exit code {exit_code}.")
+        self.detail = detail
+        message = f"Wizard Worker {stage} failed with exit code {exit_code}."
+        if detail:
+            message = f"{message}\n{detail}"
+        super().__init__(message)
 
 
 class WizardWorkerTimeoutError(Exception):
@@ -91,7 +97,6 @@ def provision_worker(request: WizardWorkerProvisionRequest) -> str:
             "POSTHOG_API_URL": settings.SANDBOX_API_URL or settings.SITE_URL,
             "POSTHOG_PROJECT_ID": str(request.team_id),
             "POSTHOG_WIZARD_API_KEY": wizard_token,
-            "POSTHOG_WIZARD_RUN_ID": str(request.run_id),
         },
         metadata={
             "purpose": "wizard_run",
@@ -106,7 +111,12 @@ def clone_repository(request: GitRepositoryCloneRequest) -> str:
     sandbox = get_sandbox_class().get_by_id(request.sandbox_id)
     github_token = get_github_token(request.github_integration_id) or ""
     clone_result = sandbox.clone_repository(request.repository, github_token=github_token, shallow=True)
-    _raise_for_failure("repository clone", clone_result.exit_code)
+    _raise_for_failure(
+        "repository clone",
+        clone_result.exit_code,
+        stdout=clone_result.stdout,
+        stderr=clone_result.stderr,
+    )
     return sandbox_repo_path(request.repository)
 
 
@@ -118,7 +128,12 @@ def execute_wizard(request: WizardExecutionRequest) -> None:
     )
     if wizard_result.exit_code == WIZARD_TIMEOUT_EXIT_CODE:
         raise WizardWorkerTimeoutError
-    _raise_for_failure("execution", wizard_result.exit_code)
+    _raise_for_failure(
+        "execution",
+        wizard_result.exit_code,
+        stdout=wizard_result.stdout,
+        stderr=wizard_result.stderr,
+    )
 
 
 def create_git_repository_handoff(request: GitRepositoryHandoffRequest) -> WizardWorkerResult:
@@ -127,16 +142,21 @@ def create_git_repository_handoff(request: GitRepositoryHandoffRequest) -> Wizar
         _git_diff_command(request.workspace_path),
         timeout_seconds=60,
     )
-    _raise_for_failure("diff capture", diff_result.exit_code)
+    _raise_for_failure(
+        "diff capture",
+        diff_result.exit_code,
+        stdout=diff_result.stdout,
+        stderr=diff_result.stderr,
+    )
     diff = diff_result.stdout.encode("utf-8")
     if not diff:
         return WizardWorkerResult(diff=diff, pull_request=None)
 
     branch = _pull_request_branch(request.run_id)
     try:
-        commit = repository_facade.create_signed_commit(
+        published_branch = publishing.create_signed_commit(
             sandbox,
-            repository=request.repository,
+            repository_path=request.workspace_path,
             branch=branch,
             message=PULL_REQUEST_COMMIT_MESSAGE,
         )
@@ -144,13 +164,13 @@ def create_git_repository_handoff(request: GitRepositoryHandoffRequest) -> Wizar
             team_id=request.team_id,
             integration_id=request.github_integration_id,
             repository=request.repository,
-            head_branch=commit.branch,
+            head_branch=published_branch,
             title=PULL_REQUEST_TITLE,
             body=PULL_REQUEST_BODY,
             source="wizard",
         )
-    except repository_facade.RepositoryPublishingError as error:
-        raise WizardWorkerExecutionError("publishing", 1) from error
+    except (publishing.WizardRepositoryPublishingError, repository_facade.RepositoryPublishingError) as error:
+        raise WizardWorkerExecutionError("publishing", 1, str(error)) from error
     return WizardWorkerResult(diff=diff, pull_request=pull_request)
 
 
@@ -189,6 +209,11 @@ def _wizard_region() -> str:
     return "eu" if get_instance_region() == "EU" else "us"
 
 
-def _raise_for_failure(stage: str, exit_code: int) -> None:
+def _raise_for_failure(stage: str, exit_code: int, *, stdout: str = "", stderr: str = "") -> None:
     if exit_code != 0:
-        raise WizardWorkerExecutionError(stage, exit_code)
+        raise WizardWorkerExecutionError(stage, exit_code, _failure_detail(stdout, stderr))
+
+
+def _failure_detail(stdout: str, stderr: str) -> str | None:
+    output = stdout.strip() or stderr.strip()
+    return output[-WIZARD_ERROR_DETAIL_LENGTH:] or None

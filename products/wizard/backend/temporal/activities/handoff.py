@@ -5,8 +5,8 @@ from posthog.temporal.common.utils import asyncify
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import CreatePullRequestArtifactInput
-from products.wizard.backend.logic import cloud_worker
-from products.wizard.backend.logic.cloud_worker import GitRepositoryHandoffRequest
+from products.wizard.backend.logic.runs import worker as cloud_worker
+from products.wizard.backend.logic.runs.worker import GitRepositoryHandoffRequest
 from products.wizard.backend.temporal.activities.errors import WIZARD_WORKER_EXECUTION_ERROR_TYPE
 from products.wizard.backend.temporal.contracts import PreparedGitRepositoryWorkspace
 
@@ -27,7 +27,7 @@ def create_run_artifacts(input: PreparedGitRepositoryWorkspace) -> None:
         )
     except cloud_worker.WizardWorkerExecutionError as error:
         raise ApplicationError(
-            "Wizard Worker could not create run artifacts.",
+            str(error),
             type=WIZARD_WORKER_EXECUTION_ERROR_TYPE,
             non_retryable=True,
         ) from error

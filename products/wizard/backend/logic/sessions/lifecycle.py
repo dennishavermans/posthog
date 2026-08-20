@@ -15,9 +15,9 @@ from products.wizard.backend.facade.contracts import (
 )
 from products.wizard.backend.facade.enums import WizardSessionRunPhase, WizardSessionTaskStatus
 from products.wizard.backend.facade.errors import WizardSessionOwnershipError, WizardSessionRunMismatchError
-from products.wizard.backend.logic.pubsub import publish_session_update
-from products.wizard.backend.logic.run_store import get_run_model
-from products.wizard.backend.logic.utils import is_stale
+from products.wizard.backend.logic.runs.store import get_run_model
+from products.wizard.backend.logic.sessions.pubsub import publish_session_update
+from products.wizard.backend.logic.sessions.staleness import is_stale
 from products.wizard.backend.metrics import report_session_upserted
 from products.wizard.backend.models import WizardSession
 from products.wizard.backend.tasks.tasks import sync_wizard_event_definitions

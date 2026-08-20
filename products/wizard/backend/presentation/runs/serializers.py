@@ -1,21 +1,8 @@
-from collections.abc import Callable, Mapping
-from functools import partial
+from collections.abc import Mapping
 from typing import cast
-from uuid import UUID
 
-from django.conf import settings
-
-from drf_spectacular.utils import OpenApiResponse, PolymorphicProxySerializer, extend_schema, extend_schema_field
-from rest_framework import serializers, status, viewsets
-from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
-from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework.throttling import BaseThrottle
-
-from posthog.api.routing import TeamAndOrgViewSetMixin
-from posthog.auth import SessionAuthentication
-from posthog.exceptions import Conflict
+from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema_field
+from rest_framework import serializers
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import (
@@ -23,7 +10,6 @@ from products.wizard.backend.facade.contracts import (
     GitRepositoryWorkspace,
     LocalFolderWorkspace,
     WizardRunArtifactDTO,
-    WizardRunDTO,
     WizardRunGitDiffArtifactDTO,
     WizardRunPullRequestArtifactDTO,
     WizardWorkspace,
@@ -35,18 +21,7 @@ from products.wizard.backend.facade.enums import (
     WizardRunStatus,
     WizardWorkspaceType,
 )
-from products.wizard.backend.facade.errors import (
-    IllegalStatusTransitionError,
-    InvalidRepositoryError,
-    InvalidWorkspaceEnvironmentError,
-    MissingGitHubIntegrationError,
-    RepositoryNotAccessibleError,
-    WizardRunNotFoundError,
-)
-from products.wizard.backend.presentation.run_throttles import (
-    WizardCloudRunBurstRateThrottle,
-    WizardCloudRunSustainedRateThrottle,
-)
+from products.wizard.backend.facade.errors import InvalidRepositoryError
 
 
 class WizardWorkspaceTypeField(serializers.CharField):
@@ -155,13 +130,29 @@ class WizardRunCreateRequestSerializer(serializers.Serializer):
         )
 
 
-class WizardRunFailureRequestSerializer(serializers.Serializer):
+class WizardRunStatusUpdateRequestSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=[
+            WizardRunStatus.COMPLETED.value,
+            WizardRunStatus.FAILED.value,
+            WizardRunStatus.CANCELLED.value,
+        ],
+        help_text="New terminal status for the Wizard run.",
+    )
     error_code = serializers.ChoiceField(
         required=False,
         allow_null=True,
         choices=[error_code.value for error_code in WizardRunErrorCode],
         help_text="Machine-readable reason the Wizard run failed.",
     )
+
+    def validate(self, attrs: dict[str, object]) -> dict[str, object]:
+        if attrs.get("error_code") is not None and attrs["status"] != WizardRunStatus.FAILED.value:
+            raise serializers.ValidationError({"error_code": "Only failed runs can have an error code."})
+        return attrs
+
+    def to_status(self) -> WizardRunStatus:
+        return WizardRunStatus(cast(str, self.validated_data["status"]))
 
     def to_error_code(self) -> WizardRunErrorCode | None:
         value = cast(str | None, self.validated_data.get("error_code"))
@@ -254,166 +245,3 @@ class WizardRunErrorSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Request field associated with the error, when available.",
     )
-
-
-class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
-    scope_object = "wizard_session"
-    scope_object_read_actions = ["retrieve", "artifacts"]
-    scope_object_write_actions = ["create", "complete", "fail", "cancel"]
-    http_method_names = ["get", "post", "head", "options"]
-    lookup_field = "run_id"
-    lookup_value_regex = "[0-9a-fA-F-]{36}"
-    pagination_class = None
-
-    def get_throttles(self) -> list[BaseThrottle]:
-        throttles = super().get_throttles()
-        if (
-            self.action == "create"
-            and isinstance(self.request.data, Mapping)
-            and self.request.data.get("environment") == WizardRunEnvironment.CLOUD.value
-        ):
-            throttles.extend(
-                [
-                    WizardCloudRunBurstRateThrottle(),
-                    WizardCloudRunSustainedRateThrottle(),
-                ]
-            )
-        return throttles
-
-    @extend_schema(
-        request=WizardRunCreateRequestSerializer,
-        responses={
-            201: WizardRunSerializer,
-            400: OpenApiResponse(response=WizardRunErrorSerializer),
-            403: OpenApiResponse(response=WizardRunErrorSerializer),
-            404: OpenApiResponse(response=WizardRunErrorSerializer),
-            429: OpenApiResponse(response=WizardRunErrorSerializer),
-        },
-        description="Create a local or cloud Wizard run for a project workspace.",
-    )
-    def create(self, request: Request, *args: object, **kwargs: object) -> Response:
-        serializer = WizardRunCreateRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        params = serializer.to_contract(team_id=self.team_id, created_by_id=cast(int, request.user.id))
-        if params.environment == WizardRunEnvironment.CLOUD:
-            self._validate_cloud_creation(request)
-        try:
-            run = wizard_facade.create_run(params)
-        except InvalidWorkspaceEnvironmentError:
-            raise ValidationError({"detail": "Choose a workspace supported by this run environment."})
-        except InvalidRepositoryError:
-            raise ValidationError({"detail": "Enter a repository in owner/name format."})
-        except (MissingGitHubIntegrationError, RepositoryNotAccessibleError):
-            raise ValidationError({"detail": "Connect GitHub with access to this repository, then try again."})
-        return Response(WizardRunSerializer(run).data, status=status.HTTP_201_CREATED)
-
-    @staticmethod
-    def _validate_cloud_creation(request: Request) -> None:
-        if not settings.WIZARD_CLOUD_RUN_OAUTH_CLIENT_ID:
-            raise NotFound("Running the Wizard in the cloud is not available.")
-        if not isinstance(request.successful_authenticator, SessionAuthentication):
-            raise PermissionDenied("Sign in to start a cloud Wizard run.")
-
-    @extend_schema(
-        responses={
-            200: WizardRunSerializer,
-            404: OpenApiResponse(response=WizardRunErrorSerializer),
-        },
-        description="Retrieve a Wizard run in this project.",
-    )
-    def retrieve(self, request: Request, *args: object, **kwargs: object) -> Response:
-        run = self._get_run()
-        return Response(WizardRunSerializer(run).data)
-
-    @extend_schema(
-        responses={
-            200: WizardRunArtifactSchema,
-            404: OpenApiResponse(response=WizardRunErrorSerializer),
-        },
-        description="List metadata for artifacts produced by a Wizard run.",
-    )
-    @action(detail=True, methods=["get"])
-    def artifacts(self, request: Request, *args: object, **kwargs: object) -> Response:
-        run_id = self._run_id()
-        try:
-            artifacts = wizard_facade.list_run_artifacts(self.team_id, run_id)
-        except WizardRunNotFoundError:
-            raise NotFound("No Wizard run was found for this project.")
-        return Response([serialize_wizard_run_artifact(artifact) for artifact in artifacts])
-
-    @extend_schema(
-        request=None,
-        responses={
-            200: WizardRunSerializer,
-            403: OpenApiResponse(response=WizardRunErrorSerializer),
-            404: OpenApiResponse(response=WizardRunErrorSerializer),
-            409: OpenApiResponse(response=WizardRunErrorSerializer),
-        },
-        description="Complete a local Wizard run.",
-    )
-    @action(detail=True, methods=["post"])
-    def complete(self, request: Request, *args: object, **kwargs: object) -> Response:
-        return self._transition_local_run(wizard_facade.complete_run, "completed")
-
-    @extend_schema(
-        request=WizardRunFailureRequestSerializer,
-        responses={
-            200: WizardRunSerializer,
-            400: OpenApiResponse(response=WizardRunErrorSerializer),
-            403: OpenApiResponse(response=WizardRunErrorSerializer),
-            404: OpenApiResponse(response=WizardRunErrorSerializer),
-            409: OpenApiResponse(response=WizardRunErrorSerializer),
-        },
-        description="Fail a local Wizard run.",
-    )
-    @action(detail=True, methods=["post"])
-    def fail(self, request: Request, *args: object, **kwargs: object) -> Response:
-        serializer = WizardRunFailureRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        operation = partial(wizard_facade.fail_run, error_code=serializer.to_error_code())
-        return self._transition_local_run(operation, "failed")
-
-    @extend_schema(
-        request=None,
-        responses={
-            200: WizardRunSerializer,
-            403: OpenApiResponse(response=WizardRunErrorSerializer),
-            404: OpenApiResponse(response=WizardRunErrorSerializer),
-            409: OpenApiResponse(response=WizardRunErrorSerializer),
-        },
-        description="Cancel a local Wizard run.",
-    )
-    @action(detail=True, methods=["post"])
-    def cancel(self, request: Request, *args: object, **kwargs: object) -> Response:
-        return self._transition_local_run(wizard_facade.cancel_run, "cancelled")
-
-    def _get_run(self) -> WizardRunDTO:
-        try:
-            return wizard_facade.get_run(self.team_id, self._run_id())
-        except WizardRunNotFoundError:
-            raise NotFound("No Wizard run was found for this project.")
-
-    def _run_id(self) -> UUID:
-        return UUID(cast(str, self.kwargs["run_id"]))
-
-    def _local_run_id(self) -> UUID:
-        run = self._get_run()
-        if run.environment != WizardRunEnvironment.LOCAL:
-            raise Conflict("Cloud Wizard runs are managed by their worker.", code="cloud_run_managed")
-        if run.created_by_id != self.request.user.id:
-            raise PermissionDenied("Only the user who started this Wizard run can update it.")
-        return run.id
-
-    def _transition_local_run(
-        self,
-        operation: Callable[[int, UUID], WizardRunDTO],
-        next_status: str,
-    ) -> Response:
-        try:
-            run = operation(self.team_id, self._local_run_id())
-        except IllegalStatusTransitionError:
-            raise Conflict(
-                f"This Wizard run cannot be {next_status} from its current status.",
-                code="invalid_transition",
-            )
-        return Response(WizardRunSerializer(run).data)

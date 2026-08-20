@@ -2,7 +2,7 @@ import pytest
 
 from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, LocalFolderWorkspace
 from products.wizard.backend.facade.enums import WizardRunEnvironment
-from products.wizard.backend.presentation.runs import WizardRunCreateRequestSerializer
+from products.wizard.backend.presentation.runs.serializers import WizardRunCreateRequestSerializer
 
 
 @pytest.mark.parametrize(

@@ -31,7 +31,7 @@ def test_create_git_diff_artifact_stores_content_by_reference(team, user) -> Non
     run = _create_run(team.id, user.id)
     diff = b"diff --git a/app.py b/app.py\n"
 
-    with patch("products.wizard.backend.logic.artifacts.object_storage.write") as write:
+    with patch("products.wizard.backend.logic.runs.artifacts.object_storage.write") as write:
         artifact = wizard_facade.create_git_diff_artifact(team.id, run.id, diff)
 
     assert artifact is not None
@@ -51,7 +51,7 @@ def test_create_git_diff_artifact_stores_content_by_reference(team, user) -> Non
 def test_empty_git_diff_creates_no_artifact(team, user) -> None:
     run = _create_run(team.id, user.id)
 
-    with patch("products.wizard.backend.logic.artifacts.object_storage.write") as write:
+    with patch("products.wizard.backend.logic.runs.artifacts.object_storage.write") as write:
         artifact = wizard_facade.create_git_diff_artifact(team.id, run.id, b"")
 
     assert artifact is None
@@ -63,7 +63,7 @@ def test_empty_git_diff_creates_no_artifact(team, user) -> None:
 def test_git_diff_artifact_is_idempotent_for_run(team, user) -> None:
     run = _create_run(team.id, user.id)
 
-    with patch("products.wizard.backend.logic.artifacts.object_storage.write"):
+    with patch("products.wizard.backend.logic.runs.artifacts.object_storage.write"):
         first = wizard_facade.create_git_diff_artifact(team.id, run.id, b"first")
         second = wizard_facade.create_git_diff_artifact(team.id, run.id, b"second")
 
@@ -80,7 +80,7 @@ def test_create_git_diff_artifact_is_scoped_to_team(team, user) -> None:
     run = _create_run(team.id, user.id)
 
     with (
-        patch("products.wizard.backend.logic.artifacts.object_storage.write") as write,
+        patch("products.wizard.backend.logic.runs.artifacts.object_storage.write") as write,
         pytest.raises(WizardRunNotFoundError),
     ):
         wizard_facade.create_git_diff_artifact(other_team.id, run.id, b"diff")

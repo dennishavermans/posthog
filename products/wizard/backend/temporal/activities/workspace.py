@@ -7,8 +7,8 @@ from products.tasks.backend.facade import repo_selection
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, WizardRunDTO
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardWorkspaceType
-from products.wizard.backend.logic import cloud_worker
-from products.wizard.backend.logic.cloud_worker import GitRepositoryCloneRequest, WizardWorkerProvisionRequest
+from products.wizard.backend.logic.runs import worker as cloud_worker
+from products.wizard.backend.logic.runs.worker import GitRepositoryCloneRequest, WizardWorkerProvisionRequest
 from products.wizard.backend.temporal.activities.errors import (
     WIZARD_REPOSITORY_ACCESS_ERROR_TYPE,
     WIZARD_RUN_CONFIGURATION_ERROR_TYPE,
@@ -86,7 +86,7 @@ def clone_repository(input: ProvisionedWizardWorker) -> PreparedGitRepositoryWor
         )
     except cloud_worker.WizardWorkerExecutionError as error:
         raise ApplicationError(
-            "Wizard Worker could not prepare the repository.",
+            str(error),
             type=WIZARD_WORKER_EXECUTION_ERROR_TYPE,
             non_retryable=True,
         ) from error

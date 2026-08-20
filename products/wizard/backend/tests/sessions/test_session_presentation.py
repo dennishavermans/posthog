@@ -10,7 +10,7 @@ from posthog.models import Organization, PersonalAPIKey, User
 from posthog.models.utils import generate_random_token_personal, hash_key_value
 
 from products.wizard.backend.models import WizardSession
-from products.wizard.backend.presentation.views import _wizard_sync_killswitch_enabled
+from products.wizard.backend.presentation.sessions.views import _wizard_sync_killswitch_enabled
 
 
 class TestWizardSessionViewSet(APIBaseTest):
@@ -137,7 +137,7 @@ class TestWizardSessionViewSet(APIBaseTest):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    @patch("products.wizard.backend.logic.sessions.sync_wizard_event_definitions.delay")
+    @patch("products.wizard.backend.logic.sessions.lifecycle.sync_wizard_event_definitions.delay")
     def test_completed_session_accepts_event_definition_write_scope(self, _mock_sync):
         self._authenticate_personal_api_key(["wizard_session:write", "event_definition:write"])
 
@@ -149,7 +149,7 @@ class TestWizardSessionViewSet(APIBaseTest):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    @patch("products.wizard.backend.logic.sessions.sync_wizard_event_definitions.delay")
+    @patch("products.wizard.backend.logic.sessions.lifecycle.sync_wizard_event_definitions.delay")
     def test_repost_same_session_id_upserts(self, _mock_sync):
         first = self.client.post(self._url(), self._payload(), format="json")
         self.assertEqual(first.status_code, status.HTTP_201_CREATED)
@@ -433,14 +433,14 @@ class TestWizardSessionViewSet(APIBaseTest):
         response = self.client.get(f"{self._url()}stream/")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    @patch("products.wizard.backend.presentation.views.posthoganalytics.feature_enabled", return_value=True)
+    @patch("products.wizard.backend.presentation.sessions.views.posthoganalytics.feature_enabled", return_value=True)
     def test_stream_killswitch_returns_204(self, _mock_feature_enabled):
         # When the killswitch flag is on, the endpoint short-circuits with a 204
         # before any stream work — a 204 tells EventSource to stop reconnecting.
         response = self.client.get(f"{self._url()}stream/?workflow_id=onboarding")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
-    @patch("products.wizard.backend.presentation.views.posthoganalytics.feature_enabled", return_value=True)
+    @patch("products.wizard.backend.presentation.sessions.views.posthoganalytics.feature_enabled", return_value=True)
     def test_latest_killswitch_returns_204_even_with_a_live_session(self, _mock_feature_enabled):
         # Parity with stream: with the killswitch on, `latest` short-circuits to a 204
         # even though a real session exists, so the detector's 60s poll winds down too
@@ -453,7 +453,7 @@ class TestWizardSessionViewSet(APIBaseTest):
     @parameterized.expand([("on", True, True), ("off", False, False), ("unresolved", None, False)])
     def test_wizard_sync_killswitch_helper(self, _label, flag_value, expected):
         with patch(
-            "products.wizard.backend.presentation.views.posthoganalytics.feature_enabled",
+            "products.wizard.backend.presentation.sessions.views.posthoganalytics.feature_enabled",
             return_value=flag_value,
         ):
             self.assertEqual(_wizard_sync_killswitch_enabled("distinct-id"), expected)
