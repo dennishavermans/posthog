@@ -113,6 +113,10 @@ class WizardWorkspaceField(serializers.Field):
 
 
 class WizardRunCreateRequestSerializer(serializers.Serializer):
+    program_id = serializers.RegexField(
+        regex=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        help_text="Registry program to run.",
+    )
     environment = serializers.ChoiceField(
         choices=[environment.value for environment in WizardRunEnvironment],
         help_text="Where the setup agent runs.",
@@ -127,6 +131,7 @@ class WizardRunCreateRequestSerializer(serializers.Serializer):
             created_by_id=created_by_id,
             environment=WizardRunEnvironment(cast(str, self.validated_data["environment"])),
             workspace=cast(WizardWorkspace, self.validated_data["workspace"]),
+            program_id=cast(str, self.validated_data["program_id"]),
         )
 
 

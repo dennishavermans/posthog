@@ -125,6 +125,7 @@ class CreateWizardRunInput:
     created_by_id: int
     environment: WizardRunEnvironment
     workspace: WizardWorkspace
+    program_id: str
 
 
 @frozen
