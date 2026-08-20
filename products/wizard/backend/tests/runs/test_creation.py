@@ -4,16 +4,81 @@ from unittest.mock import patch
 from django.db import transaction
 
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import CreateWizardRunInput, GitRepositoryWorkspace, LocalFolderWorkspace
+from products.wizard.backend.facade.contracts import (
+    CreateWizardRunInput,
+    GitRepositoryWorkspace,
+    LocalFolderWorkspace,
+    WizardProgram,
+)
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.facade.errors import (
     InvalidRepositoryError,
     InvalidWorkspaceEnvironmentError,
     MissingGitHubIntegrationError,
     RepositoryNotAccessibleError,
+    WizardProgramEnvironmentNotSupportedError,
 )
 from products.wizard.backend.models import WizardRun
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput
+
+PROGRAM_PAYLOAD = {
+    "version": 1,
+    "programs": [
+        {
+            "id": "web-analytics-audit",
+            "name": "Web analytics audit",
+            "description": "Audit a project's web analytics setup",
+            "command": ["audit", "web-analytics"],
+            "tags": ["audit", "web-analytics"],
+            "required_programs": ["posthog-integration"],
+            "supported_environments": ["local"],
+        }
+    ],
+}
+
+
+@pytest.mark.django_db
+def test_create_run_persists_resolved_program(team, user) -> None:
+    with patch("posthoganalytics.get_feature_flag_payload", return_value=PROGRAM_PAYLOAD):
+        run = wizard_facade.create_run(
+            CreateWizardRunInput(
+                team_id=team.id,
+                created_by_id=user.id,
+                environment=WizardRunEnvironment.LOCAL,
+                workspace=LocalFolderWorkspace(project_name="example-project"),
+                program_id="web-analytics-audit",
+            )
+        )
+
+    assert run.program == WizardProgram(
+        id="web-analytics-audit",
+        name="Web analytics audit",
+        description="Audit a project's web analytics setup",
+        command=("audit", "web-analytics"),
+        tags=("audit", "web-analytics"),
+        required_programs=("posthog-integration",),
+        supported_environments=(WizardRunEnvironment.LOCAL,),
+    )
+    assert WizardRun.objects.for_team(team.id).get(id=run.id).program == PROGRAM_PAYLOAD["programs"][0]
+
+
+@pytest.mark.django_db
+def test_create_run_rejects_unsupported_program_environment(team, user) -> None:
+    with (
+        patch("posthoganalytics.get_feature_flag_payload", return_value=PROGRAM_PAYLOAD),
+        pytest.raises(WizardProgramEnvironmentNotSupportedError),
+    ):
+        wizard_facade.create_run(
+            CreateWizardRunInput(
+                team_id=team.id,
+                created_by_id=user.id,
+                environment=WizardRunEnvironment.CLOUD,
+                workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
+                program_id="web-analytics-audit",
+            )
+        )
+
+    assert not WizardRun.objects.for_team(team.id).exists()
 
 
 @pytest.mark.django_db

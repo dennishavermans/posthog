@@ -75,6 +75,22 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(response.json()["attr"], "program_id")
         self.assertEqual(response.json()["code"], "required")
 
+    def test_create_rejects_unavailable_program(self) -> None:
+        with patch("posthoganalytics.get_feature_flag_payload", return_value={"version": 1, "programs": []}):
+            response = self.client.post(
+                self._url(),
+                {
+                    "program_id": "unavailable-program",
+                    "environment": "local",
+                    "workspace": {"type": "local_folder", "project_name": "example-project"},
+                },
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["detail"], "Choose an available Wizard program.")
+        self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
+
     def test_retrieve_run(self) -> None:
         created = self.client.post(
             self._url(),
