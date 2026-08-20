@@ -84828,16 +84828,18 @@ export namespace Schemas {
     }
 
     /**
+     * Format of the changes produced by the run.
+     *
      * * `git_diff` - git_diff
      */
-    export type WizardRunArtifactTypeEnum = typeof WizardRunArtifactTypeEnum[keyof typeof WizardRunArtifactTypeEnum];
+    export type WizardRunGitDiffArtifactArtifactType = typeof WizardRunGitDiffArtifactArtifactType[keyof typeof WizardRunGitDiffArtifactArtifactType];
 
 
-    export const WizardRunArtifactTypeEnum = {
+    export const WizardRunGitDiffArtifactArtifactType = {
       GitDiff: 'git_diff',
     } as const;
 
-    export interface WizardRunArtifact {
+    export interface WizardRunGitDiffArtifact {
       /** Unique ID of the run artifact. */
       readonly id: string;
       /** Project that owns the run artifact. */
@@ -84847,7 +84849,7 @@ export namespace Schemas {
       /** Format of the changes produced by the run.
        *
        * * `git_diff` - git_diff */
-      readonly artifact_type: WizardRunArtifactTypeEnum;
+      readonly artifact_type: WizardRunGitDiffArtifactArtifactType;
       /** Stored artifact size in bytes. */
       readonly size_bytes: number;
       /** SHA-256 hash of the stored artifact content. */
@@ -84855,6 +84857,55 @@ export namespace Schemas {
       /** Time when the artifact was stored. */
       readonly created_at: string;
     }
+
+    /**
+     * Format of the changes produced by the run.
+     *
+     * * `pull_request` - pull_request
+     */
+    export type WizardRunPullRequestArtifactArtifactType = typeof WizardRunPullRequestArtifactArtifactType[keyof typeof WizardRunPullRequestArtifactArtifactType];
+
+
+    export const WizardRunPullRequestArtifactArtifactType = {
+      PullRequest: 'pull_request',
+    } as const;
+
+    export interface WizardRunPullRequestArtifact {
+      /** Unique ID of the run artifact. */
+      readonly id: string;
+      /** Project that owns the run artifact. */
+      readonly team_id: number;
+      /** Wizard run that produced the artifact. */
+      readonly run_id: string;
+      /** Format of the changes produced by the run.
+       *
+       * * `pull_request` - pull_request */
+      readonly artifact_type: WizardRunPullRequestArtifactArtifactType;
+      /** GitHub URL of the pull request. */
+      readonly url: string;
+      /** Repository-local pull request number. */
+      readonly number: number;
+      /** GitHub repository in owner/name format. */
+      readonly repository: string;
+      /** Branch containing the setup agent's changes. */
+      readonly head_branch: string;
+      /** Branch that the pull request targets. */
+      readonly base_branch: string;
+      /** Time when the artifact was stored. */
+      readonly created_at: string;
+    }
+
+    export type WizardRunArtifact = WizardRunGitDiffArtifact | WizardRunPullRequestArtifact;
+
+    /**
+     * * `git_diff` - git_diff
+     */
+    export type WizardRunArtifactTypeEnum = typeof WizardRunArtifactTypeEnum[keyof typeof WizardRunArtifactTypeEnum];
+
+
+    export const WizardRunArtifactTypeEnum = {
+      GitDiff: 'git_diff',
+    } as const;
 
     export interface WizardRunCreateRequest {
       /** Where the setup agent runs.
@@ -84888,6 +84939,16 @@ export namespace Schemas {
        * * `dispatch_failed` - dispatch_failed */
       error_code?: ErrorCodeEnum | null;
     }
+
+    /**
+     * * `pull_request` - pull_request
+     */
+    export type WizardRunPullRequestArtifactArtifactTypeEnum = typeof WizardRunPullRequestArtifactArtifactTypeEnum[keyof typeof WizardRunPullRequestArtifactArtifactTypeEnum];
+
+
+    export const WizardRunPullRequestArtifactArtifactTypeEnum = {
+      PullRequest: 'pull_request',
+    } as const;
 
     export interface WorkflowHealthBucket {
       /** Bucket start, aligned to the item's granularity (top of hour, midnight, or Monday). */

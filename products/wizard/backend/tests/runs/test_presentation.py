@@ -12,7 +12,11 @@ from posthog.models import PersonalAPIKey, Team, User
 from posthog.models.utils import generate_random_token_personal, hash_key_value
 
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import CreateWizardRunInput, LocalFolderWorkspace
+from products.wizard.backend.facade.contracts import (
+    CreatePullRequestArtifactInput,
+    CreateWizardRunInput,
+    LocalFolderWorkspace,
+)
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
 from products.wizard.backend.models import WizardRun
 
@@ -233,6 +237,48 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(len(response.json()), 1)
         self.assertEqual(response.json()[0]["run_id"], created["id"])
         self.assertEqual(response.json()[0]["artifact_type"], "git_diff")
+
+    def test_list_pull_request_artifact(self) -> None:
+        created = self.client.post(
+            self._url(),
+            {
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "example-project"},
+            },
+            format="json",
+        ).json()
+        wizard_facade.create_pull_request_artifact(
+            CreatePullRequestArtifactInput(
+                team_id=self.team.id,
+                run_id=UUID(created["id"]),
+                url="https://github.com/posthog/posthog/pull/123",
+                number=123,
+                repository="posthog/posthog",
+                head_branch="posthog/wizard-123",
+                base_branch="master",
+            )
+        )
+
+        response = self.client.get(self._url(f"{created['id']}/artifacts/"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.json(),
+            [
+                {
+                    "id": response.json()[0]["id"],
+                    "team_id": self.team.id,
+                    "run_id": created["id"],
+                    "artifact_type": "pull_request",
+                    "url": "https://github.com/posthog/posthog/pull/123",
+                    "number": 123,
+                    "repository": "posthog/posthog",
+                    "head_branch": "posthog/wizard-123",
+                    "base_branch": "master",
+                    "created_at": response.json()[0]["created_at"],
+                }
+            ],
+        )
 
     @parameterized.expand(
         (

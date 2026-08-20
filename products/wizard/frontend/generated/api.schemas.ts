@@ -147,16 +147,18 @@ export interface WizardRunErrorApi {
 }
 
 /**
+ * Format of the changes produced by the run.
+ *
  * * `git_diff` - git_diff
  */
-export type WizardRunArtifactTypeEnumApi =
-    (typeof WizardRunArtifactTypeEnumApi)[keyof typeof WizardRunArtifactTypeEnumApi]
+export type WizardRunGitDiffArtifactApiArtifactType =
+    (typeof WizardRunGitDiffArtifactApiArtifactType)[keyof typeof WizardRunGitDiffArtifactApiArtifactType]
 
-export const WizardRunArtifactTypeEnumApi = {
+export const WizardRunGitDiffArtifactApiArtifactType = {
     GitDiff: 'git_diff',
 } as const
 
-export interface WizardRunArtifactApi {
+export interface WizardRunGitDiffArtifactApi {
     /** Unique ID of the run artifact. */
     readonly id: string
     /** Project that owns the run artifact. */
@@ -166,7 +168,7 @@ export interface WizardRunArtifactApi {
     /** Format of the changes produced by the run.
      *
      * * `git_diff` - git_diff */
-    readonly artifact_type: WizardRunArtifactTypeEnumApi
+    readonly artifact_type: WizardRunGitDiffArtifactApiArtifactType
     /** Stored artifact size in bytes. */
     readonly size_bytes: number
     /** SHA-256 hash of the stored artifact content. */
@@ -174,6 +176,45 @@ export interface WizardRunArtifactApi {
     /** Time when the artifact was stored. */
     readonly created_at: string
 }
+
+/**
+ * Format of the changes produced by the run.
+ *
+ * * `pull_request` - pull_request
+ */
+export type WizardRunPullRequestArtifactApiArtifactType =
+    (typeof WizardRunPullRequestArtifactApiArtifactType)[keyof typeof WizardRunPullRequestArtifactApiArtifactType]
+
+export const WizardRunPullRequestArtifactApiArtifactType = {
+    PullRequest: 'pull_request',
+} as const
+
+export interface WizardRunPullRequestArtifactApi {
+    /** Unique ID of the run artifact. */
+    readonly id: string
+    /** Project that owns the run artifact. */
+    readonly team_id: number
+    /** Wizard run that produced the artifact. */
+    readonly run_id: string
+    /** Format of the changes produced by the run.
+     *
+     * * `pull_request` - pull_request */
+    readonly artifact_type: WizardRunPullRequestArtifactApiArtifactType
+    /** GitHub URL of the pull request. */
+    readonly url: string
+    /** Repository-local pull request number. */
+    readonly number: number
+    /** GitHub repository in owner/name format. */
+    readonly repository: string
+    /** Branch containing the setup agent's changes. */
+    readonly head_branch: string
+    /** Branch that the pull request targets. */
+    readonly base_branch: string
+    /** Time when the artifact was stored. */
+    readonly created_at: string
+}
+
+export type WizardRunArtifactApi = WizardRunGitDiffArtifactApi | WizardRunPullRequestArtifactApi
 
 export interface WizardRunFailureRequestApi {
     /** Machine-readable reason the Wizard run failed.
@@ -374,6 +415,26 @@ export interface UpsertWizardSessionRequestApi {
      */
     run_id?: string | null
 }
+
+/**
+ * * `git_diff` - git_diff
+ */
+export type WizardRunArtifactTypeEnumApi =
+    (typeof WizardRunArtifactTypeEnumApi)[keyof typeof WizardRunArtifactTypeEnumApi]
+
+export const WizardRunArtifactTypeEnumApi = {
+    GitDiff: 'git_diff',
+} as const
+
+/**
+ * * `pull_request` - pull_request
+ */
+export type WizardRunPullRequestArtifactArtifactTypeEnumApi =
+    (typeof WizardRunPullRequestArtifactArtifactTypeEnumApi)[keyof typeof WizardRunPullRequestArtifactArtifactTypeEnumApi]
+
+export const WizardRunPullRequestArtifactArtifactTypeEnumApi = {
+    PullRequest: 'pull_request',
+} as const
 
 export type WizardSessionsListParams = {
     /**
