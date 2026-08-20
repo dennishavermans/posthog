@@ -7,6 +7,7 @@ import { SelfDrivingSection } from './SelfDrivingSection'
 interface SectionState {
     dailyLimit: number | null
     reportsToday: number
+    staleSweep?: boolean | null
 }
 
 function StateMocks({ state }: { state: SectionState }): JSX.Element {
@@ -20,6 +21,7 @@ function StateMocks({ state }: { state: SectionState }): JSX.Element {
                 max_reports_per_day: state.dailyLimit,
                 reports_generated_today: state.reportsToday,
                 daily_report_limit_reached: state.dailyLimit != null && state.reportsToday >= state.dailyLimit,
+                stale_report_sweep_enabled: state.staleSweep ?? null,
             },
             '/api/environments/:team_id/integrations/': { results: [] },
         },
@@ -54,4 +56,10 @@ export const DailyLimitSet: Story = {
 
 export const DailyLimitReached: Story = {
     render: () => <StateMocks state={{ dailyLimit: 10, reportsToday: 10 }} />,
+}
+
+// Teams that predate the staleness sweep are backfilled opted out, so this is what most existing
+// teams see until someone turns it on.
+export const StaleSweepOptedOut: Story = {
+    render: () => <StateMocks state={{ dailyLimit: null, reportsToday: 0, staleSweep: false }} />,
 }
