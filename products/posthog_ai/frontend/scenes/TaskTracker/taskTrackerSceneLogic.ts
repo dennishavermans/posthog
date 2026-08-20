@@ -33,7 +33,13 @@ import { welcomeOverrideLogic } from '../../logics/welcomeOverrideLogic'
 import type { AttachedContextItem } from '../../types/contextTypes'
 import type { RepositoryConfig, Task } from '../../types/taskTypes'
 import type { TaskListParams } from '../../types/taskTypes'
-import { buildRunCreateRequest, DEFAULT_COMPOSER_MODEL, resolveEffortForModel } from '../../utils/composerModels'
+import {
+    buildRunCreateRequest,
+    buildServerResolvedRunCreateRequest,
+    DEFAULT_COMPOSER_MODEL,
+    getRuntimeAdapterForModel,
+    resolveEffortForModel,
+} from '../../utils/composerModels'
 import { DEFAULT_COMPOSER_MODE, type PermissionMode } from '../../utils/composerModes'
 import { wrapWithPosthogContext } from '../../utils/posthogContextBlock'
 
@@ -87,6 +93,7 @@ export interface taskTrackerSceneLogicValues {
     historyExpanded: boolean // runnerPanelLogic
     defaultEffort: string | null // taskRunDefaultsLogic
     defaultModel: string | null // taskRunDefaultsLogic
+    defaultRuntimeAdapter: string | null // taskRunDefaultsLogic
     repositories: string[] // tasksLogic
     taskListParams: TaskListParams // tasksLogic
     tasks: Task[] // tasksLogic
@@ -97,6 +104,7 @@ export interface taskTrackerSceneLogicValues {
     displayHeadline: string
     displayModel: string
     headlineSeed: number
+    composerAdapter: string
     isDefaultSelection: boolean
     isSubmittingTask: boolean
     newTaskData: TaskCreateForm
@@ -303,6 +311,12 @@ export interface taskTrackerSceneLogicMeta {
     __keaTypeGenInternalSelectorTypes: {
         displayHeadline: (overrideHeadlines: string[] | null, headlineSeed: number) => string
         displayModel: (newTaskData: TaskCreateForm, defaultModel: string | null) => string
+        composerAdapter: (
+            newTaskData: TaskCreateForm,
+            displayModel: string,
+            defaultRuntimeAdapter: string | null,
+            catalogue: ModelChoiceApi[]
+        ) => string
         displayEffort: (
             newTaskData: TaskCreateForm,
             defaultEffort: string | null,
@@ -349,7 +363,7 @@ export const taskTrackerSceneLogic = kea<taskTrackerSceneLogicType>([
             modelCatalogueLogic,
             ['catalogue'],
             taskRunDefaultsLogic,
-            ['defaultModel', 'defaultEffort'],
+            ['defaultModel', 'defaultEffort', 'defaultRuntimeAdapter'],
         ],
         actions: [
             runnerPanelLogic(props),
@@ -466,6 +480,21 @@ export const taskTrackerSceneLogic = kea<taskTrackerSceneLogicType>([
                 catalogue: ModelChoiceApi[]
             ): ReasoningEffortEnumApi =>
                 resolveEffortForModel(catalogue, newTaskData.reasoningEffort ?? defaultEffort, displayModel),
+        ],
+        // The harness the composer's controls speak for. An explicit pick derives it from the
+        // catalogue; an untouched selection carries the server-resolved default's adapter, which
+        // stays right even when a stale catalogue no longer lists the default's model.
+        composerAdapter: [
+            (s) => [s.newTaskData, s.displayModel, s.defaultRuntimeAdapter, s.catalogue],
+            (
+                newTaskData: TaskCreateForm,
+                displayModel: string,
+                defaultRuntimeAdapter: string | null,
+                catalogue: ModelChoiceApi[]
+            ): string =>
+                newTaskData.model || !defaultRuntimeAdapter
+                    ? getRuntimeAdapterForModel(catalogue, displayModel)
+                    : defaultRuntimeAdapter,
         ],
         // Neither picker touched: submit omits the triple so the backend resolves it, which also
         // lets a warm run provisioned under the default match.
@@ -592,21 +621,22 @@ export const taskTrackerSceneLogic = kea<taskTrackerSceneLogicType>([
                     pending_user_message: wrapWithPosthogContext(description, seededContext),
                 }
 
-                // Always the displayed selection, runtime derived from the model — which is the resolved
-                // default when nothing was picked. Omitting the triple to let the backend resolve it is not
-                // an option: `initial_permission_mode` is rejected without a `runtime_adapter` alongside it,
-                // and the launch mode is the composer's to state (the backend only fills one in for Codex,
-                // so a Claude run would silently drop off Plan).
+                // An untouched selection pins nothing: the backend resolves the model triple from the
+                // stored team/user default (correct even while the defaults fetch is in flight or has
+                // failed) and clamps the stated permission mode to the resolved runtime. An explicit
+                // pick sends the full displayed selection, runtime derived from the model.
                 const runResponse = await tasksRunCreate(
                     projectId,
                     newTask.id,
-                    buildRunCreateRequest(
-                        values.catalogue,
-                        values.displayModel,
-                        values.displayEffort,
-                        permissionMode,
-                        runPayload
-                    )
+                    values.isDefaultSelection
+                        ? buildServerResolvedRunCreateRequest(permissionMode, runPayload)
+                        : buildRunCreateRequest(
+                              values.catalogue,
+                              values.displayModel,
+                              values.displayEffort,
+                              permissionMode,
+                              runPayload
+                          )
                 )
 
                 // Mark the seeded non-text refs sent under the created task, so the run's first follow-up

@@ -39,11 +39,11 @@ export function TaskComposer(): JSX.Element {
         displayModel,
         displayEffort,
         isDefaultSelection,
+        // Permission modes belong to the harness, so they follow the model actually shown — the
+        // server-resolved default's own runtime when nothing is picked, the pick's otherwise.
+        composerAdapter,
     } = useValues(taskTrackerSceneLogic)
     const { catalogue } = useValues(modelCatalogueLogic)
-    // Permission modes belong to the harness, so they follow the model actually shown — which with no
-    // explicit pick is the resolved default, not the empty selection.
-    const composerAdapter = getRuntimeAdapterForModel(catalogue, displayModel)
 
     // Buffer the description locally and debounce the write to kea so each keystroke is a cheap, isolated
     // re-render instead of a store dispatch. `Composer.Root` already blocks send on an empty `draft.value`
