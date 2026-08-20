@@ -839,3 +839,23 @@ class TaskRunStateMetricsDTO:
     oldest_open_age_seconds: list[TaskRunGaugeRow] = Field(default_factory=list)
     created_recently: list[TaskRunGaugeRow] = Field(default_factory=list)
     terminal_recently: list[TaskRunGaugeRow] = Field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SignedRepositoryCommit:
+    repository: str
+    branch: str
+    commit_shas: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RepositoryPullRequest:
+    repository: str
+    number: int
+    url: str
+    head_branch: str
+    base_branch: str
+
+
+class RepositoryPublishingError(Exception):
+    pass

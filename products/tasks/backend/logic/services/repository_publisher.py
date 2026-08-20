@@ -1,9 +1,13 @@
 import json
 import shlex
 
-from posthog.dataclasses import frozen
 from posthog.models.integration import GitHubIntegration, Integration
 
+from products.tasks.backend.facade.contracts import (
+    RepositoryPublishingError,
+    RepositoryPullRequest,
+    SignedRepositoryCommit,
+)
 from products.tasks.backend.logic.services.sandbox import SandboxBase, sandbox_repo_path
 
 SIGNED_COMMIT_TIMEOUT_SECONDS = 5 * 60
@@ -15,26 +19,6 @@ SIGNED_COMMIT_SCRIPT = (
     ");"
     "process.stdout.write(JSON.stringify(result));"
 )
-
-
-@frozen
-class SignedRepositoryCommit:
-    repository: str
-    branch: str
-    commit_shas: tuple[str, ...]
-
-
-@frozen
-class RepositoryPullRequest:
-    repository: str
-    number: int
-    url: str
-    head_branch: str
-    base_branch: str
-
-
-class RepositoryPublishingError(Exception):
-    pass
 
 
 def create_signed_commit(
