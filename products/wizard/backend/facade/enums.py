@@ -52,3 +52,4 @@ class WizardRunErrorCode(StrEnum):
 
 class WizardRunArtifactType(StrEnum):
     GIT_DIFF = "git_diff"
+    PULL_REQUEST = "pull_request"

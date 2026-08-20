@@ -15,10 +15,12 @@ from uuid import UUID
 
 from products.wizard.backend import metrics
 from products.wizard.backend.facade.contracts import (
+    CreatePullRequestArtifactInput,
     CreateWizardRunInput,
     UpsertWizardSessionInput,
     WizardRunArtifactDTO,
     WizardRunDTO,
+    WizardRunPullRequestArtifactDTO,
     WizardSessionDTO,
 )
 from products.wizard.backend.facade.enums import WizardRunErrorCode
@@ -111,6 +113,10 @@ def cancel_run(team_id: int, run_id: UUID) -> WizardRunDTO:
 
 def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> WizardRunArtifactDTO | None:
     return artifacts.create_git_diff_artifact(team_id, run_id, content)
+
+
+def create_pull_request_artifact(params: CreatePullRequestArtifactInput) -> WizardRunPullRequestArtifactDTO:
+    return artifacts.create_pull_request_artifact(params)
 
 
 def list_run_artifacts(team_id: int, run_id: UUID) -> list[WizardRunArtifactDTO]:

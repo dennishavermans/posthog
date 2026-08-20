@@ -123,9 +123,11 @@ class WizardRunArtifact(UUIDModel, TeamScopedRootMixin):
         max_length=30,
         choices=[(artifact_type.value, artifact_type.value) for artifact_type in WizardRunArtifactType],
     )
-    storage_path = models.CharField(max_length=1024)
-    size_bytes = models.PositiveBigIntegerField()
-    content_hash = models.CharField(max_length=64)
+    storage_path = models.CharField(max_length=1024, null=True, blank=True)
+    external_url = models.URLField(max_length=1024, null=True, blank=True)
+    metadata = models.JSONField(null=True, blank=True)
+    size_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+    content_hash = models.CharField(max_length=64, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta(TeamScopedRootMixin.Meta):

@@ -4,7 +4,13 @@ from unittest.mock import patch
 from posthog.models import Team
 
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import CreateWizardRunInput, LocalFolderWorkspace, WizardRunDTO
+from products.wizard.backend.facade.contracts import (
+    CreatePullRequestArtifactInput,
+    CreateWizardRunInput,
+    LocalFolderWorkspace,
+    WizardRunDTO,
+    WizardRunPullRequestArtifactDTO,
+)
 from products.wizard.backend.facade.enums import WizardRunArtifactType, WizardRunEnvironment
 from products.wizard.backend.facade.errors import WizardRunNotFoundError
 
@@ -80,3 +86,28 @@ def test_create_git_diff_artifact_is_scoped_to_team(team, user) -> None:
         wizard_facade.create_git_diff_artifact(other_team.id, run.id, b"diff")
 
     write.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_create_pull_request_artifact_persists_pull_request_identity(team, user) -> None:
+    run = _create_run(team.id, user.id)
+    params = CreatePullRequestArtifactInput(
+        team_id=team.id,
+        run_id=run.id,
+        url="https://github.com/posthog/posthog/pull/123",
+        number=123,
+        repository="posthog/posthog",
+        head_branch="posthog/wizard-123",
+        base_branch="master",
+    )
+
+    artifact = wizard_facade.create_pull_request_artifact(params)
+
+    assert isinstance(artifact, WizardRunPullRequestArtifactDTO)
+    assert artifact.artifact_type == WizardRunArtifactType.PULL_REQUEST
+    assert artifact.url == params.url
+    assert artifact.number == params.number
+    assert artifact.repository == params.repository
+    assert artifact.head_branch == params.head_branch
+    assert artifact.base_branch == params.base_branch
+    assert wizard_facade.list_run_artifacts(team.id, run.id) == [artifact]

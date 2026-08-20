@@ -128,11 +128,39 @@ class WizardRunDTO:
 
 
 @frozen
-class WizardRunArtifactDTO:
+class CreatePullRequestArtifactInput:
+    team_id: int
+    run_id: UUID
+    url: str
+    number: int
+    repository: str
+    head_branch: str
+    base_branch: str
+
+
+@frozen
+class WizardRunGitDiffArtifactDTO:
     id: UUID
     team_id: int
     run_id: UUID
-    artifact_type: WizardRunArtifactType
+    artifact_type: Literal[WizardRunArtifactType.GIT_DIFF]
     size_bytes: int
     content_hash: str
     created_at: datetime
+
+
+@frozen
+class WizardRunPullRequestArtifactDTO:
+    id: UUID
+    team_id: int
+    run_id: UUID
+    artifact_type: Literal[WizardRunArtifactType.PULL_REQUEST]
+    url: str
+    number: int
+    repository: str
+    head_branch: str
+    base_branch: str
+    created_at: datetime
+
+
+type WizardRunArtifactDTO = WizardRunGitDiffArtifactDTO | WizardRunPullRequestArtifactDTO
