@@ -26,3 +26,12 @@ SES_TENANT_CONFIGURATION_SETS: list[str] = [
     for cs in os.getenv("SES_TENANT_CONFIGURATION_SETS", "posthog-messaging,posthog-messaging-untracked").split(",")
     if cs.strip()
 ]
+
+# Mailbox providers that sending health is broken down by, as SES ISP dimension values.
+# SES exposes no API to enumerate them and AWS documents the vocabulary only as "e.g. Gmail,
+# Yahoo", so this stays configurable: an unrecognized value returns zeros rather than an error,
+# and correcting one must not need a deploy. Each provider costs one BatchGetMetricData query
+# per metric, batched ten at a time.
+SES_ISP_DIMENSIONS: list[str] = [
+    isp.strip() for isp in os.getenv("SES_ISP_DIMENSIONS", "Gmail,Yahoo,Outlook,Apple").split(",") if isp.strip()
+]

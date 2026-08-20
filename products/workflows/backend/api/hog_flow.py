@@ -58,6 +58,7 @@ from posthog.clickhouse.query_tagging import Feature, tag_queries
 from posthog.event_usage import AGENT_EVENT_SOURCES, EventSource, get_event_source, report_user_action
 from posthog.models import Team
 from posthog.models.filters import Filter
+from posthog.models.integration import Integration
 from posthog.plugins.plugin_server_api import (
     create_hog_flow_invocation_test,
     create_hog_flow_scheduled_invocation,
@@ -1574,6 +1575,58 @@ def _fetch_aws_tenant_reputation(team_id: int) -> dict[str, Any] | None:
     return value
 
 
+ISP_METRICS_CACHE_SECONDS = 5 * 60
+ISP_METRICS_ERROR_CACHE_SECONDS = 60
+# Bounds the BatchGetMetricData fan-out: every extra domain costs one query per provider per
+# metric. Projects with more sending domains than this get a breakdown over their first few.
+ISP_METRICS_MAX_DOMAINS = 5
+
+
+def _fetch_isp_metrics(team_id: int, window_days: int) -> list[dict[str, Any]]:
+    """
+    Per-mailbox-provider sending health for the project's verified domains, cached like the tenant
+    reputation above and for the same reason: the endpoint reloads on every search keystroke.
+
+    Returns an empty list rather than raising when SES is unreachable or VDM is not collecting yet
+    — the provider breakdown is an addition to the rates display, never a reason it fails to load.
+    """
+    cache_key = f"workflows_ses_isp_metrics_{team_id}_{window_days}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached["value"]
+
+    domains = [
+        domain
+        for domain in Integration.objects.filter(team_id=team_id, kind="email", config__verified=True)
+        .order_by("id")
+        .values_list("config__domain", flat=True)[:ISP_METRICS_MAX_DOMAINS]
+        if domain
+    ]
+    if not domains:
+        cache.set(cache_key, {"value": []}, ISP_METRICS_CACHE_SECONDS)
+        return []
+
+    try:
+        rows = SESProvider().get_identity_isp_metrics(domains, window_days=window_days)
+    except Exception:
+        logger.exception("Failed to fetch SES per-ISP metrics", team_id=team_id)
+        cache.set(cache_key, {"value": []}, ISP_METRICS_ERROR_CACHE_SECONDS)
+        return []
+
+    value = [
+        {
+            "isp": row.isp,
+            "emails_sent": row.emails_sent,
+            "delivery_rate": row.delivery_rate,
+            "bounce_rate": row.bounce_rate,
+            "complaint_rate": row.complaint_rate,
+        }
+        for row in rows
+    ]
+    cache.set(cache_key, {"value": value}, ISP_METRICS_CACHE_SECONDS)
+    return value
+
+
 class EmailSendingRatesSerializer(serializers.Serializer):
     """Bounce/complaint rates over the last 30 days of workflow email, computed on the fly from app metrics."""
 
@@ -1659,6 +1712,36 @@ class AwsTenantReputationSerializer(serializers.Serializer):
     )
 
 
+class IspSendingHealthSerializer(serializers.Serializer):
+    """How one mailbox provider treated this project's email, from AWS SES's own delivery data."""
+
+    isp = serializers.CharField(
+        read_only=True,
+        help_text="The recipient mailbox provider, as AWS names it — for example Gmail or Yahoo.",
+    )
+    emails_sent = serializers.IntegerField(read_only=True, help_text="Emails sent to this provider during the window.")
+    delivery_rate = serializers.FloatField(
+        read_only=True,
+        help_text=(
+            "Emails this provider accepted, divided by emails sent to it (0-1). Acceptance is not "
+            "inbox placement: a provider can accept a message and still file it as spam."
+        ),
+    )
+    bounce_rate = serializers.FloatField(
+        read_only=True,
+        help_text="Hard (permanent) bounces at this provider, divided by emails sent to it (0-1).",
+    )
+    complaint_rate = serializers.FloatField(
+        read_only=True,
+        allow_null=True,
+        help_text=(
+            "Spam complaints from this provider, divided by the deliveries it reports complaints "
+            "for (0-1). Null when the provider runs no feedback loop, so complaints are "
+            "unmeasurable here rather than zero."
+        ),
+    )
+
+
 class TeamEmailReputationResponseSerializer(serializers.Serializer):
     aws = AwsTenantReputationSerializer(
         allow_null=True,
@@ -1681,6 +1764,14 @@ class TeamEmailReputationResponseSerializer(serializers.Serializer):
         many=True,
         read_only=True,
         help_text="Rates per workflow, worst first (complaint rate, then bounce rate), capped at the worst 50.",
+    )
+    isps = IspSendingHealthSerializer(
+        many=True,
+        read_only=True,
+        help_text=(
+            "Sending health per mailbox provider, busiest first. Empty when the caller lacks "
+            "project-wide workflow access, no sending domain is verified, or AWS has no data yet."
+        ),
     )
     email_sending_suspended = serializers.BooleanField(
         read_only=True,
@@ -4061,6 +4152,11 @@ class HogFlowViewSet(
                     "aws": _fetch_aws_tenant_reputation(self.team_id) if can_read_all_workflows else None,
                     "reputation": reputation,
                     "workflows": workflow_rows,
+                    # Same project-wide gate as `reputation`: the breakdown pools every workflow's
+                    # email for a sending domain, so object-level grants alone don't earn it.
+                    "isps": (
+                        _fetch_isp_metrics(self.team_id, self.REPUTATION_WINDOW_DAYS) if can_read_all_workflows else []
+                    ),
                     "email_sending_suspended": suspended_at is not None,
                     "email_sending_suspended_at": suspended_at,
                     "email_sending_suspension_reason": suspension_reason if suspended_at is not None else "",

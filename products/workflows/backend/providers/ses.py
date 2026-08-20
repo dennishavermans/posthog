@@ -1,7 +1,10 @@
 import re
 import logging
-from collections.abc import Iterable, Iterator
+from collections import defaultdict
+from collections.abc import Iterable, Iterator, Sequence
+from datetime import UTC, datetime, timedelta
 from functools import cached_property
+from itertools import batched
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
@@ -12,12 +15,35 @@ import dns.resolver
 from botocore.exceptions import BotoCoreError, ClientError
 from rest_framework import exceptions
 
+from posthog.dataclasses import frozen
+
 if TYPE_CHECKING:
     from types_boto3_ses.client import SESClient
     from types_boto3_sesv2.client import SESV2Client
     from types_boto3_sesv2.type_defs import RecommendationTypeDef
 
 logger = logging.getLogger(__name__)
+
+# Everything needed to express one provider's sending health as rates. DELIVERY_COMPLAINT is the
+# complaint denominator rather than SEND: AWS defines it as deliveries excluding recipients at
+# ISPs it has no feedback-loop agreement with, which is the difference between "nobody complained"
+# and "this provider never tells us".
+ISP_METRICS: tuple[str, ...] = ("SEND", "DELIVERY", "PERMANENT_BOUNCE", "COMPLAINT", "DELIVERY_COMPLAINT")
+
+# SES caps a BatchGetMetricData request at ten queries.
+METRIC_QUERY_BATCH_SIZE = 10
+
+
+@frozen
+class IspSendingMetrics:
+    """How one mailbox provider treated a project's mail over the requested window."""
+
+    isp: str
+    emails_sent: int
+    delivery_rate: float
+    bounce_rate: float
+    # None when the provider runs no feedback loop, so complaints are unmeasurable rather than zero.
+    complaint_rate: float | None
 
 
 class SESProvider:
@@ -471,3 +497,91 @@ class SESProvider:
         except (ClientError, BotoCoreError) as e:
             logger.exception(f"SES API error deleting identity: {e}")
             raise
+
+    def get_identity_isp_metrics(
+        self,
+        domains: Sequence[str],
+        window_days: int,
+        isps: Sequence[str] | None = None,
+    ) -> list[IspSendingMetrics]:
+        """
+        Sending health per mailbox provider for the given sending domains, newest window first.
+
+        This is the only view that separates "our mail is being accepted but filtered" from "our
+        mail is fine": delivery and bounce rates diverging at one provider is invisible in the
+        project-wide rates, which pool every provider together.
+
+        Counts are summed across `domains` because a project's rates are project-wide; VDM's
+        EMAIL_IDENTITY dimension is per verified domain, so a project sending from several needs
+        one query set each. Providers that received nothing in the window are omitted rather than
+        shown as a row of zeros.
+        """
+        isps = list(isps) if isps is not None else list(settings.SES_ISP_DIMENSIONS)
+        if not domains or not isps:
+            return []
+
+        end = datetime.now(tz=UTC)
+        start = end - timedelta(days=window_days)
+
+        # Dimensions filter rather than group, and the response echoes only the query id — so a
+        # per-provider breakdown means one query per (domain, provider, metric) and a local index
+        # back to what each id asked for.
+        queries: list[dict[str, Any]] = []
+        query_subjects: dict[str, tuple[str, str]] = {}
+        for domain in domains:
+            for isp in isps:
+                for metric in ISP_METRICS:
+                    query_id = f"q{len(queries)}"
+                    query_subjects[query_id] = (isp, metric)
+                    queries.append(
+                        {
+                            "Id": query_id,
+                            "Namespace": "VDM",
+                            "Metric": metric,
+                            "Dimensions": {"EMAIL_IDENTITY": domain, "ISP": isp},
+                            "StartDate": start,
+                            "EndDate": end,
+                        }
+                    )
+
+        totals: dict[tuple[str, str], int] = defaultdict(int)
+        # strict=False: the final batch is short whenever the query count isn't a multiple of ten.
+        for batch in batched(queries, METRIC_QUERY_BATCH_SIZE, strict=False):
+            response = self.ses_v2_client.batch_get_metric_data(Queries=list(batch))  # type: ignore[arg-type]
+            for result in response.get("Results", []):
+                isp, metric = query_subjects[result["Id"]]
+                # Values are cumulative per timestamp bucket, so the window total is their sum.
+                totals[(isp, metric)] += sum(result.get("Values", []))
+            for error in response.get("Errors", []):
+                # A failed query leaves its metric at zero, which understates a rate rather than
+                # breaking the panel. Log it so a systematic failure (ACCESS_DENIED on a fresh
+                # VDM subscription, say) is visible rather than silently reading as healthy.
+                logger.warning(
+                    "SES metric query failed",
+                    extra={
+                        "query": query_subjects.get(error.get("Id", "")),
+                        "code": error.get("Code"),
+                        "message": error.get("Message"),
+                    },
+                )
+
+        rows: list[IspSendingMetrics] = []
+        for isp in isps:
+            emails_sent = totals[(isp, "SEND")]
+            if emails_sent == 0:
+                continue
+            complaint_base = totals[(isp, "DELIVERY_COMPLAINT")]
+            rows.append(
+                IspSendingMetrics(
+                    isp=isp,
+                    emails_sent=emails_sent,
+                    # Feedback for a send can arrive after the window closes, so a rate can exceed
+                    # its denominator at the boundary. Clamp, as the project-wide rates do.
+                    delivery_rate=min(1.0, totals[(isp, "DELIVERY")] / emails_sent),
+                    bounce_rate=min(1.0, totals[(isp, "PERMANENT_BOUNCE")] / emails_sent),
+                    complaint_rate=(min(1.0, totals[(isp, "COMPLAINT")] / complaint_base) if complaint_base else None),
+                )
+            )
+
+        rows.sort(key=lambda row: -row.emails_sent)
+        return rows
