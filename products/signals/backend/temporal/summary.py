@@ -58,9 +58,9 @@ from products.signals.backend.temporal.signal_queries import (
 from products.signals.backend.temporal.types import (
     IMPLEMENTATION_DEBOUNCE_SECONDS,
     NEW_SELF_DRIVING_GRACE,
-    RERESEARCH_MAX_SIGNALS,
     SignalData,
     SignalReportSummaryWorkflowInputs,
+    next_research_bucket,
 )
 
 logger = structlog.get_logger(__name__)
@@ -673,9 +673,13 @@ async def mark_report_ready_activity(input: MarkReportReadyInput) -> bool:
                 report.charts = input.charts
                 updated_fields = [*updated_fields, "charts"]
             report.save(update_fields=updated_fields)
-            # Loop to re-research only if new signals arrived and we're within the cap; past
-            # RERESEARCH_MAX_SIGNALS the report stays READY instead of re-running over a large set.
-            has_new_signals = input.processed_signal_count < report.signal_count <= RERESEARCH_MAX_SIGNALS
+            # Loop to re-research only if the signals that arrived during the run carried the report
+            # to its next bucket. Same predicate as the grouping promotion gate, so a signal landing
+            # mid-run is researched on the schedule it would have had if it had landed after. The
+            # bucket is strictly above what this run processed, so reaching it also means new
+            # signals arrived.
+            bucket = next_research_bucket(report.run_count, input.processed_signal_count)
+            has_new_signals = bucket is not None and report.signal_count >= bucket
             if has_new_signals:
                 # If more signals arrived while the report was being processed, we want to
                 # re-promote it back to candidate and loop to also process new signals
