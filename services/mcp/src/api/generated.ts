@@ -58063,6 +58063,23 @@ export namespace Schemas {
 
     export type WizardWorkspace = LocalFolderWorkspace | GitRepositoryWorkspace;
 
+    export interface WizardProgram {
+      /** Stable identifier used to select the program. */
+      readonly id: string;
+      /** Display name of the program. */
+      readonly name: string;
+      /** What the program does. */
+      readonly description: string;
+      /** Wizard CLI arguments used to start the program. */
+      readonly command: readonly string[];
+      /** Labels that categorize the program. */
+      readonly tags: readonly string[];
+      /** Programs that should run before this program. */
+      readonly required_programs: readonly string[];
+      /** Environments where the program can run. */
+      readonly supported_environments: readonly RunEnvironmentEnum[];
+    }
+
     /**
      * * `created` - created
      * * `running` - running
@@ -58098,6 +58115,8 @@ export namespace Schemas {
       readonly environment: RunEnvironmentEnum;
       /** Project that the setup agent works on. */
       readonly workspace: WizardWorkspace;
+      /** Registry program selected for this run. */
+      readonly program: WizardProgram;
       /** Current lifecycle status of the Wizard run.
        *
        * * `created` - created
@@ -84946,6 +84965,11 @@ export namespace Schemas {
     } as const;
 
     export interface WizardRunCreateRequest {
+      /**
+         * Registry program to run.
+         * @pattern ^[a-z0-9]+(?:-[a-z0-9]+)*$
+         */
+      program_id: string;
       /** Where the setup agent runs.
        *
        * * `local` - local

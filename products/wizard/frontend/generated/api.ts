@@ -13,6 +13,7 @@ import type {
     PaginatedWizardSessionDTOListApi,
     PatchedWizardRunStatusUpdateRequestApi,
     UpsertWizardSessionRequestApi,
+    WizardProgramApi,
     WizardRunApi,
     WizardRunArtifactApi,
     WizardRunCreateRequestApi,
@@ -22,6 +23,20 @@ import type {
     WizardSessionsListParams,
     WizardSessionsStreamRetrieveParams,
 } from './api.schemas'
+
+export const getWizardRegistryListUrl = (projectId: string) => {
+    return `/api/projects/${projectId}/wizard/registry/`
+}
+
+/**
+ * List Wizard programs available for this project.
+ */
+export const wizardRegistryList = async (projectId: string, options?: RequestInit): Promise<WizardProgramApi[]> => {
+    return apiMutator<WizardProgramApi[]>(getWizardRegistryListUrl(projectId), {
+        ...options,
+        method: 'GET',
+    })
+}
 
 export const getWizardRunsListUrl = (projectId: string, params?: WizardRunsListParams) => {
     const normalizedParams = new URLSearchParams()

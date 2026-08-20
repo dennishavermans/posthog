@@ -33,6 +33,7 @@ class TestWizardRunProgramMigration(TestMigrations):
         ).id
 
     def test_backfills_existing_run_before_enforcing_non_null(self) -> None:
+        assert self.apps is not None
         WizardRun = self.apps.get_model("wizard", "WizardRun")
         run = WizardRun.objects.get(id=self.run_id)
 

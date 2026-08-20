@@ -12,11 +12,13 @@ import * as zod from 'zod'
 /**
  * Create a local or cloud Wizard run for a project workspace.
  */
+export const wizardRunsCreateBodyProgramIdRegExp = new RegExp('^[a-z0-9]+(?:-[a-z0-9]+)\*$')
 export const wizardRunsCreateBodyWorkspaceOneOneProjectNameMax = 255
 
 export const wizardRunsCreateBodyWorkspaceOneTwoRepositoryMax = 255
 
 export const WizardRunsCreateBody = /* @__PURE__ */ zod.object({
+    program_id: zod.string().regex(wizardRunsCreateBodyProgramIdRegExp).describe('Registry program to run.'),
     environment: zod
         .enum(['local', 'cloud'])
         .describe('\* `local` - local\n\* `cloud` - cloud')

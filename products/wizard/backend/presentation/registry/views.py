@@ -6,6 +6,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
+from posthog.models import User
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.presentation.registry.serializers import WizardProgramSerializer
@@ -22,8 +23,9 @@ class WizardRegistryViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         description="List Wizard programs available for this project.",
     )
     def list(self, request: Request, *args: object, **kwargs: object) -> Response:
+        user = cast(User, request.user)
         programs = wizard_facade.get_registry(
-            distinct_id=cast(str, request.user.distinct_id),
+            distinct_id=cast(str, user.distinct_id),
             organization_id=str(self.team.organization_id),
         )
         return Response(WizardProgramSerializer(programs, many=True).data)

@@ -55,6 +55,7 @@ class TestWizardSessionViewSet(APIBaseTest):
         response = self.client.post(
             f"/api/projects/{self.team.id}/wizard/runs/",
             {
+                "program_id": "posthog-integration",
                 "environment": "local",
                 "workspace": {"type": "local_folder", "project_name": project_name},
             },

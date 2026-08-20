@@ -64,6 +64,7 @@ def test_upsert_binds_session_to_run(team, user):
         CreateWizardRunInput(
             team_id=team.id,
             created_by_id=user.id,
+            program_id="posthog-integration",
             environment=WizardRunEnvironment.LOCAL,
             workspace=LocalFolderWorkspace(project_name="example-project"),
         )
@@ -81,6 +82,7 @@ def test_upsert_preserves_run_when_legacy_update_omits_it(team, user):
         CreateWizardRunInput(
             team_id=team.id,
             created_by_id=user.id,
+            program_id="posthog-integration",
             environment=WizardRunEnvironment.LOCAL,
             workspace=LocalFolderWorkspace(project_name="example-project"),
         )
@@ -98,6 +100,7 @@ def test_upsert_rejects_binding_session_to_another_run(team, user):
         CreateWizardRunInput(
             team_id=team.id,
             created_by_id=user.id,
+            program_id="posthog-integration",
             environment=WizardRunEnvironment.LOCAL,
             workspace=LocalFolderWorkspace(project_name="first-project"),
         )
@@ -106,6 +109,7 @@ def test_upsert_rejects_binding_session_to_another_run(team, user):
         CreateWizardRunInput(
             team_id=team.id,
             created_by_id=user.id,
+            program_id="posthog-integration",
             environment=WizardRunEnvironment.LOCAL,
             workspace=LocalFolderWorkspace(project_name="second-project"),
         )
@@ -125,6 +129,7 @@ def test_upsert_rejects_run_from_another_team(team, user):
         CreateWizardRunInput(
             team_id=other_team.id,
             created_by_id=user.id,
+            program_id="posthog-integration",
             environment=WizardRunEnvironment.LOCAL,
             workspace=LocalFolderWorkspace(project_name="other-project"),
         )
@@ -142,6 +147,7 @@ def test_upsert_rejects_run_created_by_another_user(team, user):
         CreateWizardRunInput(
             team_id=team.id,
             created_by_id=user.id,
+            program_id="posthog-integration",
             environment=WizardRunEnvironment.LOCAL,
             workspace=LocalFolderWorkspace(project_name="example-project"),
         )
@@ -160,6 +166,7 @@ def test_upsert_rejects_run_without_creator(team, user):
         CreateWizardRunInput(
             team_id=team.id,
             created_by_id=user.id,
+            program_id="posthog-integration",
             environment=WizardRunEnvironment.LOCAL,
             workspace=LocalFolderWorkspace(project_name="example-project"),
         )

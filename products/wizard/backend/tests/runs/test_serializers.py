@@ -10,6 +10,7 @@ from products.wizard.backend.presentation.runs.serializers import WizardRunCreat
     (
         (
             {
+                "program_id": "posthog-integration",
                 "environment": "local",
                 "workspace": {"type": "local_folder", "project_name": "example-project"},
             },
@@ -18,6 +19,7 @@ from products.wizard.backend.presentation.runs.serializers import WizardRunCreat
         ),
         (
             {
+                "program_id": "posthog-integration",
                 "environment": "cloud",
                 "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
             },
@@ -34,6 +36,7 @@ def test_create_request_discriminates_workspace(
     serializer = WizardRunCreateRequestSerializer(data=payload)
 
     assert serializer.is_valid(), serializer.errors
+    assert serializer.to_contract(team_id=123, created_by_id=456).program_id == "posthog-integration"
     assert serializer.to_contract(team_id=123, created_by_id=456).environment == expected_environment
     assert serializer.to_contract(team_id=123, created_by_id=456).workspace == expected_workspace
 
@@ -48,7 +51,9 @@ def test_create_request_discriminates_workspace(
     ),
 )
 def test_create_request_rejects_invalid_workspace(workspace: dict[str, object]) -> None:
-    serializer = WizardRunCreateRequestSerializer(data={"environment": "local", "workspace": workspace})
+    serializer = WizardRunCreateRequestSerializer(
+        data={"program_id": "posthog-integration", "environment": "local", "workspace": workspace}
+    )
 
     assert not serializer.is_valid()
     assert "workspace" in serializer.errors
@@ -58,6 +63,7 @@ def test_create_request_rejects_invalid_workspace(workspace: dict[str, object]) 
 def test_create_request_rejects_invalid_repository(repository: str) -> None:
     serializer = WizardRunCreateRequestSerializer(
         data={
+            "program_id": "posthog-integration",
             "environment": "cloud",
             "workspace": {"type": "git_repository", "repository": repository},
         }

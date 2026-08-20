@@ -41,8 +41,15 @@ from products.wizard.backend.temporal.contracts import (
 )
 
 
-def _create_cloud_run(team_id: int, user_id: int) -> WizardRunDTO:
+def _create_cloud_run(
+    team_id: int,
+    user_id: int,
+    *,
+    program_id: str = "posthog-integration",
+    registry_payload: object = None,
+) -> WizardRunDTO:
     with (
+        patch("posthoganalytics.get_feature_flag_payload", return_value=registry_payload),
         patch(
             "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
             return_value=123,
@@ -58,6 +65,7 @@ def _create_cloud_run(team_id: int, user_id: int) -> WizardRunDTO:
                 created_by_id=user_id,
                 environment=WizardRunEnvironment.CLOUD,
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
+                program_id=program_id,
             )
         )
 
@@ -183,12 +191,14 @@ def test_execute_wizard_maps_worker_error(worker_error: Exception, error_type: s
     )
 
     with (
+        patch("products.wizard.backend.temporal.activities.execution.wizard_facade.get_run") as get_run,
         patch(
             "products.wizard.backend.temporal.activities.execution.cloud_worker.execute_wizard",
             side_effect=worker_error,
         ) as execute,
         pytest.raises(ApplicationError) as error,
     ):
+        get_run.return_value.program.command = ()
         async_to_sync(_run_execute_wizard)(workspace)
 
     execute.assert_called_once_with(
@@ -196,6 +206,7 @@ def test_execute_wizard_maps_worker_error(worker_error: Exception, error_type: s
             sandbox_id=workspace.sandbox_id,
             workspace_path=workspace.root_path,
             team_id=workspace.team_id,
+            program_command=(),
         )
     )
     assert error.value.type == error_type

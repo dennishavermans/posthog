@@ -41,6 +41,7 @@ class TestWizardRunViewSet(APIBaseTest):
         response = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "local",
                 "workspace": {"type": "local_folder", "project_name": "example-project"},
             },
@@ -56,6 +57,15 @@ class TestWizardRunViewSet(APIBaseTest):
                 "created_by_id": self.user.id,
                 "environment": "local",
                 "workspace": {"type": "local_folder", "project_name": "example-project"},
+                "program": {
+                    "id": "posthog-integration",
+                    "name": "PostHog integration",
+                    "description": "Set up PostHog SDK integration",
+                    "command": [],
+                    "tags": [],
+                    "required_programs": [],
+                    "supported_environments": ["local", "cloud"],
+                },
                 "status": "running",
                 "error_code": None,
             },
@@ -95,6 +105,7 @@ class TestWizardRunViewSet(APIBaseTest):
         created = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "local",
                 "workspace": {"type": "local_folder", "project_name": "example-project"},
             },
@@ -116,6 +127,7 @@ class TestWizardRunViewSet(APIBaseTest):
             CreateWizardRunInput(
                 team_id=other_team.id,
                 created_by_id=self.user.id,
+                program_id="posthog-integration",
                 environment=WizardRunEnvironment.LOCAL,
                 workspace=LocalFolderWorkspace(project_name="other-project"),
             )
@@ -128,7 +140,11 @@ class TestWizardRunViewSet(APIBaseTest):
     def test_create_rejects_unknown_workspace_without_writing(self) -> None:
         response = self.client.post(
             self._url(),
-            {"environment": "local", "workspace": {"type": "unknown"}},
+            {
+                "program_id": "posthog-integration",
+                "environment": "local",
+                "workspace": {"type": "unknown"},
+            },
             format="json",
         )
 
@@ -139,6 +155,7 @@ class TestWizardRunViewSet(APIBaseTest):
         response = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "local",
                 "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
             },
@@ -164,6 +181,7 @@ class TestWizardRunViewSet(APIBaseTest):
             response = self.client.post(
                 self._url(),
                 {
+                    "program_id": "posthog-integration",
                     "environment": "cloud",
                     "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
                 },
@@ -186,6 +204,7 @@ class TestWizardRunViewSet(APIBaseTest):
         response = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "cloud",
                 "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
             },
@@ -209,6 +228,7 @@ class TestWizardRunViewSet(APIBaseTest):
         response = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "cloud",
                 "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
             },
@@ -223,6 +243,7 @@ class TestWizardRunViewSet(APIBaseTest):
         created = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "local",
                 "workspace": {"type": "local_folder", "project_name": "example-project"},
             },
@@ -241,6 +262,7 @@ class TestWizardRunViewSet(APIBaseTest):
         created = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "local",
                 "workspace": {"type": "local_folder", "project_name": "example-project"},
             },
@@ -295,6 +317,7 @@ class TestWizardRunViewSet(APIBaseTest):
         created = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "local",
                 "workspace": {"type": "local_folder", "project_name": "example-project"},
             },
@@ -311,6 +334,7 @@ class TestWizardRunViewSet(APIBaseTest):
         created = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "local",
                 "workspace": {"type": "local_folder", "project_name": "example-project"},
             },
@@ -327,6 +351,7 @@ class TestWizardRunViewSet(APIBaseTest):
         created = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "local",
                 "workspace": {"type": "local_folder", "project_name": "example-project"},
             },
@@ -352,6 +377,7 @@ class TestWizardRunViewSet(APIBaseTest):
         created = self.client.post(
             self._url(),
             {
+                "program_id": "posthog-integration",
                 "environment": "cloud",
                 "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
             },
@@ -374,6 +400,7 @@ class TestWizardRunViewSet(APIBaseTest):
             CreateWizardRunInput(
                 team_id=other_team.id,
                 created_by_id=self.user.id,
+                program_id="posthog-integration",
                 environment=WizardRunEnvironment.LOCAL,
                 workspace=LocalFolderWorkspace(project_name="other-project"),
             )

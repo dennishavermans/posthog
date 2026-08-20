@@ -83,6 +83,15 @@ def test_registry_preserves_valid_empty_program_list() -> None:
                 ],
             },
         ),
+        (
+            "unknown_environment",
+            {
+                "version": 1,
+                "programs": [
+                    {**AUDIT_PROGRAM_PAYLOAD, "supported_environments": ["hosted"]},
+                ],
+            },
+        ),
     ]
 )
 def test_registry_falls_back_when_payload_is_invalid(_name: str, payload: object) -> None:

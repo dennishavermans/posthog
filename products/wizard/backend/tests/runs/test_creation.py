@@ -1,7 +1,8 @@
 import pytest
 from unittest.mock import patch
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import NOT_PROVIDED
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import (
@@ -21,20 +22,16 @@ from products.wizard.backend.facade.errors import (
 from products.wizard.backend.models import WizardRun
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput
 
-PROGRAM_PAYLOAD = {
-    "version": 1,
-    "programs": [
-        {
-            "id": "web-analytics-audit",
-            "name": "Web analytics audit",
-            "description": "Audit a project's web analytics setup",
-            "command": ["audit", "web-analytics"],
-            "tags": ["audit", "web-analytics"],
-            "required_programs": ["posthog-integration"],
-            "supported_environments": ["local"],
-        }
-    ],
+PROGRAM_DEFINITION = {
+    "id": "web-analytics-audit",
+    "name": "Web analytics audit",
+    "description": "Audit a project's web analytics setup",
+    "command": ["audit", "web-analytics"],
+    "tags": ["audit", "web-analytics"],
+    "required_programs": ["posthog-integration"],
+    "supported_environments": ["local"],
 }
+PROGRAM_PAYLOAD = {"version": 1, "programs": [PROGRAM_DEFINITION]}
 
 
 @pytest.mark.django_db
@@ -59,7 +56,7 @@ def test_create_run_persists_resolved_program(team, user) -> None:
         required_programs=("posthog-integration",),
         supported_environments=(WizardRunEnvironment.LOCAL,),
     )
-    assert WizardRun.objects.for_team(team.id).get(id=run.id).program == PROGRAM_PAYLOAD["programs"][0]
+    assert WizardRun.objects.for_team(team.id).get(id=run.id).program == PROGRAM_DEFINITION
 
 
 @pytest.mark.django_db
@@ -82,11 +79,29 @@ def test_create_run_rejects_unsupported_program_environment(team, user) -> None:
 
 
 @pytest.mark.django_db
+def test_run_program_has_no_default_and_cannot_be_null(team, user) -> None:
+    program_field = WizardRun._meta.get_field("program")
+
+    assert program_field.default is NOT_PROVIDED
+    assert program_field.null is False
+    with pytest.raises(IntegrityError), transaction.atomic():
+        WizardRun.objects.create(
+            team=team,
+            created_by=user,
+            environment=WizardRunEnvironment.LOCAL.value,
+            workspace_type="local_folder",
+            workspace={"project_name": "example-project"},
+            status=WizardRunStatus.RUNNING.value,
+        )
+
+
+@pytest.mark.django_db
 def test_local_run_starts_running(team, user) -> None:
     run = wizard_facade.create_run(
         CreateWizardRunInput(
             team_id=team.id,
             created_by_id=user.id,
+            program_id="posthog-integration",
             environment=WizardRunEnvironment.LOCAL,
             workspace=LocalFolderWorkspace(project_name="example-project"),
         )
@@ -107,6 +122,7 @@ def test_create_run_rejects_unsupported_environment_workspace(team, user) -> Non
             CreateWizardRunInput(
                 team_id=team.id,
                 created_by_id=user.id,
+                program_id="posthog-integration",
                 environment=WizardRunEnvironment.LOCAL,
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
@@ -131,6 +147,7 @@ def test_cloud_run_starts_created(team, user) -> None:
             CreateWizardRunInput(
                 team_id=team.id,
                 created_by_id=user.id,
+                program_id="posthog-integration",
                 environment=WizardRunEnvironment.CLOUD,
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
@@ -163,6 +180,7 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
             CreateWizardRunInput(
                 team_id=team.id,
                 created_by_id=user.id,
+                program_id="posthog-integration",
                 environment=WizardRunEnvironment.CLOUD,
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
@@ -192,6 +210,7 @@ def test_cloud_run_persists_dispatch_failure(team, user) -> None:
             CreateWizardRunInput(
                 team_id=team.id,
                 created_by_id=user.id,
+                program_id="posthog-integration",
                 environment=WizardRunEnvironment.CLOUD,
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
@@ -220,6 +239,7 @@ def test_cloud_run_rollback_prevents_dispatch(team, user) -> None:
             CreateWizardRunInput(
                 team_id=team.id,
                 created_by_id=user.id,
+                program_id="posthog-integration",
                 environment=WizardRunEnvironment.CLOUD,
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
@@ -236,6 +256,7 @@ def test_local_run_does_not_dispatch(team, user) -> None:
             CreateWizardRunInput(
                 team_id=team.id,
                 created_by_id=user.id,
+                program_id="posthog-integration",
                 environment=WizardRunEnvironment.LOCAL,
                 workspace=LocalFolderWorkspace(project_name="example-project"),
             )
@@ -255,6 +276,7 @@ def test_cloud_run_requires_github_integration(team, user) -> None:
                 CreateWizardRunInput(
                     team_id=team.id,
                     created_by_id=user.id,
+                    program_id="posthog-integration",
                     environment=WizardRunEnvironment.CLOUD,
                     workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
                 )
@@ -280,6 +302,7 @@ def test_cloud_run_rejects_inaccessible_repository(team, user) -> None:
                 CreateWizardRunInput(
                     team_id=team.id,
                     created_by_id=user.id,
+                    program_id="posthog-integration",
                     environment=WizardRunEnvironment.CLOUD,
                     workspace=GitRepositoryWorkspace(repository="private/example"),
                 )
@@ -297,6 +320,7 @@ def test_cloud_run_rejects_invalid_repository_before_github_lookup(team, user, r
                 CreateWizardRunInput(
                     team_id=team.id,
                     created_by_id=user.id,
+                    program_id="posthog-integration",
                     environment=WizardRunEnvironment.CLOUD,
                     workspace=GitRepositoryWorkspace(repository=repository),
                 )

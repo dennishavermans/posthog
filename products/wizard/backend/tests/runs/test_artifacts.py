@@ -20,6 +20,7 @@ def _create_run(team_id: int, user_id: int) -> WizardRunDTO:
         CreateWizardRunInput(
             team_id=team_id,
             created_by_id=user_id,
+            program_id="posthog-integration",
             environment=WizardRunEnvironment.LOCAL,
             workspace=LocalFolderWorkspace(project_name="example-project"),
         )
