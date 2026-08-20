@@ -61,6 +61,19 @@ class TestWizardRunViewSet(APIBaseTest):
             },
         )
 
+    def test_create_requires_program_id(self) -> None:
+        response = self.client.post(
+            self._url(),
+            {
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "example-project"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["program_id"][0], "This field is required.")
+
     def test_retrieve_run(self) -> None:
         created = self.client.post(
             self._url(),
