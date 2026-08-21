@@ -37,6 +37,7 @@ export interface workflowProposalsLogicValues {
     pendingProposals: WorkflowProposalApi[]
     proposalsResponse: PaginatedWorkflowProposalListApi | null
     proposalsResponseLoading: boolean
+    resolvingAction: 'approve' | 'reject' | null
     resolvingId: string | null
 }
 
@@ -109,7 +110,11 @@ export interface workflowProposalsLogicActions {
     rejectProposal: (proposalId: string) => {
         proposalId: string
     }
-    setResolvingId: (proposalId: string | null) => {
+    setResolvingId: (
+        proposalId: string | null,
+        action?: 'approve' | 'reject' | null
+    ) => {
+        action: 'approve' | 'reject' | null
         proposalId: string | null
     }
 }
@@ -145,7 +150,10 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
         }),
         rejectProposal: (proposalId: string) => ({ proposalId }),
         confirmRejectProposal: (proposalId: string) => ({ proposalId }),
-        setResolvingId: (proposalId: string | null) => ({ proposalId }),
+        setResolvingId: (proposalId: string | null, action: 'approve' | 'reject' | null = null) => ({
+            proposalId,
+            action,
+        }),
         loadOutcome: (proposalId: string) => ({ proposalId }),
     }),
     reducers({
@@ -153,6 +161,14 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
             null as string | null,
             {
                 setResolvingId: (_, { proposalId }) => proposalId,
+            },
+        ],
+        // Which action is in flight, so each button shows its own spinner rather than both reading
+        // the same id.
+        resolvingAction: [
+            null as 'approve' | 'reject' | null,
+            {
+                setResolvingId: (_, { action }) => action,
             },
         ],
     }),
@@ -242,7 +258,7 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
             if (values.resolvingId !== null) {
                 return
             }
-            actions.setResolvingId(proposalId)
+            actions.setResolvingId(proposalId, 'approve')
             try {
                 // overwrite only replaces the draft the dialog warned about: the expected stamp fences
                 // the write, so a draft that changed since returns 409 below.
@@ -286,7 +302,7 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
             if (values.resolvingId !== null) {
                 return
             }
-            actions.setResolvingId(proposalId)
+            actions.setResolvingId(proposalId, 'reject')
             try {
                 await hogFlowsProposalsRejectCreate(String(values.currentTeamIdStrict), props.id, proposalId, {})
                 lemonToast.success('Suggestion rejected')

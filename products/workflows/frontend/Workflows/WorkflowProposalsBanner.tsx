@@ -27,7 +27,7 @@ const SOURCE_LABELS: Record<WorkflowProposalSourceTypeEnumApi, string> = {
 
 export function WorkflowProposalsBanner({ id }: { id: string }): JSX.Element | null {
     const logic = workflowProposalsLogic({ id })
-    const { pendingProposals, appliedProposals, outcomes, resolvingId } = useValues(logic)
+    const { pendingProposals, appliedProposals, outcomes, resolvingId, resolvingAction } = useValues(logic)
     const { approveProposal, rejectProposal } = useActions(logic)
     const { workflowUserAccessLevel } = useValues(workflowLogic({ id }))
 
@@ -68,6 +68,7 @@ export function WorkflowProposalsBanner({ id }: { id: string }): JSX.Element | n
                                     type="secondary"
                                     size="small"
                                     onClick={() => rejectProposal(proposal.id)}
+                                    loading={resolvingId === proposal.id && resolvingAction === 'reject'}
                                     disabledReason={
                                         resolvingId !== null && resolvingId !== proposal.id
                                             ? 'Another suggestion is being resolved'
@@ -86,7 +87,7 @@ export function WorkflowProposalsBanner({ id }: { id: string }): JSX.Element | n
                                     type="primary"
                                     size="small"
                                     onClick={() => approveProposal(proposal.id)}
-                                    loading={resolvingId === proposal.id}
+                                    loading={resolvingId === proposal.id && resolvingAction === 'approve'}
                                     disabledReason={
                                         resolvingId !== null && resolvingId !== proposal.id
                                             ? 'Another suggestion is being resolved'
