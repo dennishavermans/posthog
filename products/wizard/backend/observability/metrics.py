@@ -21,6 +21,12 @@ WIZARD_RUN_DURATION_SECONDS = Histogram(
     buckets=(30, 60, 120, 300, 600, 1200, 1800, 3600, 7200, float("inf")),
 )
 
+WIZARD_GIT_DIFFS_OMITTED_TOTAL = Counter(
+    "posthog_wizard_git_diffs_omitted_total",
+    "Wizard git diff artifacts omitted because they exceeded the size limit",
+    labelnames=["environment"],
+)
+
 
 def report_run_created(run: WizardRunDTO) -> None:
     WIZARD_RUNS_CREATED_TOTAL.labels(environment=run.environment.value).inc()
@@ -37,3 +43,7 @@ def report_run_finished(run: WizardRunDTO) -> None:
     duration = (run.finished_at - run.started_at).total_seconds()
     if duration >= 0:
         WIZARD_RUN_DURATION_SECONDS.labels(environment=run.environment.value, status=run.status.value).observe(duration)
+
+
+def report_git_diff_omitted(run: WizardRunDTO) -> None:
+    WIZARD_GIT_DIFFS_OMITTED_TOTAL.labels(environment=run.environment.value).inc()
