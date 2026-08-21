@@ -14,17 +14,14 @@ from products.wizard.backend.facade.contracts import (
     WizardRunDTO,
     WizardRunPage,
 )
-from products.wizard.backend.facade.enums import (
-    WizardRunEnvironment,
-    WizardRunErrorCode,
-    WizardRunStatus,
-    WizardWorkspaceType,
-)
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.facade.errors import (
     MissingGitHubIntegrationError,
     RepositoryNotAccessibleError,
     WizardProgramEnvironmentNotSupportedError,
 )
+from products.wizard.backend.facade.serializers.programs import WIZARD_PROGRAM_SERIALIZER
+from products.wizard.backend.facade.serializers.workspaces import WIZARD_WORKSPACE_SERIALIZER
 from products.wizard.backend.logic import registry as registry_service
 from products.wizard.backend.logic.runs.store import get_run_model, to_dto
 from products.wizard.backend.logic.runs.transitions import transition
@@ -60,8 +57,7 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
         ):
             raise RepositoryNotAccessibleError
 
-    workspace_type = WizardWorkspaceType(params.workspace.type)
-    workspace_metadata = params.workspace.to_dict()
+    workspace_type, workspace_metadata = WIZARD_WORKSPACE_SERIALIZER.serialize(params.workspace)
     initial_status = (
         WizardRunStatus.RUNNING if params.environment == WizardRunEnvironment.LOCAL else WizardRunStatus.CREATED
     )
@@ -73,7 +69,7 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
             environment=params.environment.value,
             workspace_type=workspace_type.value,
             workspace=workspace_metadata,
-            program=program.to_dict(),
+            program=WIZARD_PROGRAM_SERIALIZER.serialize(program),
             status=initial_status.value,
         )
         if params.environment == WizardRunEnvironment.CLOUD:

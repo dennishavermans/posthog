@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 from parameterized import parameterized
 
-from products.wizard.backend.facade.contracts import STALE_AFTER
 from products.wizard.backend.facade.enums import WizardSessionRunPhase
+from products.wizard.backend.logic.sessions.config import STALE_AFTER
 from products.wizard.backend.logic.sessions.staleness import is_stale
 
 _NOW = datetime(2026, 5, 19, 12, 0, 0, tzinfo=UTC)

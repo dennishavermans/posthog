@@ -1,9 +1,10 @@
 from uuid import UUID
 
-from products.wizard.backend.facade.contracts import WizardProgram, WizardRunDTO
+from products.wizard.backend.facade.contracts import WizardRunDTO
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.facade.errors import WizardRunNotFoundError
-from products.wizard.backend.logic.runs.workspaces import deserialize_workspace
+from products.wizard.backend.facade.serializers.programs import WIZARD_PROGRAM_SERIALIZER
+from products.wizard.backend.facade.serializers.workspaces import WIZARD_WORKSPACE_SERIALIZER
 from products.wizard.backend.models import WizardRun
 
 
@@ -25,8 +26,8 @@ def to_dto(run: WizardRun) -> WizardRunDTO:
         team_id=run.team_id,
         created_by_id=run.created_by_id,
         environment=WizardRunEnvironment(run.environment),
-        workspace=deserialize_workspace(run.workspace_type, run.workspace),
-        program=WizardProgram.from_persisted_dict(run.program),
+        workspace=WIZARD_WORKSPACE_SERIALIZER.deserialize(run.workspace_type, run.workspace),
+        program=WIZARD_PROGRAM_SERIALIZER.deserialize_persisted(run.program),
         status=WizardRunStatus(run.status),
         error_code=WizardRunErrorCode(run.error_code) if run.error_code else None,
     )
