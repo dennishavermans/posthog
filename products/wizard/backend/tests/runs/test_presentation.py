@@ -37,6 +37,16 @@ class TestWizardRunViewSet(APIBaseTest):
         self.client.logout()
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
+    def _cloud_payload(self, *, repository: str = "posthog/posthog", idempotency_key: str | None = None) -> dict:
+        payload = {
+            "program_id": "posthog-integration",
+            "environment": "cloud",
+            "workspace": {"type": "git_repository", "repository": repository},
+        }
+        if idempotency_key is not None:
+            payload["idempotency_key"] = idempotency_key
+        return payload
+
     def test_create_local_run(self) -> None:
         response = self.client.post(
             self._url(),
@@ -238,6 +248,92 @@ class TestWizardRunViewSet(APIBaseTest):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
+
+    @patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
+        return_value=True,
+    )
+    @patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
+        return_value=123,
+    )
+    def test_cloud_run_requires_idempotency_key(self, _resolve_integration, _repository_accessible) -> None:
+        response = self.client.post(self._url(), self._cloud_payload(), format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["attr"], "idempotency_key")
+        self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
+
+    @patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
+        return_value=True,
+    )
+    @patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
+        return_value=123,
+    )
+    def test_cloud_run_replays_matching_idempotent_request(self, _resolve_integration, _repository_accessible) -> None:
+        payload = self._cloud_payload(idempotency_key="create-posthog-run")
+
+        first = self.client.post(self._url(), payload, format="json")
+        replay = self.client.post(self._url(), payload, format="json")
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(replay.status_code, status.HTTP_200_OK)
+        self.assertEqual(replay.json(), first.json())
+        self.assertEqual(WizardRun.objects.for_team(self.team.id).count(), 1)
+
+    @patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
+        return_value=True,
+    )
+    @patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
+        return_value=123,
+    )
+    def test_cloud_run_rejects_reused_idempotency_key_for_different_request(
+        self, _resolve_integration, _repository_accessible
+    ) -> None:
+        first = self.client.post(
+            self._url(),
+            self._cloud_payload(idempotency_key="create-posthog-run"),
+            format="json",
+        )
+        replay = self.client.post(
+            self._url(),
+            self._cloud_payload(repository="posthog/posthog-js", idempotency_key="create-posthog-run"),
+            format="json",
+        )
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(replay.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(replay.json()["code"], "idempotency_conflict")
+        self.assertEqual(WizardRun.objects.for_team(self.team.id).count(), 1)
+
+    @patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
+        return_value=True,
+    )
+    @patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
+        return_value=123,
+    )
+    def test_cloud_run_can_be_cancelled(self, _resolve_integration, _repository_accessible) -> None:
+        created = self.client.post(
+            self._url(),
+            self._cloud_payload(idempotency_key="cancel-posthog-run"),
+            format="json",
+        ).json()
+
+        with patch(
+            "products.wizard.backend.temporal.client.cancel_wizard_run_workflow",
+            create=True,
+        ) as cancel_workflow:
+            response = self.client.patch(self._url(created["id"]), {"status": "cancelled"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["status"], "cancelled")
+        cancel_workflow.assert_called_once_with(UUID(created["id"]))
 
     @patch("products.wizard.backend.logic.artifacts.service.object_storage.write")
     def test_list_run_artifacts(self, _write) -> None:
