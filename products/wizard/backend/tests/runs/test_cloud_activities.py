@@ -3,6 +3,8 @@ from uuid import uuid4
 import pytest
 from unittest.mock import MagicMock, patch
 
+from django.apps import apps
+
 from asgiref.sync import async_to_sync
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
@@ -127,6 +129,16 @@ def test_provision_worker_uses_persisted_run_identity(team, user) -> None:
     provision.assert_called_once_with(
         WizardWorkerProvisionRequest(team_id=team.id, created_by_id=user.id, run_id=run.id)
     )
+
+    worker_record = apps.get_model("wizard", "WizardWorker").objects.for_team(team.id).get(run_id=run.id)
+    assert worker_record.sandbox_id == "worker-id"
+    assert worker_record.cleanup_status == "active"
+
+    provision.reset_mock()
+    repeated = async_to_sync(_run_provision_worker)(WizardRunActivityInput(team_id=team.id, run_id=run.id))
+
+    assert repeated == result
+    provision.assert_not_called()
 
 
 @pytest.mark.django_db(transaction=True)

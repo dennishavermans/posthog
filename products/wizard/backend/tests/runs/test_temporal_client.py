@@ -29,7 +29,6 @@ def test_start_wizard_run_workflow_uses_stable_identity(monkeypatch: pytest.Monk
         id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
         task_queue=settings.TASKS_TASK_QUEUE,
         retry_policy=temporal_client.WORKFLOW_RETRY_POLICY,
-        execution_timeout=temporal_client.WORKFLOW_EXECUTION_TIMEOUT,
     )
 
 
