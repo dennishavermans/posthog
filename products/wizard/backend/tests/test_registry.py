@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from unittest.mock import patch
 
 from parameterized import parameterized
@@ -29,6 +30,34 @@ AUDIT_PROGRAM_PAYLOAD = {
     "required_programs": ["posthog-integration"],
     "supported_environments": ["local"],
 }
+
+
+def test_program_serialization_round_trip() -> None:
+    program = WizardProgram.from_dict(AUDIT_PROGRAM_PAYLOAD)
+
+    assert program.to_dict() == AUDIT_PROGRAM_PAYLOAD
+    assert WizardProgram.from_dict(program.to_dict()) == program
+
+
+@parameterized.expand(
+    [
+        ("unexpected_field", {**AUDIT_PROGRAM_PAYLOAD, "unexpected": "value"}),
+        ("invalid_command", {**AUDIT_PROGRAM_PAYLOAD, "command": ["--override"]}),
+        ("duplicate_environments", {**AUDIT_PROGRAM_PAYLOAD, "supported_environments": ["local", "local"]}),
+    ]
+)
+def test_program_rejects_invalid_serialized_value(_name: str, value: object) -> None:
+    with pytest.raises(ValueError):
+        WizardProgram.from_dict(value)
+
+
+def test_program_persisted_deserialization_accepts_legacy_wizard_version() -> None:
+    persisted_value = {**AUDIT_PROGRAM_PAYLOAD, "wizard_version": "latest"}
+
+    with pytest.raises(ValueError):
+        WizardProgram.from_dict(persisted_value)
+
+    assert WizardProgram.from_persisted_dict(persisted_value).wizard_version == "latest"
 
 
 @parameterized.expand(
