@@ -158,7 +158,7 @@ async def test_stream_emits_heartbeat_when_idle(team):
     # Force heartbeat threshold to zero so any idle tick emits one.
     with (
         patcher,
-        patch("products.wizard.backend.presentation.sessions.views.SSE_HEARTBEAT_INTERVAL_SECONDS", 0.0),
+        patch("products.wizard.backend.presentation.sessions.config.SSE_HEARTBEAT_INTERVAL_SECONDS", 0.0),
     ):
         gen = _wizard_session_event_stream(team_id=team.id, workflow_id="missing", skill_id="missing")
         events = await _drain(gen, max_events=4)

@@ -3,7 +3,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("wizard", "0012_add_wizard_run_program"),
+        ("wizard", "0011_add_wizard_run_program"),
     ]
 
     operations = [

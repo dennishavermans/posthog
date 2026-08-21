@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("wizard", "0010_add_session_run"),
+        ("wizard", "0009_add_dispatch_failed_error_code"),
     ]
 
     operations = [

@@ -116,12 +116,8 @@ Temporal workflow
 The npm Wizard posts state snapshots to `POST /api/projects/{team_id}/wizard/sessions/`.
 
 The existing payload remains valid.
-The backend accepts the optional `run_id` returned by `POST /api/projects/{team_id}/wizard/runs/` when a client can associate its session with a run.
-V0 cloud execution does not inject that ID into the npm agent environment, so its legacy state stream remains independent from the persisted run lifecycle.
-
-Once a session is linked, omitted IDs preserve the link and another ID cannot replace it.
-The backend verifies the run belongs to both the URL team and the authenticated run creator.
-Legacy clients may omit `run_id` until the npm package migration is complete.
+Wizard sessions remain independent from Wizard runs in V0.
+The first authenticated push records the initiating user, and later pushes cannot reattribute the session to another user.
 
 ## Current state
 
@@ -309,9 +305,9 @@ This audit covers all Wizard run work completed before the environment and works
 ### 10. Reuse V0 state synchronization
 
 - [x] Document the current state-update endpoint and payload used by the npm Wizard.
-- [x] Keep the optional run binding accepted by the existing state-update endpoint.
+- [x] Keep Wizard sessions independent from Wizard runs.
 - [x] Keep V0 cloud state synchronization independent from the persisted run lifecycle.
-- [x] Bind updates to both `team_id` and `run_id`.
+- [x] Keep session snapshots keyed by team and session ID.
 - [x] Preserve the existing Wizard session API and frontend stream behavior.
 - [x] Add a compatibility test for the existing state-update path.
 - [x] Keep V1 append-only run state updates out of the V0 migration.

@@ -20,7 +20,7 @@ def backfill_program(apps: Apps, schema_editor: BaseDatabaseSchemaEditor) -> Non
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("wizard", "0011_support_pull_request_artifacts"),
+        ("wizard", "0010_support_pull_request_artifacts"),
     ]
 
     operations = [

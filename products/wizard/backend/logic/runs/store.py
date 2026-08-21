@@ -14,7 +14,7 @@ from products.wizard.backend.logic.runs.mappers import run_from_record, workspac
 from products.wizard.backend.models import WizardRun
 
 
-def get_run_model(team_id: int, run_id: UUID, *, lock: bool = False) -> WizardRun:
+def _get_run_record(team_id: int, run_id: UUID, *, lock: bool = False) -> WizardRun:
     runs = WizardRun.objects.for_team(team_id)
     if lock:
         runs = runs.select_for_update()
@@ -49,7 +49,7 @@ def create_run(
 
 
 def get_run(team_id: int, run_id: UUID, *, lock: bool = False) -> WizardRunDTO:
-    return run_from_record(get_run_model(team_id, run_id, lock=lock))
+    return run_from_record(_get_run_record(team_id, run_id, lock=lock))
 
 
 def list_runs(params: ListWizardRunsInput) -> WizardRunPage:
@@ -64,7 +64,7 @@ def set_run_status(
     status: WizardRunStatus,
     error_code: WizardRunErrorCode | None,
 ) -> WizardRunDTO:
-    run = get_run_model(team_id, run_id)
+    run = _get_run_record(team_id, run_id)
     run.status = status.value
     run.error_code = error_code.value if error_code is not None else None
     run.save(update_fields=["status", "error_code", "updated_at"])

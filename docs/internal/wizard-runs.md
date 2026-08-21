@@ -56,7 +56,7 @@ Local agents can create runs and update runs they created.
 Cloud creation requires a signed-in browser session and enabled cloud execution.
 Cloud lifecycle updates are owned by the Wizard Worker.
 
-Run lookups, transitions, session binding, and artifact access verify the project boundary.
+Run lookups, transitions, and artifact access verify the project boundary.
 A user cannot update another user's local run.
 
 ## Cloud execution
@@ -99,9 +99,7 @@ The existing Wizard session endpoint remains active during migration:
 POST /api/projects/{project_id}/wizard/sessions/
 ```
 
-The endpoint accepts an optional `run_id` for clients that can associate their state with a run.
-The backend verifies that the run belongs to the same project and creator.
-Once a session is linked to a run, later updates cannot bind it to another run.
-The V0 cloud execution keeps using the legacy state stream without injecting the run ID into the npm agent environment.
+Wizard sessions remain independent from Wizard runs in V0.
+They continue to synchronize the setup agent's legacy workflow and skill state without a run ID.
 
 The existing `/api/wizard/cloud_run` onboarding flow remains Tasks-backed until its TaskRun progress and pull-request UI have a replacement based on Wizard runs and Run Artifacts.

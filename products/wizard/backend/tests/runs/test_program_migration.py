@@ -4,8 +4,8 @@ from django.apps.registry import Apps
 
 
 class TestWizardRunProgramMigration(TestMigrations):
-    migrate_from = "0011_support_pull_request_artifacts"
-    migrate_to = "0012_add_wizard_run_program"
+    migrate_from = "0010_support_pull_request_artifacts"
+    migrate_to = "0011_add_wizard_run_program"
     CLASS_DATA_LEVEL_SETUP = False
 
     @property
@@ -50,8 +50,8 @@ class TestWizardRunProgramMigration(TestMigrations):
 
 
 class TestWizardRunProgramVersionMigration(TestMigrations):
-    migrate_from = "0012_add_wizard_run_program"
-    migrate_to = "0013_backfill_wizard_run_program_version"
+    migrate_from = "0011_add_wizard_run_program"
+    migrate_to = "0012_backfill_wizard_run_program_version"
     CLASS_DATA_LEVEL_SETUP = False
 
     @property
