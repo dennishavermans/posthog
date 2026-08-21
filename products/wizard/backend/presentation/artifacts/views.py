@@ -34,6 +34,7 @@ class WizardRunArtifactViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         description="List metadata for artifacts produced by a Wizard run.",
     )
     def list(self, request: Request, *args: object, **kwargs: object) -> Response:
+        # GET /projects/:projectId/wizard/runs/:runId/artifacts
         try:
             artifacts = wizard_facade.list_run_artifacts(self.team_id, self._run_id())
         except WizardRunNotFoundError:

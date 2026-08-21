@@ -49,6 +49,7 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         description="List Wizard runs for this project, ordered from newest to oldest.",
     )
     def list(self, request: Request, *args: object, **kwargs: object) -> Response:
+        # GET /projects/:projectId/wizard/runs
         paginator = cast(WizardRunPagination, self.paginator)
         return paginator.paginate_runs(request, team_id=self.team_id)
 
@@ -63,6 +64,7 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         description="Create a local or cloud Wizard run for a project workspace.",
     )
     def create(self, request: Request, *args: object, **kwargs: object) -> Response:
+        # POST /projects/:projectId/wizard/runs
         serializer = WizardRunCreateRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         params = serializer.to_contract(team_id=self.team_id, created_by_id=cast(int, request.user.id))
@@ -97,6 +99,7 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         description="Retrieve a Wizard run in this project.",
     )
     def retrieve(self, request: Request, *args: object, **kwargs: object) -> Response:
+        # GET /projects/:projectId/wizard/runs/:runId
         run = self._get_run()
         return Response(WizardRunSerializer(run).data)
 
@@ -112,6 +115,7 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         description="Change the terminal status of a local Wizard run.",
     )
     def partial_update(self, request: Request, *args: object, **kwargs: object) -> Response:
+        # PATCH /projects/:projectId/wizard/runs/:runId
         serializer = WizardRunStatusUpdateRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         next_status = serializer.to_status()

@@ -163,6 +163,7 @@ class WizardSessionViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         responses={200: WizardSessionSerializer(many=True)},
     )
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        # GET /projects/:projectId/wizard/sessions
         page_offset, page_limit = pagination_window(request)
         sessions = wizard_facade.list_for_team(
             self.team_id,
@@ -184,6 +185,7 @@ class WizardSessionViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         },
     )
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        # GET /projects/:projectId/wizard/sessions/:sessionId
         session_id = kwargs.get("session_id")
         if not session_id:
             return Response({"detail": "session_id is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -235,6 +237,7 @@ class WizardSessionViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
     )
     @action(detail=False, methods=["get"], url_path="latest")
     def latest(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        # GET /projects/:projectId/wizard/sessions/latest
         # Killswitch parity with `stream`: a 204 makes the client treat this as "no run"
         # and wind the detector down, so flipping the flag in an incident also stops the
         # 60s poll (and skips the DB read entirely), not just the SSE stream.
@@ -267,6 +270,7 @@ class WizardSessionViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         },
     )
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        # POST /projects/:projectId/wizard/sessions
         serializer = UpsertWizardSessionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         req: UpsertWizardSessionRequest = serializer.save()
@@ -332,6 +336,7 @@ class WizardSessionViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
     )
     @action(detail=False, methods=["get"], url_path="stream", renderer_classes=[EventStreamRenderer])
     def stream(self, request: Request, *args: Any, **kwargs: Any) -> HttpResponseBase:
+        # GET /projects/:projectId/wizard/sessions/stream
         # Killswitch first, before any other work: a 204 tells EventSource to stop
         # reconnecting, severing the self-reconnect loop for already-open tabs.
         if self._killswitch_active(request):

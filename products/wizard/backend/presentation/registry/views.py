@@ -24,6 +24,7 @@ class WizardRegistryViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         description="List Wizard programs available for this project.",
     )
     def list(self, request: Request, *args: object, **kwargs: object) -> Response:
+        # GET /projects/:projectId/wizard/registry
         user = cast(User, request.user)
         programs = wizard_facade.get_registry(
             distinct_id=cast(str, user.distinct_id),
