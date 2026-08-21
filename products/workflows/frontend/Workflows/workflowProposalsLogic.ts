@@ -179,8 +179,14 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
                         return await hogFlowsProposalsList(String(values.currentTeamIdStrict), props.id, {
                             status: 'applied',
                         })
-                    } catch {
-                        return { count: 0, results: [] }
+                    } catch (error) {
+                        // Only the flag-off 404 is an empty queue. Let a 5xx or a dropped connection reject
+                        // so the loader keeps the last known list and surfaces the failure, rather than
+                        // blanking the panel and staying silent.
+                        if (error instanceof ApiError && error.status === 404) {
+                            return { count: 0, results: [] }
+                        }
+                        throw error
                     }
                 },
             },
@@ -193,11 +199,16 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
                         return await hogFlowsProposalsList(String(values.currentTeamIdStrict), props.id, {
                             status: 'suggested',
                         })
-                    } catch {
+                    } catch (error) {
                         // A panel nobody asked for must not shout. The endpoint 404s wherever the flag is
                         // off, and the loader's default failure toast would put "Load proposals failed" in
-                        // front of every user the backend rollout hasn't reached.
-                        return { count: 0, results: [] }
+                        // front of every user the backend rollout hasn't reached. But a 5xx or a dropped
+                        // connection is a real failure: let it reject so the loader keeps the last known
+                        // list and surfaces it, rather than erasing pending suggestions on a failed reload.
+                        if (error instanceof ApiError && error.status === 404) {
+                            return { count: 0, results: [] }
+                        }
+                        throw error
                     }
                 },
             },

@@ -24,6 +24,7 @@ describe('workflowProposalsLogic', () => {
     let logic: ReturnType<typeof workflowProposalsLogic.build>
     let approveBodies: Record<string, any>[]
     let approveStatus: number
+    let proposalsListStatus: number
 
     const proposal = {
         id: PROPOSAL_ID,
@@ -48,6 +49,7 @@ describe('workflowProposalsLogic', () => {
     beforeEach(() => {
         approveBodies = []
         approveStatus = 200
+        proposalsListStatus = 200
         ;(LemonDialog.open as jest.Mock).mockClear()
         useMocks({
             get: {
@@ -62,7 +64,10 @@ describe('workflowProposalsLogic', () => {
                     draft_updated_at: DRAFT_STAMP,
                     updated_at: '2026-05-01T00:00:00.000Z',
                 },
-                '/api/projects/:team_id/hog_flows/:id/proposals/': { count: 1, results: [proposal] },
+                '/api/projects/:team_id/hog_flows/:id/proposals/': () =>
+                    proposalsListStatus === 200
+                        ? [200, { count: 1, results: [proposal] }]
+                        : [proposalsListStatus, { detail: 'nope' }],
                 '/api/projects/:team_id/hog_function_templates/': { results: [], count: 0 },
             },
             post: {
@@ -84,6 +89,31 @@ describe('workflowProposalsLogic', () => {
     it('loads the pending queue on mount', async () => {
         await expectLogic(logic).toDispatchActions(['loadProposalsSuccess'])
         expect(logic.values.pendingProposals.map((p) => p.id)).toEqual([PROPOSAL_ID])
+    })
+
+    // A failed reload (approve/reject re-dispatches loadProposals) must not blank the queue the
+    // person is reading. Only the flag-off 404 is an empty queue; a 5xx keeps the last list.
+    it('keeps the pending queue and reports failure when a reload hits a server error', async () => {
+        await expectLogic(logic).toDispatchActions(['loadProposalsSuccess'])
+        expect(logic.values.pendingProposals.map((p) => p.id)).toEqual([PROPOSAL_ID])
+
+        proposalsListStatus = 500
+        await expectLogic(logic, () => {
+            logic.actions.loadProposals()
+        }).toDispatchActions(['loadProposalsFailure'])
+
+        expect(logic.values.pendingProposals.map((p) => p.id)).toEqual([PROPOSAL_ID])
+    })
+
+    it('treats the flag-off 404 as an empty queue with no failure', async () => {
+        await expectLogic(logic).toDispatchActions(['loadProposalsSuccess'])
+
+        proposalsListStatus = 404
+        await expectLogic(logic, () => {
+            logic.actions.loadProposals()
+        }).toDispatchActions(['loadProposalsSuccess'])
+
+        expect(logic.values.pendingProposals).toEqual([])
     })
 
     // The fence is the whole point: approve must carry the draft stamp the human confirmed against,
