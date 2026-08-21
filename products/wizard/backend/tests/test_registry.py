@@ -6,7 +6,7 @@ from unittest.mock import patch
 from parameterized import parameterized
 
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import WizardProgram
+from products.wizard.backend.facade.contracts import WizardProgram, WizardRegistry
 from products.wizard.backend.facade.enums import WizardRunEnvironment
 
 POSTHOG_INTEGRATION_PROGRAM = WizardProgram(
@@ -30,6 +30,27 @@ AUDIT_PROGRAM_PAYLOAD = {
     "required_programs": ["posthog-integration"],
     "supported_environments": ["local"],
 }
+
+REGISTRY_PAYLOAD = {"version": 1, "programs": [AUDIT_PROGRAM_PAYLOAD]}
+
+
+def test_registry_serialization_round_trip() -> None:
+    registry = WizardRegistry.from_dict(REGISTRY_PAYLOAD)
+
+    assert registry.to_dict() == REGISTRY_PAYLOAD
+    assert WizardRegistry.from_dict(registry.to_dict()) == registry
+
+
+@parameterized.expand(
+    [
+        ("unexpected_field", {**REGISTRY_PAYLOAD, "unexpected": "value"}),
+        ("unsupported_version", {**REGISTRY_PAYLOAD, "version": 2}),
+        ("duplicate_program", {"version": 1, "programs": [AUDIT_PROGRAM_PAYLOAD, AUDIT_PROGRAM_PAYLOAD]}),
+    ]
+)
+def test_registry_rejects_invalid_serialized_value(_name: str, value: object) -> None:
+    with pytest.raises(ValueError):
+        WizardRegistry.from_dict(value)
 
 
 def test_program_serialization_round_trip() -> None:
@@ -62,8 +83,8 @@ def test_program_persisted_deserialization_accepts_legacy_wizard_version() -> No
 
 @parameterized.expand(
     [
-        ("object", {"version": 1, "programs": [AUDIT_PROGRAM_PAYLOAD]}),
-        ("json_string", json.dumps({"version": 1, "programs": [AUDIT_PROGRAM_PAYLOAD]})),
+        ("object", REGISTRY_PAYLOAD),
+        ("json_string", json.dumps(REGISTRY_PAYLOAD)),
     ]
 )
 def test_registry_returns_personalized_programs(_name: str, payload: object) -> None:
