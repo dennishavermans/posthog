@@ -362,3 +362,24 @@ class TestOpenRateDenominator(SimpleTestCase):
             without_evidence=False,
         )
         assert candidate.open_rate == expected
+
+
+class TestShortenSubjectLiquid(SimpleTestCase):
+    @parameterized.expand(
+        [
+            # Email subjects are Liquid, so shortening must never cut a tag open — an unclosed {{ }} or
+            # {% %} would throw at send time and stop the step once the proposal is approved and published.
+            ("filter with a colon", "Welcome {{ company | default: 'our product' }}"),
+            ("date filter", "Your weekly digest {{ now | date: '%b %d' }} is here"),
+            ("long property expression", "Your {{ person.properties.subscription_tier }} plan renews soon"),
+            ("if tag", "{% if person.properties.plan %}Pro{% endif %}"),
+        ]
+    )
+    def test_never_cuts_a_liquid_tag_open(self, _name: str, subject: str):
+        result = _shorten_subject(subject)
+        assert result.count("{{") == result.count("}}")
+        assert result.count("{%") == result.count("%}")
+
+    def test_shortens_when_the_separator_is_outside_the_tag(self):
+        # The ` - ` separator sits outside the expression, so the shortening is safe and still applied.
+        assert _shorten_subject("A {{ x: y }} - B") == "A {{ x: y }}"

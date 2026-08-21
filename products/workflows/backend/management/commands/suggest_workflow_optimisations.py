@@ -254,16 +254,29 @@ class Command(BaseCommand):
         )
 
 
+def _liquid_balanced(text: str) -> bool:
+    """Cheap guard, not a parser: email subjects are Liquid, and shortening only ever drops the tail,
+    so a cut through a `{{ }}` or `{% %}` leaves an opener without its closer — a count mismatch here.
+    Enough to keep _shorten_subject from proposing a subject that fails Liquid rendering at send time
+    (the repo has no Python Liquid parser to validate against). A truncation that stays balanced still
+    parses, so it is kept."""
+    return text.count("{{") == text.count("}}") and text.count("{%") == text.count("%}")
+
+
 def _shorten_subject(subject: str) -> str:
     subject = subject.strip()
     for separator in (": ", " - ", ", "):
         head = subject.split(separator)[0]
-        if 0 < len(head) < len(subject):
+        # A separator inside a Liquid expression (e.g. the `: ` in `{{ x | default: 'y' }}`) would split
+        # mid-tag, so only take a head that leaves every tag closed.
+        if 0 < len(head) < len(subject) and _liquid_balanced(head):
             return head
     if len(subject) <= SHORT_SUBJECT_CHARS:
         return subject
     words = subject[:SHORT_SUBJECT_CHARS].rsplit(" ", 1)[0]
-    return words or subject[:SHORT_SUBJECT_CHARS]
+    shortened = words or subject[:SHORT_SUBJECT_CHARS]
+    # Truncation can cut through a tag too; a subject that still sends beats a shorter one that doesn't.
+    return shortened if _liquid_balanced(shortened) else subject
 
 
 def _step_name(flow: HogFlow, action_id: str) -> str:
