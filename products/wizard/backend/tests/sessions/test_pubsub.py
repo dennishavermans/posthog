@@ -8,6 +8,7 @@ from django.db import transaction
 from products.wizard.backend.facade.contracts import WizardSessionDTO, WizardTaskDTO
 from products.wizard.backend.facade.enums import WizardSessionRunPhase, WizardSessionTaskStatus
 from products.wizard.backend.logic.sessions.pubsub import channel_name, publish_session_update
+from products.wizard.backend.logic.sessions.validation import validate_channel_identifier
 
 
 def _dto(team_id: int = 1) -> WizardSessionDTO:
@@ -49,6 +50,10 @@ def test_channel_name_rejects_unsafe_ids():
         channel_name(1, "onboarding:malicious", "nextjs")
     with pytest.raises(ValueError):
         channel_name(1, "onboarding", "next[js]")
+
+
+def test_channel_identifier_accepts_safe_values() -> None:
+    validate_channel_identifier("onboarding", "workflow_id")
 
 
 @pytest.mark.django_db(transaction=True)
