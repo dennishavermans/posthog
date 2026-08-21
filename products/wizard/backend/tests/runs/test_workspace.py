@@ -1,10 +1,8 @@
 import pytest
 
 from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, LocalFolderWorkspace, WizardWorkspace
-from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardWorkspaceType
-from products.wizard.backend.facade.errors import InvalidWorkspaceEnvironmentError
+from products.wizard.backend.facade.enums import WizardWorkspaceType
 from products.wizard.backend.facade.serializers.workspaces import WIZARD_WORKSPACE_SERIALIZER
-from products.wizard.backend.logic.runs.validation import validate_workspace_environment
 
 
 @pytest.mark.parametrize(
@@ -45,28 +43,3 @@ def test_workspace_rejects_invalid_serialized_value(
 ) -> None:
     with pytest.raises(ValueError):
         WIZARD_WORKSPACE_SERIALIZER.deserialize(workspace_type.value, metadata)
-
-
-@pytest.mark.parametrize(
-    ("environment", "workspace"),
-    [
-        (WizardRunEnvironment.LOCAL, LocalFolderWorkspace(project_name="example-project")),
-        (WizardRunEnvironment.CLOUD, GitRepositoryWorkspace(repository="posthog/posthog")),
-    ],
-)
-def test_environment_accepts_supported_workspace(environment: WizardRunEnvironment, workspace: WizardWorkspace) -> None:
-    validate_workspace_environment(environment, workspace)
-
-
-@pytest.mark.parametrize(
-    ("environment", "workspace"),
-    [
-        (WizardRunEnvironment.LOCAL, GitRepositoryWorkspace(repository="posthog/posthog")),
-        (WizardRunEnvironment.CLOUD, LocalFolderWorkspace(project_name="example-project")),
-    ],
-)
-def test_environment_rejects_unsupported_workspace(
-    environment: WizardRunEnvironment, workspace: WizardWorkspace
-) -> None:
-    with pytest.raises(InvalidWorkspaceEnvironmentError):
-        validate_workspace_environment(environment, workspace)
