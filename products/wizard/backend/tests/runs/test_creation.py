@@ -32,7 +32,7 @@ PROGRAM_DEFINITION = {
     "required_programs": ["posthog-integration"],
     "supported_environments": ["local"],
 }
-PROGRAM_PAYLOAD = {"version": 2, "programs": [PROGRAM_DEFINITION]}
+PROGRAM_PAYLOAD = {"version": 1, "programs": [PROGRAM_DEFINITION]}
 
 
 @pytest.mark.django_db

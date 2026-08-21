@@ -19,7 +19,7 @@ async def _run_execute_wizard(input: PreparedGitRepositoryWorkspace) -> None:
 @pytest.mark.django_db(transaction=True)
 def test_execute_wizard_uses_persisted_program_snapshot(team, user) -> None:
     registry_payload = {
-        "version": 2,
+        "version": 1,
         "programs": [
             {
                 "id": "web-analytics-audit",

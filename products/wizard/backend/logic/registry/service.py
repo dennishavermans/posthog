@@ -14,7 +14,7 @@ from products.wizard.backend.logic.registry.versions import (
 )
 
 REGISTRY_FEATURE_FLAG = "wizard-program-registry"
-REGISTRY_VERSION = 2
+REGISTRY_VERSION = 1
 PROGRAM_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PROGRAM_FIELDS = {
     "id",
