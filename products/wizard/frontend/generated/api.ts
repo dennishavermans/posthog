@@ -9,11 +9,12 @@ import { apiMutator } from '../../../../frontend/src/lib/api-orval-mutator'
  * OpenAPI spec version: 1.0.0
  */
 import type {
+    PaginatedWizardProgramListApi,
     PaginatedWizardRunListApi,
     PaginatedWizardSessionDTOListApi,
     PatchedWizardRunStatusUpdateRequestApi,
     UpsertWizardSessionRequestApi,
-    WizardProgramApi,
+    WizardRegistryListParams,
     WizardRunApi,
     WizardRunArtifactApi,
     WizardRunCreateRequestApi,
@@ -24,15 +25,31 @@ import type {
     WizardSessionsStreamRetrieveParams,
 } from './api.schemas'
 
-export const getWizardRegistryListUrl = (projectId: string) => {
-    return `/api/projects/${projectId}/wizard/registry/`
+export const getWizardRegistryListUrl = (projectId: string, params?: WizardRegistryListParams) => {
+    const normalizedParams = new URLSearchParams()
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? 'null' : String(value))
+        }
+    })
+
+    const stringifiedParams = normalizedParams.toString()
+
+    return stringifiedParams.length > 0
+        ? `/api/projects/${projectId}/wizard/registry/?${stringifiedParams}`
+        : `/api/projects/${projectId}/wizard/registry/`
 }
 
 /**
  * List Wizard programs available for this project.
  */
-export const wizardRegistryList = async (projectId: string, options?: RequestInit): Promise<WizardProgramApi[]> => {
-    return apiMutator<WizardProgramApi[]>(getWizardRegistryListUrl(projectId), {
+export const wizardRegistryList = async (
+    projectId: string,
+    params?: WizardRegistryListParams,
+    options?: RequestInit
+): Promise<PaginatedWizardProgramListApi> => {
+    return apiMutator<PaginatedWizardProgramListApi>(getWizardRegistryListUrl(projectId, params), {
         ...options,
         method: 'GET',
     })

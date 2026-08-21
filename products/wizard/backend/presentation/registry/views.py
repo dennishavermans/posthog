@@ -9,6 +9,7 @@ from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.models import User
 
 from products.wizard.backend.facade import api as wizard_facade
+from products.wizard.backend.presentation.registry.pagination import WizardRegistryPagination
 from products.wizard.backend.presentation.registry.serializers import WizardProgramSerializer
 
 
@@ -16,7 +17,7 @@ class WizardRegistryViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
     scope_object = "wizard_session"
     scope_object_read_actions = ["list"]
     http_method_names = ["get", "head", "options"]
-    pagination_class = None
+    pagination_class = WizardRegistryPagination
 
     @extend_schema(
         responses={200: WizardProgramSerializer(many=True)},
@@ -28,4 +29,6 @@ class WizardRegistryViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
             distinct_id=cast(str, user.distinct_id),
             organization_id=str(self.team.organization_id),
         )
-        return Response(WizardProgramSerializer(programs, many=True).data)
+        page = self.paginate_queryset(programs)
+        assert page is not None
+        return self.get_paginated_response(WizardProgramSerializer(page, many=True).data)

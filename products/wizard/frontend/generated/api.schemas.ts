@@ -37,6 +37,15 @@ export interface WizardProgramApi {
     readonly supported_environments: readonly RunEnvironmentEnumApi[]
 }
 
+export interface PaginatedWizardProgramListApi {
+    count: number
+    /** @nullable */
+    next?: string | null
+    /** @nullable */
+    previous?: string | null
+    results: WizardProgramApi[]
+}
+
 /**
  * Selects a folder on the user's machine as the workspace.
  */
@@ -490,6 +499,17 @@ export type WizardRunPullRequestArtifactArtifactTypeEnumApi =
 export const WizardRunPullRequestArtifactArtifactTypeEnumApi = {
     PullRequest: 'pull_request',
 } as const
+
+export type WizardRegistryListParams = {
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number
+    /**
+     * The initial index from which to return the results.
+     */
+    offset?: number
+}
 
 export type WizardRunsListParams = {
     /**
