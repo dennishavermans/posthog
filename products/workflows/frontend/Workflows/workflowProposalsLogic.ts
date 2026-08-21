@@ -118,7 +118,7 @@ export interface workflowProposalsLogicActions {
 export interface workflowProposalsLogicMeta {
     key: string
     __keaTypeGenInternalSelectorTypes: {
-        appliedProposals: (appliedResponse: any) => WorkflowProposalApi[]
+        appliedProposals: (appliedResponse: PaginatedWorkflowProposalListApi | null) => WorkflowProposalApi[]
         pendingProposals: (proposalsResponse: PaginatedWorkflowProposalListApi | null) => WorkflowProposalApi[]
     }
 }
