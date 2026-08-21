@@ -11,11 +11,13 @@ from products.wizard.backend.facade.contracts import (
     CreateWizardRunInput,
     GitRepositoryWorkspace,
     ListWizardRunsInput,
+    LocalFolderWorkspace,
     WizardRunDTO,
     WizardRunPage,
 )
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.facade.errors import (
+    InvalidWorkspaceEnvironmentError,
     MissingGitHubIntegrationError,
     RepositoryNotAccessibleError,
     WizardProgramEnvironmentNotSupportedError,
@@ -26,7 +28,7 @@ from products.wizard.backend.logic import registry as registry_service
 from products.wizard.backend.logic.runs.serializers import to_run_dto
 from products.wizard.backend.logic.runs.store import get_run_model
 from products.wizard.backend.logic.runs.transitions import transition
-from products.wizard.backend.logic.runs.validation import validate_git_repository, validate_workspace_environment
+from products.wizard.backend.logic.runs.validation import validate_git_repository
 from products.wizard.backend.models import WizardRun
 from products.wizard.backend.temporal import client as temporal_client
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput
@@ -35,7 +37,13 @@ logger = logging.getLogger(__name__)
 
 
 def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
-    validate_workspace_environment(params.environment, params.workspace)
+    match params.environment, params.workspace:
+        case WizardRunEnvironment.LOCAL, LocalFolderWorkspace():
+            pass
+        case WizardRunEnvironment.CLOUD, GitRepositoryWorkspace():
+            pass
+        case _:
+            raise InvalidWorkspaceEnvironmentError
     user = User.objects.only("distinct_id").get(id=params.created_by_id)
     team = Team.objects.only("organization_id").get(id=params.team_id)
     program = registry_service.get_program(

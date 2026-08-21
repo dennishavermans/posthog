@@ -1,5 +1,16 @@
 from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus
-from products.wizard.backend.logic.runs.validation import validate_status_transition
+from products.wizard.backend.facade.errors import IllegalStatusTransitionError, InvalidTransitionMetadataError
+
+_ALLOWED_STATUS_TRANSITIONS = frozenset(
+    {
+        (WizardRunStatus.CREATED, WizardRunStatus.RUNNING),
+        (WizardRunStatus.CREATED, WizardRunStatus.FAILED),
+        (WizardRunStatus.CREATED, WizardRunStatus.CANCELLED),
+        (WizardRunStatus.RUNNING, WizardRunStatus.COMPLETED),
+        (WizardRunStatus.RUNNING, WizardRunStatus.FAILED),
+        (WizardRunStatus.RUNNING, WizardRunStatus.CANCELLED),
+    }
+)
 
 
 def transition(
@@ -8,5 +19,8 @@ def transition(
     *,
     error_code: WizardRunErrorCode | None = None,
 ) -> WizardRunStatus:
-    validate_status_transition(current_status, next_status, error_code=error_code)
+    if (current_status, next_status) not in _ALLOWED_STATUS_TRANSITIONS:
+        raise IllegalStatusTransitionError
+    if error_code is not None and next_status != WizardRunStatus.FAILED:
+        raise InvalidTransitionMetadataError
     return next_status

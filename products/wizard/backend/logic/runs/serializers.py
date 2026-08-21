@@ -12,10 +12,6 @@ from products.wizard.backend.facade.enums import (
 )
 from products.wizard.backend.facade.serializers.programs import WIZARD_PROGRAM_SERIALIZER
 from products.wizard.backend.facade.serializers.workspaces import WIZARD_WORKSPACE_SERIALIZER
-from products.wizard.backend.logic.runs.validation import (
-    validate_git_diff_artifact_metadata,
-    validate_pull_request_artifact_metadata,
-)
 from products.wizard.backend.models import WizardRun, WizardRunArtifact
 
 
@@ -34,7 +30,6 @@ def to_run_dto(run: WizardRun) -> WizardRunDTO:
 
 def to_artifact_dto(artifact: WizardRunArtifact) -> WizardRunArtifactDTO:
     if WizardRunArtifactType(artifact.type) == WizardRunArtifactType.GIT_DIFF:
-        validate_git_diff_artifact_metadata(artifact.size_bytes, artifact.content_hash)
         if artifact.size_bytes is None or artifact.content_hash is None:
             raise ValueError("Git diff artifact is missing stored content metadata.")
         return WizardRunGitDiffArtifactDTO(
@@ -52,7 +47,6 @@ def to_artifact_dto(artifact: WizardRunArtifact) -> WizardRunArtifactDTO:
     repository = metadata.get("repository")
     head_branch = metadata.get("head_branch")
     base_branch = metadata.get("base_branch")
-    validate_pull_request_artifact_metadata(artifact.external_url, number, repository, head_branch, base_branch)
     if (
         artifact.external_url is None
         or not isinstance(number, int)

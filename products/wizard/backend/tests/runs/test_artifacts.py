@@ -13,6 +13,7 @@ from products.wizard.backend.facade.contracts import (
 )
 from products.wizard.backend.facade.enums import WizardRunArtifactType, WizardRunEnvironment
 from products.wizard.backend.facade.errors import WizardRunNotFoundError
+from products.wizard.backend.models import WizardRunArtifact
 
 
 def _create_run(team_id: int, user_id: int) -> WizardRunDTO:
@@ -112,3 +113,35 @@ def test_create_pull_request_artifact_persists_pull_request_identity(team, user)
     assert artifact.head_branch == params.head_branch
     assert artifact.base_branch == params.base_branch
     assert wizard_facade.list_run_artifacts(team.id, run.id) == [artifact]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("artifact_type", "external_url", "metadata", "size_bytes", "content_hash"),
+    [
+        (WizardRunArtifactType.GIT_DIFF, None, None, None, None),
+        (WizardRunArtifactType.PULL_REQUEST, None, {}, None, None),
+    ],
+)
+def test_list_run_artifacts_rejects_incomplete_persisted_metadata(
+    team,
+    user,
+    artifact_type: WizardRunArtifactType,
+    external_url: str | None,
+    metadata: dict[str, object] | None,
+    size_bytes: int | None,
+    content_hash: str | None,
+) -> None:
+    run = _create_run(team.id, user.id)
+    WizardRunArtifact.objects.for_team(team.id).create(
+        team_id=team.id,
+        run_id=run.id,
+        type=artifact_type.value,
+        external_url=external_url,
+        metadata=metadata,
+        size_bytes=size_bytes,
+        content_hash=content_hash,
+    )
+
+    with pytest.raises(ValueError):
+        wizard_facade.list_run_artifacts(team.id, run.id)
