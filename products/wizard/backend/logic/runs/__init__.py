@@ -7,8 +7,8 @@ from products.wizard.backend.logic.runs.lifecycle import (
     list_runs,
     start_run,
     transition_run,
-    validate_git_repository,
 )
+from products.wizard.backend.logic.runs.validation import validate_git_repository
 
 __all__ = [
     "cancel_run",

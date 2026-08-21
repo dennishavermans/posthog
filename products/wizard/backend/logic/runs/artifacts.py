@@ -1,5 +1,4 @@
 from hashlib import sha256
-from typing import cast
 from uuid import UUID
 
 from posthog.storage import object_storage
@@ -11,10 +10,10 @@ from products.wizard.backend.facade.contracts import (
     WizardRunPullRequestArtifactDTO,
 )
 from products.wizard.backend.facade.enums import WizardRunArtifactType
+from products.wizard.backend.logic.runs.config import GIT_DIFF_CONTENT_TYPE
+from products.wizard.backend.logic.runs.serializers import serialize_pull_request_metadata, to_artifact_dto
 from products.wizard.backend.logic.runs.store import get_run_model
 from products.wizard.backend.models import WizardRunArtifact
-
-GIT_DIFF_CONTENT_TYPE = "text/x-diff; charset=utf-8"
 
 
 def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> WizardRunGitDiffArtifactDTO | None:
@@ -36,7 +35,10 @@ def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> Wiza
             "content_hash": sha256(content).hexdigest(),
         },
     )
-    return _to_git_diff_dto(artifact)
+    artifact_dto = to_artifact_dto(artifact)
+    if not isinstance(artifact_dto, WizardRunGitDiffArtifactDTO):
+        raise ValueError("Expected a git diff artifact")
+    return artifact_dto
 
 
 def create_pull_request_artifact(params: CreatePullRequestArtifactInput) -> WizardRunPullRequestArtifactDTO:
@@ -48,73 +50,27 @@ def create_pull_request_artifact(params: CreatePullRequestArtifactInput) -> Wiza
             "team_id": params.team_id,
             "storage_path": None,
             "external_url": params.url,
-            "metadata": {
-                "number": params.number,
-                "repository": params.repository,
-                "head_branch": params.head_branch,
-                "base_branch": params.base_branch,
-            },
+            "metadata": serialize_pull_request_metadata(
+                params.number,
+                params.repository,
+                params.head_branch,
+                params.base_branch,
+            ),
             "size_bytes": None,
             "content_hash": None,
         },
     )
-    return _to_pull_request_dto(artifact)
+    artifact_dto = to_artifact_dto(artifact)
+    if not isinstance(artifact_dto, WizardRunPullRequestArtifactDTO):
+        raise ValueError("Expected a pull request artifact")
+    return artifact_dto
 
 
 def list_run_artifacts(team_id: int, run_id: UUID) -> list[WizardRunArtifactDTO]:
     run = get_run_model(team_id, run_id)
     artifacts = WizardRunArtifact.objects.for_team(team_id).filter(run_id=run.id).order_by("created_at", "id")
-    return [_to_dto(artifact) for artifact in artifacts]
+    return [to_artifact_dto(artifact) for artifact in artifacts]
 
 
 def _git_diff_storage_path(team_id: int, run_id: UUID) -> str:
     return f"wizard/runs/team_{team_id}/run_{run_id}/artifacts/git.diff"
-
-
-def _to_dto(artifact: WizardRunArtifact) -> WizardRunArtifactDTO:
-    artifact_type = WizardRunArtifactType(artifact.type)
-    if artifact_type == WizardRunArtifactType.GIT_DIFF:
-        return _to_git_diff_dto(artifact)
-    return _to_pull_request_dto(artifact)
-
-
-def _to_git_diff_dto(artifact: WizardRunArtifact) -> WizardRunGitDiffArtifactDTO:
-    if artifact.size_bytes is None or artifact.content_hash is None:
-        raise ValueError("Git diff artifact is missing stored content metadata.")
-    return WizardRunGitDiffArtifactDTO(
-        id=artifact.id,
-        team_id=artifact.team_id,
-        run_id=artifact.run_id,
-        artifact_type=WizardRunArtifactType.GIT_DIFF,
-        size_bytes=artifact.size_bytes,
-        content_hash=artifact.content_hash,
-        created_at=artifact.created_at,
-    )
-
-
-def _to_pull_request_dto(artifact: WizardRunArtifact) -> WizardRunPullRequestArtifactDTO:
-    metadata = cast(dict[str, object], artifact.metadata or {})
-    number = metadata.get("number")
-    repository = metadata.get("repository")
-    head_branch = metadata.get("head_branch")
-    base_branch = metadata.get("base_branch")
-    if (
-        artifact.external_url is None
-        or not isinstance(number, int)
-        or not isinstance(repository, str)
-        or not isinstance(head_branch, str)
-        or not isinstance(base_branch, str)
-    ):
-        raise ValueError("Pull request artifact is missing repository metadata.")
-    return WizardRunPullRequestArtifactDTO(
-        id=artifact.id,
-        team_id=artifact.team_id,
-        run_id=artifact.run_id,
-        artifact_type=WizardRunArtifactType.PULL_REQUEST,
-        url=artifact.external_url,
-        number=number,
-        repository=repository,
-        head_branch=head_branch,
-        base_branch=base_branch,
-        created_at=artifact.created_at,
-    )
