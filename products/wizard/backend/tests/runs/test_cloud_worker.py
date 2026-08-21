@@ -48,6 +48,7 @@ def test_provision_worker_configures_wizard_environment(
     assert "GITHUB_TOKEN" not in config.environment_variables
     assert config.environment_variables["POSTHOG_WIZARD_API_KEY"] == "wizard-secret"
     assert "POSTHOG_WIZARD_RUN_ID" not in config.environment_variables
+    assert config.ttl_seconds == 75 * 60
 
 
 @patch("products.wizard.backend.logic.runs.worker.get_sandbox_class")
