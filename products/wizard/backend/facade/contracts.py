@@ -53,7 +53,6 @@ class WizardSessionDTO:
     created_at: datetime
     updated_at: datetime
     is_stale: bool
-    run_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -70,7 +69,6 @@ class UpsertWizardSessionRequest:
     error: dict[str, Any] | None = None
     pending_input: dict[str, Any] | None = None
     handoff_text: str | None = None
-    run_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -88,7 +86,6 @@ class UpsertWizardSessionInput:
     handoff_text: str | None = None
     # Set on create only, never overwritten on later pushes for the same run.
     created_by_id: int | None = None
-    run_id: UUID | None = None
 
 
 @frozen

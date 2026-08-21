@@ -35,11 +35,7 @@ from products.wizard.backend.facade.contracts import (
     WizardSessionDTO,
 )
 from products.wizard.backend.facade.enums import WizardSessionRunPhase
-from products.wizard.backend.facade.errors import (
-    WizardRunNotFoundError,
-    WizardSessionOwnershipError,
-    WizardSessionRunMismatchError,
-)
+from products.wizard.backend.facade.errors import WizardSessionOwnershipError
 from products.wizard.backend.presentation.sessions import config as session_config
 from products.wizard.backend.presentation.sessions.pagination import pagination_window
 from products.wizard.backend.presentation.sessions.serializers import (
@@ -268,8 +264,6 @@ class WizardSessionViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
             200: WizardSessionSerializer,
             201: WizardSessionSerializer,
             403: OpenApiResponse(description="The session belongs to a different user."),
-            404: OpenApiResponse(description="No Wizard run with that ID exists for this project."),
-            409: OpenApiResponse(description="The session is already linked to another Wizard run."),
         },
     )
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
@@ -295,18 +289,10 @@ class WizardSessionViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
                     pending_input=req.pending_input,
                     handoff_text=req.handoff_text,
                     created_by_id=created_by_id,
-                    run_id=req.run_id,
                 )
             )
         except WizardSessionOwnershipError:
             raise PermissionDenied("This wizard session belongs to a different user.")
-        except WizardRunNotFoundError:
-            raise NotFound("Wizard run not found.")
-        except WizardSessionRunMismatchError:
-            return Response(
-                {"detail": "This wizard session is already linked to another run."},
-                status=status.HTTP_409_CONFLICT,
-            )
         response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(WizardSessionSerializer(dto).data, status=response_status)
 

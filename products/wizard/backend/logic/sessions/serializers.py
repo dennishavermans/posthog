@@ -21,7 +21,6 @@ def to_session_dto(instance: WizardSession) -> WizardSessionDTO:
     return WizardSessionDTO(
         session_id=instance.session_id,
         team_id=instance.team_id,
-        run_id=instance.run_id,
         workflow_id=instance.workflow_id,
         skill_id=instance.skill_id,
         started_at=instance.started_at,

@@ -9,8 +9,7 @@ from django.db import transaction
 
 from products.wizard.backend.facade.contracts import UpsertWizardSessionInput, WizardSessionDTO
 from products.wizard.backend.facade.enums import WizardSessionRunPhase
-from products.wizard.backend.facade.errors import WizardSessionOwnershipError, WizardSessionRunMismatchError
-from products.wizard.backend.logic.runs.store import get_run_model
+from products.wizard.backend.facade.errors import WizardSessionOwnershipError
 from products.wizard.backend.logic.sessions.pubsub import publish_session_update
 from products.wizard.backend.logic.sessions.serializers import to_session_dto
 from products.wizard.backend.metrics import report_session_upserted
@@ -37,15 +36,6 @@ def upsert_session(params: UpsertWizardSessionInput) -> tuple[WizardSessionDTO, 
             .first()
         )
         previous_run_phase = previous_session.run_phase if previous_session else None
-
-        run_id = previous_session.run_id if previous_session is not None else None
-        if params.run_id is not None:
-            run = get_run_model(params.team_id, params.run_id)
-            if run.created_by_id != params.created_by_id:
-                raise WizardSessionOwnershipError
-            if run_id is not None and run_id != params.run_id:
-                raise WizardSessionRunMismatchError
-            run_id = params.run_id
 
         # A session belongs to the user who created it. A later push from a
         # different user would overwrite the run data while `created_by` stays
@@ -86,7 +76,6 @@ def upsert_session(params: UpsertWizardSessionInput) -> tuple[WizardSessionDTO, 
             "error": params.error,
             "pending_input": params.pending_input,
             "handoff_text": handoff_text,
-            "run_id": run_id,
         }
         # created_by only in create_defaults so a later push for the same run can't reattribute it.
         instance, created = WizardSession.objects.update_or_create(

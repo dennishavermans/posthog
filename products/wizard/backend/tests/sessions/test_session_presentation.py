@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 from posthog.test.base import APIBaseTest
 from unittest.mock import patch
 
@@ -51,19 +49,6 @@ class TestWizardSessionViewSet(APIBaseTest):
         self.client.logout()
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
-    def _create_local_run(self, project_name: str = "example-project") -> str:
-        response = self.client.post(
-            f"/api/projects/{self.team.id}/wizard/runs/",
-            {
-                "program_id": "posthog-integration",
-                "environment": "local",
-                "workspace": {"type": "local_folder", "project_name": project_name},
-            },
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        return response.json()["id"]
-
     def test_create_session(self):
         response = self.client.post(self._url(), self._payload(), format="json")
 
@@ -79,33 +64,6 @@ class TestWizardSessionViewSet(APIBaseTest):
         self.assertNotIn("run_id", data)
 
         self.assertEqual(WizardSession.objects.unscoped().filter(team=self.team).count(), 1)
-
-    def test_create_session_binds_wizard_run(self):
-        run_id = self._create_local_run()
-
-        response = self.client.post(self._url(), self._payload(run_id=run_id), format="json")
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.json()["run_id"], run_id)
-        self.assertEqual(str(WizardSession.objects.unscoped().get(team=self.team).run_id), run_id)
-
-    def test_create_session_rejects_unknown_wizard_run(self):
-        response = self.client.post(self._url(), self._payload(run_id=str(uuid4())), format="json")
-
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertEqual(response.json()["detail"], "Wizard run not found.")
-
-    def test_repost_session_rejects_another_wizard_run(self):
-        first_run_id = self._create_local_run("first-project")
-        second_run_id = self._create_local_run("second-project")
-        first = self.client.post(self._url(), self._payload(run_id=first_run_id), format="json")
-        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
-
-        response = self.client.post(self._url(), self._payload(run_id=second_run_id), format="json")
-
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(response.json(), {"detail": "This wizard session is already linked to another run."})
-        self.assertEqual(str(WizardSession.objects.unscoped().get(team=self.team).run_id), first_run_id)
 
     def test_create_session_attributes_run_to_authenticated_user(self):
         response = self.client.post(self._url(), self._payload(), format="json")

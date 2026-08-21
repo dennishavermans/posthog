@@ -72,9 +72,6 @@ class WizardSessionSerializer(DataclassSerializer):
     class Meta:
         dataclass = WizardSessionDTO
         extra_kwargs = {
-            "run_id": {
-                "help_text": "Wizard run that owns this state snapshot, or null for clients that predate Wizard runs.",
-            },
             "created_by": {
                 "help_text": (
                     "The user who initiated this wizard run (null for runs created before "
@@ -117,9 +114,6 @@ class UpsertWizardSessionRequestSerializer(DataclassSerializer):
     class Meta:
         dataclass = UpsertWizardSessionRequest
         extra_kwargs = {
-            "run_id": {
-                "help_text": "Wizard run ID returned when the setup agent starts. Older clients may omit it.",
-            },
             "session_id": {
                 "max_length": 255,
                 "help_text": (
