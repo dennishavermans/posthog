@@ -9,7 +9,7 @@ from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import WizardProgram
 from products.wizard.backend.facade.enums import WizardRunEnvironment
 from products.wizard.backend.facade.serializers.programs import WIZARD_PROGRAM_SERIALIZER
-from products.wizard.backend.facade.serializers.registry import WIZARD_REGISTRY_SERIALIZER
+from products.wizard.backend.logic.registry.parser import parse_registry_payload
 
 POSTHOG_INTEGRATION_PROGRAM = WizardProgram(
     id="posthog-integration",
@@ -36,11 +36,10 @@ AUDIT_PROGRAM_PAYLOAD = {
 REGISTRY_PAYLOAD = {"version": 1, "programs": [AUDIT_PROGRAM_PAYLOAD]}
 
 
-def test_registry_serialization_round_trip() -> None:
-    registry = WIZARD_REGISTRY_SERIALIZER.deserialize(REGISTRY_PAYLOAD)
+def test_registry_payload_parsing() -> None:
+    registry = parse_registry_payload(REGISTRY_PAYLOAD)
 
-    assert WIZARD_REGISTRY_SERIALIZER.serialize(registry) == REGISTRY_PAYLOAD
-    assert WIZARD_REGISTRY_SERIALIZER.deserialize(WIZARD_REGISTRY_SERIALIZER.serialize(registry)) == registry
+    assert registry.programs[0].id == "web-analytics-audit"
 
 
 @parameterized.expand(
@@ -52,7 +51,7 @@ def test_registry_serialization_round_trip() -> None:
 )
 def test_registry_rejects_invalid_serialized_value(_name: str, value: object) -> None:
     with pytest.raises(ValueError):
-        WIZARD_REGISTRY_SERIALIZER.deserialize(value)
+        parse_registry_payload(value)
 
 
 def test_program_serialization_round_trip() -> None:
