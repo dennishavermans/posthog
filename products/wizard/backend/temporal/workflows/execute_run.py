@@ -6,7 +6,7 @@ from temporalio.exceptions import ActivityError
 
 from posthog.temporal.common.base import PostHogWorkflow
 
-from products.wizard.backend.facade.enums import WizardRunStatus, WizardWorkspaceType
+from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus, WizardWorkspaceType
 from products.wizard.backend.temporal.activities.execution import execute_wizard
 from products.wizard.backend.temporal.activities.handoff import create_run_artifacts
 from products.wizard.backend.temporal.activities.lifecycle import finalize_run
@@ -98,6 +98,18 @@ class ExecuteWizardRunWorkflow(PostHogWorkflow):
                     run_id=input.run_id,
                     status=WizardRunStatus.FAILED,
                     error_code=wizard_run_error_code(error),
+                )
+            )
+            raise
+        except Exception:
+            await self._destroy_worker(worker)
+
+            await self._finalize_run(
+                WizardRunFinalizationActivityInput(
+                    team_id=input.team_id,
+                    run_id=input.run_id,
+                    status=WizardRunStatus.FAILED,
+                    error_code=WizardRunErrorCode.EXECUTION_FAILED,
                 )
             )
             raise
