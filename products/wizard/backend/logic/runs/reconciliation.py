@@ -87,6 +87,8 @@ def reconcile_pending_worker_cleanup() -> int:
     )
     reconciled = 0
     for team_id, run_id, sandbox_id in pending:
+        if sandbox_id is None:
+            continue
         worker_store.mark_cleanup_pending(team_id, run_id)
         try:
             cloud_worker.destroy_worker(sandbox_id)
