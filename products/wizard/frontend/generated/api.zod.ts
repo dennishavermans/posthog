@@ -17,6 +17,8 @@ export const wizardRunsCreateBodyWorkspaceOneOneProjectNameMax = 255
 
 export const wizardRunsCreateBodyWorkspaceOneTwoRepositoryMax = 255
 
+export const wizardRunsCreateBodyIdempotencyKeyMax = 255
+
 export const WizardRunsCreateBody = /* @__PURE__ */ zod.object({
     program_id: zod.string().regex(wizardRunsCreateBodyProgramIdRegExp).describe('Registry program to run.'),
     environment: zod
@@ -41,6 +43,11 @@ export const WizardRunsCreateBody = /* @__PURE__ */ zod.object({
             }),
         ])
         .describe('Project that the setup agent works on.'),
+    idempotency_key: zod
+        .string()
+        .max(wizardRunsCreateBodyIdempotencyKeyMax)
+        .optional()
+        .describe('Unique key that makes cloud run creation safe to retry.'),
 })
 
 /**
@@ -57,15 +64,23 @@ export const WizardRunsPartialUpdateBody = /* @__PURE__ */ zod.object({
     error_code: zod
         .union([
             zod
-                .enum(['timeout', 'execution_failed', 'dispatch_failed'])
+                .enum([
+                    'timeout',
+                    'provisioning_failed',
+                    'repository_access_failed',
+                    'workspace_preparation_failed',
+                    'execution_failed',
+                    'artifact_creation_failed',
+                    'dispatch_failed',
+                ])
                 .describe(
-                    '\* `timeout` - timeout\n\* `execution_failed` - execution_failed\n\* `dispatch_failed` - dispatch_failed'
+                    '\* `timeout` - timeout\n\* `provisioning_failed` - provisioning_failed\n\* `repository_access_failed` - repository_access_failed\n\* `workspace_preparation_failed` - workspace_preparation_failed\n\* `execution_failed` - execution_failed\n\* `artifact_creation_failed` - artifact_creation_failed\n\* `dispatch_failed` - dispatch_failed'
                 ),
             zod.null(),
         ])
         .optional()
         .describe(
-            'Machine-readable reason the Wizard run failed.\n\n\* `timeout` - timeout\n\* `execution_failed` - execution_failed\n\* `dispatch_failed` - dispatch_failed'
+            'Machine-readable reason the Wizard run failed.\n\n\* `timeout` - timeout\n\* `provisioning_failed` - provisioning_failed\n\* `repository_access_failed` - repository_access_failed\n\* `workspace_preparation_failed` - workspace_preparation_failed\n\* `execution_failed` - execution_failed\n\* `artifact_creation_failed` - artifact_creation_failed\n\* `dispatch_failed` - dispatch_failed'
         ),
 })
 

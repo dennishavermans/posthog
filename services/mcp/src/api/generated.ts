@@ -30294,7 +30294,11 @@ export namespace Schemas {
 
     /**
      * * `timeout` - timeout
+     * * `provisioning_failed` - provisioning_failed
+     * * `repository_access_failed` - repository_access_failed
+     * * `workspace_preparation_failed` - workspace_preparation_failed
      * * `execution_failed` - execution_failed
+     * * `artifact_creation_failed` - artifact_creation_failed
      * * `dispatch_failed` - dispatch_failed
      */
     export type ErrorCodeEnum = typeof ErrorCodeEnum[keyof typeof ErrorCodeEnum];
@@ -30302,7 +30306,11 @@ export namespace Schemas {
 
     export const ErrorCodeEnum = {
       Timeout: 'timeout',
+      ProvisioningFailed: 'provisioning_failed',
+      RepositoryAccessFailed: 'repository_access_failed',
+      WorkspacePreparationFailed: 'workspace_preparation_failed',
       ExecutionFailed: 'execution_failed',
+      ArtifactCreationFailed: 'artifact_creation_failed',
       DispatchFailed: 'dispatch_failed',
     } as const;
 
@@ -58109,6 +58117,24 @@ export namespace Schemas {
       Cancelled: 'cancelled',
     } as const;
 
+    /**
+     * * `dispatching` - dispatching
+     * * `provisioning` - provisioning
+     * * `preparing_workspace` - preparing_workspace
+     * * `executing_wizard` - executing_wizard
+     * * `creating_artifacts` - creating_artifacts
+     */
+    export type WizardRunStageEnum = typeof WizardRunStageEnum[keyof typeof WizardRunStageEnum];
+
+
+    export const WizardRunStageEnum = {
+      Dispatching: 'dispatching',
+      Provisioning: 'provisioning',
+      PreparingWorkspace: 'preparing_workspace',
+      ExecutingWizard: 'executing_wizard',
+      CreatingArtifacts: 'creating_artifacts',
+    } as const;
+
     export interface WizardRun {
       /** Unique ID of the Wizard run. */
       readonly id: string;
@@ -58139,9 +58165,48 @@ export namespace Schemas {
       /** Machine-readable failure reason, or null if the run has not failed.
        *
        * * `timeout` - timeout
+       * * `provisioning_failed` - provisioning_failed
+       * * `repository_access_failed` - repository_access_failed
+       * * `workspace_preparation_failed` - workspace_preparation_failed
        * * `execution_failed` - execution_failed
+       * * `artifact_creation_failed` - artifact_creation_failed
        * * `dispatch_failed` - dispatch_failed */
       readonly error_code: ErrorCodeEnum | null;
+      /**
+         * Safe failure explanation, or null if the run has not failed.
+         * @nullable
+         */
+      readonly error_message: string | null;
+      /** Current cloud worker stage, or null outside active cloud execution.
+       *
+       * * `dispatching` - dispatching
+       * * `provisioning` - provisioning
+       * * `preparing_workspace` - preparing_workspace
+       * * `executing_wizard` - executing_wizard
+       * * `creating_artifacts` - creating_artifacts */
+      readonly stage: WizardRunStageEnum | null;
+      /** When the Wizard run was created. */
+      readonly created_at: string;
+      /**
+         * When the run last changed.
+         * @nullable
+         */
+      readonly updated_at: string | null;
+      /**
+         * When execution started, or null while queued.
+         * @nullable
+         */
+      readonly started_at: string | null;
+      /**
+         * When execution reached a terminal status, or null while active.
+         * @nullable
+         */
+      readonly finished_at: string | null;
+      /**
+         * Cloud execution deadline, or null for local runs.
+         * @nullable
+         */
+      readonly deadline_at: string | null;
     }
 
     export interface PaginatedWizardRunList {
@@ -66551,7 +66616,11 @@ export namespace Schemas {
       /** Machine-readable reason the Wizard run failed.
        *
        * * `timeout` - timeout
+       * * `provisioning_failed` - provisioning_failed
+       * * `repository_access_failed` - repository_access_failed
+       * * `workspace_preparation_failed` - workspace_preparation_failed
        * * `execution_failed` - execution_failed
+       * * `artifact_creation_failed` - artifact_creation_failed
        * * `dispatch_failed` - dispatch_failed */
       error_code?: ErrorCodeEnum | null;
     }
@@ -84978,6 +85047,11 @@ export namespace Schemas {
       environment: RunEnvironmentEnum;
       /** Project that the setup agent works on. */
       workspace: WizardWorkspace;
+      /**
+         * Unique key that makes cloud run creation safe to retry.
+         * @maxLength 255
+         */
+      idempotency_key?: string;
     }
 
     export interface WizardRunError {

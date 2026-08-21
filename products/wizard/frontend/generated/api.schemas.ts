@@ -106,15 +106,40 @@ export const WizardRunStatusEnumApi = {
 
 /**
  * * `timeout` - timeout
+ * * `provisioning_failed` - provisioning_failed
+ * * `repository_access_failed` - repository_access_failed
+ * * `workspace_preparation_failed` - workspace_preparation_failed
  * * `execution_failed` - execution_failed
+ * * `artifact_creation_failed` - artifact_creation_failed
  * * `dispatch_failed` - dispatch_failed
  */
 export type ErrorCodeEnumApi = (typeof ErrorCodeEnumApi)[keyof typeof ErrorCodeEnumApi]
 
 export const ErrorCodeEnumApi = {
     Timeout: 'timeout',
+    ProvisioningFailed: 'provisioning_failed',
+    RepositoryAccessFailed: 'repository_access_failed',
+    WorkspacePreparationFailed: 'workspace_preparation_failed',
     ExecutionFailed: 'execution_failed',
+    ArtifactCreationFailed: 'artifact_creation_failed',
     DispatchFailed: 'dispatch_failed',
+} as const
+
+/**
+ * * `dispatching` - dispatching
+ * * `provisioning` - provisioning
+ * * `preparing_workspace` - preparing_workspace
+ * * `executing_wizard` - executing_wizard
+ * * `creating_artifacts` - creating_artifacts
+ */
+export type WizardRunStageEnumApi = (typeof WizardRunStageEnumApi)[keyof typeof WizardRunStageEnumApi]
+
+export const WizardRunStageEnumApi = {
+    Dispatching: 'dispatching',
+    Provisioning: 'provisioning',
+    PreparingWorkspace: 'preparing_workspace',
+    ExecutingWizard: 'executing_wizard',
+    CreatingArtifacts: 'creating_artifacts',
 } as const
 
 export interface WizardRunApi {
@@ -147,9 +172,48 @@ export interface WizardRunApi {
     /** Machine-readable failure reason, or null if the run has not failed.
      *
      * * `timeout` - timeout
+     * * `provisioning_failed` - provisioning_failed
+     * * `repository_access_failed` - repository_access_failed
+     * * `workspace_preparation_failed` - workspace_preparation_failed
      * * `execution_failed` - execution_failed
+     * * `artifact_creation_failed` - artifact_creation_failed
      * * `dispatch_failed` - dispatch_failed */
     readonly error_code: ErrorCodeEnumApi | null
+    /**
+     * Safe failure explanation, or null if the run has not failed.
+     * @nullable
+     */
+    readonly error_message: string | null
+    /** Current cloud worker stage, or null outside active cloud execution.
+     *
+     * * `dispatching` - dispatching
+     * * `provisioning` - provisioning
+     * * `preparing_workspace` - preparing_workspace
+     * * `executing_wizard` - executing_wizard
+     * * `creating_artifacts` - creating_artifacts */
+    readonly stage: WizardRunStageEnumApi | null
+    /** When the Wizard run was created. */
+    readonly created_at: string
+    /**
+     * When the run last changed.
+     * @nullable
+     */
+    readonly updated_at: string | null
+    /**
+     * When execution started, or null while queued.
+     * @nullable
+     */
+    readonly started_at: string | null
+    /**
+     * When execution reached a terminal status, or null while active.
+     * @nullable
+     */
+    readonly finished_at: string | null
+    /**
+     * Cloud execution deadline, or null for local runs.
+     * @nullable
+     */
+    readonly deadline_at: string | null
 }
 
 export interface PaginatedWizardRunListApi {
@@ -174,6 +238,11 @@ export interface WizardRunCreateRequestApi {
     environment: RunEnvironmentEnumApi
     /** Project that the setup agent works on. */
     workspace: WizardWorkspaceApi
+    /**
+     * Unique key that makes cloud run creation safe to retry.
+     * @maxLength 255
+     */
+    idempotency_key?: string
 }
 
 export interface WizardRunErrorApi {
@@ -214,7 +283,11 @@ export interface PatchedWizardRunStatusUpdateRequestApi {
     /** Machine-readable reason the Wizard run failed.
      *
      * * `timeout` - timeout
+     * * `provisioning_failed` - provisioning_failed
+     * * `repository_access_failed` - repository_access_failed
+     * * `workspace_preparation_failed` - workspace_preparation_failed
      * * `execution_failed` - execution_failed
+     * * `artifact_creation_failed` - artifact_creation_failed
      * * `dispatch_failed` - dispatch_failed */
     error_code?: ErrorCodeEnumApi | null
 }
