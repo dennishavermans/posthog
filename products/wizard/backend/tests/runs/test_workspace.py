@@ -7,6 +7,46 @@ from products.wizard.backend.logic.runs.workspaces import validate_workspace_env
 
 
 @pytest.mark.parametrize(
+    ("workspace_class", "metadata", "expected_workspace"),
+    [
+        (
+            LocalFolderWorkspace,
+            {"project_name": "example-project"},
+            LocalFolderWorkspace(project_name="example-project"),
+        ),
+        (
+            GitRepositoryWorkspace,
+            {"repository": "posthog/posthog"},
+            GitRepositoryWorkspace(repository="posthog/posthog"),
+        ),
+    ],
+)
+def test_workspace_serialization_round_trip(
+    workspace_class: type[LocalFolderWorkspace] | type[GitRepositoryWorkspace],
+    metadata: dict[str, str],
+    expected_workspace: WizardWorkspace,
+) -> None:
+    workspace = workspace_class.from_dict(metadata)
+
+    assert workspace == expected_workspace
+    assert workspace.to_dict() == metadata
+
+
+@pytest.mark.parametrize(
+    ("workspace_class", "metadata"),
+    [
+        (LocalFolderWorkspace, {"project_name": 123}),
+        (GitRepositoryWorkspace, {"repository": None}),
+    ],
+)
+def test_workspace_rejects_invalid_serialized_value(
+    workspace_class: type[LocalFolderWorkspace] | type[GitRepositoryWorkspace], metadata: dict[str, object]
+) -> None:
+    with pytest.raises(ValueError):
+        workspace_class.from_dict(metadata)
+
+
+@pytest.mark.parametrize(
     ("environment", "workspace"),
     [
         (WizardRunEnvironment.LOCAL, LocalFolderWorkspace(project_name="example-project")),
