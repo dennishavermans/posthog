@@ -1,34 +1,13 @@
 from products.wizard.backend.facade.contracts import (
     WizardRunArtifactDTO,
-    WizardRunDTO,
     WizardRunGitDiffArtifactDTO,
     WizardRunPullRequestArtifactDTO,
 )
-from products.wizard.backend.facade.enums import (
-    WizardRunArtifactType,
-    WizardRunEnvironment,
-    WizardRunErrorCode,
-    WizardRunStatus,
-)
-from products.wizard.backend.facade.serializers.programs import WIZARD_PROGRAM_SERIALIZER
-from products.wizard.backend.facade.serializers.workspaces import WIZARD_WORKSPACE_SERIALIZER
-from products.wizard.backend.models import WizardRun, WizardRunArtifact
+from products.wizard.backend.facade.enums import WizardRunArtifactType
+from products.wizard.backend.models import WizardRunArtifact
 
 
-def to_run_dto(run: WizardRun) -> WizardRunDTO:
-    return WizardRunDTO(
-        id=run.id,
-        team_id=run.team_id,
-        created_by_id=run.created_by_id,
-        environment=WizardRunEnvironment(run.environment),
-        workspace=WIZARD_WORKSPACE_SERIALIZER.deserialize(run.workspace_type, run.workspace),
-        program=WIZARD_PROGRAM_SERIALIZER.deserialize_persisted(run.program),
-        status=WizardRunStatus(run.status),
-        error_code=WizardRunErrorCode(run.error_code) if run.error_code else None,
-    )
-
-
-def to_artifact_dto(artifact: WizardRunArtifact) -> WizardRunArtifactDTO:
+def artifact_from_record(artifact: WizardRunArtifact) -> WizardRunArtifactDTO:
     if WizardRunArtifactType(artifact.type) == WizardRunArtifactType.GIT_DIFF:
         if artifact.size_bytes is None or artifact.content_hash is None:
             raise ValueError("Git diff artifact is missing stored content metadata.")
@@ -69,7 +48,7 @@ def to_artifact_dto(artifact: WizardRunArtifact) -> WizardRunArtifactDTO:
     )
 
 
-def serialize_pull_request_metadata(
+def pull_request_metadata_to_record(
     number: int, repository: str, head_branch: str, base_branch: str
 ) -> dict[str, object]:
     return {
