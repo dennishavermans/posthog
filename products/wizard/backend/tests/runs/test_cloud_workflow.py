@@ -164,6 +164,30 @@ async def test_cloud_workflow_persists_cancellation(
 
 
 @pytest.mark.asyncio
+async def test_cloud_workflow_persists_unexpected_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    workflow_input: WizardRunActivityInput,
+) -> None:
+    unexpected_error = RuntimeError("unexpected workflow failure")
+    execute_activity = AsyncMock(side_effect=[unexpected_error, None])
+    monkeypatch.setattr(execute_run_workflow_module.workflow, "execute_activity", execute_activity)
+
+    with pytest.raises(RuntimeError) as raised:
+        await ExecuteWizardRunWorkflow().run(workflow_input)
+
+    assert raised.value is unexpected_error
+    assert execute_activity.await_args_list[1].args == (
+        finalize_run,
+        WizardRunFinalizationActivityInput(
+            team_id=workflow_input.team_id,
+            run_id=workflow_input.run_id,
+            status=WizardRunStatus.FAILED,
+            error_code=WizardRunErrorCode.EXECUTION_FAILED,
+        ),
+    )
+
+
+@pytest.mark.asyncio
 async def test_cloud_workflow_keeps_success_when_worker_cleanup_fails(
     monkeypatch: pytest.MonkeyPatch,
     workflow_input: WizardRunActivityInput,
