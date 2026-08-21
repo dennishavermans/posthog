@@ -12,7 +12,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q, QuerySet
 from django.http import Http404, HttpResponse
 from django.utils import timezone
@@ -4069,7 +4069,19 @@ class HogFlowViewSet(
             created_via=self._proposal_created_via(request),
             created_by=request.user if request.user.is_authenticated else None,
         )
-        proposal.save()
+        try:
+            with transaction.atomic():
+                proposal.save()
+        except IntegrityError:
+            # A concurrent create with the same source_id committed between the read above and this
+            # save, tripping the partial unique index. Honor the idempotency contract the field
+            # promises and return the row that landed rather than surfacing a 500.
+            existing = (
+                WorkflowProposal.objects.filter(hog_flow=instance, source_id=source_id).first() if source_id else None
+            )
+            if existing is None:
+                raise
+            return Response(WorkflowProposalSerializer(existing).data, status=status.HTTP_200_OK)
         self._report_workflow_action(
             "hog_flow_proposal_created",
             instance,
