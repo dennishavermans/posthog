@@ -62,6 +62,22 @@ def test_empty_git_diff_creates_no_artifact(team, user) -> None:
 
 
 @pytest.mark.django_db
+def test_oversized_git_diff_creates_no_artifact(team, user) -> None:
+    run = _create_run(team.id, user.id)
+
+    with (
+        patch("products.wizard.backend.logic.artifacts.service.MAX_GIT_DIFF_BYTES", 4),
+        patch("products.wizard.backend.logic.artifacts.service.object_storage.write") as write,
+        patch("products.wizard.backend.logic.artifacts.service.run_observability") as observability,
+    ):
+        artifact = wizard_facade.create_git_diff_artifact(team.id, run.id, b"12345")
+
+    assert artifact is None
+    write.assert_not_called()
+    observability.git_diff_omitted.assert_called_once_with(run, 5)
+
+
+@pytest.mark.django_db
 def test_git_diff_artifact_is_idempotent_for_run(team, user) -> None:
     run = _create_run(team.id, user.id)
 
