@@ -44,3 +44,15 @@ class WizardRunIdempotencyConflictError(Exception):
 
 class MissingWizardRunIdempotencyKeyError(Exception):
     pass
+
+
+class ActiveWizardRunError(Exception):
+    pass
+
+
+class WizardRunHourlyLimitError(Exception):
+    pass
+
+
+class WizardRunDailyLimitError(Exception):
+    pass

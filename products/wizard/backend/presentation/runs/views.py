@@ -5,7 +5,7 @@ from django.conf import settings
 
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, Throttled, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -17,6 +17,7 @@ from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import WizardRunDTO
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
 from products.wizard.backend.facade.errors import (
+    ActiveWizardRunError,
     IllegalStatusTransitionError,
     InvalidRepositoryError,
     InvalidWorkspaceEnvironmentError,
@@ -24,6 +25,8 @@ from products.wizard.backend.facade.errors import (
     RepositoryNotAccessibleError,
     WizardProgramEnvironmentNotSupportedError,
     WizardProgramNotAvailableError,
+    WizardRunDailyLimitError,
+    WizardRunHourlyLimitError,
     WizardRunIdempotencyConflictError,
     WizardRunNotFoundError,
 )
@@ -61,6 +64,7 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
             400: OpenApiResponse(response=WizardRunErrorSerializer),
             403: OpenApiResponse(response=WizardRunErrorSerializer),
             404: OpenApiResponse(response=WizardRunErrorSerializer),
+            429: OpenApiResponse(response=WizardRunErrorSerializer),
         },
         description="Create a local or cloud Wizard run for a project workspace.",
     )
@@ -86,6 +90,14 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
                 "This idempotency key was already used for a different Wizard run.",
                 code="idempotency_conflict",
             )
+        except ActiveWizardRunError:
+            raise Throttled(
+                detail="A cloud Wizard run is already active. Wait for it to finish or cancel it before starting another."
+            )
+        except WizardRunHourlyLimitError:
+            raise Throttled(detail="You've reached the hourly cloud run limit. Try again in an hour.")
+        except WizardRunDailyLimitError:
+            raise Throttled(detail="You've reached the daily cloud run limit. Try again tomorrow.")
         except (MissingGitHubIntegrationError, RepositoryNotAccessibleError):
             raise ValidationError({"detail": "Connect GitHub with access to this repository, then try again."})
         response_status = status.HTTP_201_CREATED if result.created else status.HTTP_200_OK

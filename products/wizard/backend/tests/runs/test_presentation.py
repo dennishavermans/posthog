@@ -218,6 +218,26 @@ class TestWizardRunViewSet(APIBaseTest):
         "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
         return_value=123,
     )
+    def test_cloud_run_rejects_a_second_active_run(self, _resolve_integration, _repository_accessible) -> None:
+        first = self.client.post(self._url(), self._cloud_payload(idempotency_key="first-run"), format="json")
+
+        response = self.client.post(self._url(), self._cloud_payload(idempotency_key="second-run"), format="json")
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertEqual(
+            response.json()["detail"],
+            "A cloud Wizard run is already active. Wait for it to finish or cancel it before starting another.",
+        )
+
+    @patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
+        return_value=True,
+    )
+    @patch(
+        "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
+        return_value=123,
+    )
     @override_settings(WIZARD_CLOUD_RUN_OAUTH_CLIENT_ID="")
     def test_cloud_run_rejects_disabled_cloud_execution(self, _resolve_integration, _repository_accessible) -> None:
         response = self.client.post(
