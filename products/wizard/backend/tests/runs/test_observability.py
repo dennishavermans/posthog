@@ -1,5 +1,7 @@
+from uuid import uuid4
+
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from products.wizard.backend.facade.contracts import CreateWizardRunInput, LocalFolderWorkspace
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
@@ -43,11 +45,12 @@ def test_run_transition_emits_observability(team, user) -> None:
 
 
 def test_observability_failures_do_not_escape() -> None:
+    run = MagicMock(team_id=1, id=uuid4(), environment=WizardRunEnvironment.LOCAL)
     with (
         patch.object(service, "report_run_created", side_effect=RuntimeError),
         patch.object(service, "enqueue_run_event", side_effect=RuntimeError),
     ):
-        service.run_created(object())
+        service.run_created(run)
 
 
 def test_terminal_event_name_matches_status() -> None:

@@ -38,6 +38,7 @@ from products.wizard.backend.logic.runs import store
 from products.wizard.backend.logic.runs.fingerprints import create_run_request_fingerprint
 from products.wizard.backend.logic.runs.transitions import transition
 from products.wizard.backend.logic.runs.validation import validate_git_repository
+from products.wizard.backend.observability import service as run_observability
 from products.wizard.backend.tasks.config import DISPATCH_WIZARD_RUN_TASK
 from products.wizard.backend.temporal import client as temporal_client
 
@@ -125,7 +126,9 @@ def create_run_with_result(params: CreateWizardRunInput) -> WizardRunCreationRes
             )
 
     if params.environment == WizardRunEnvironment.CLOUD:
-        return WizardRunCreationResult(run=store.get_run(params.team_id, result.run.id), created=result.created)
+        result = WizardRunCreationResult(run=store.get_run(params.team_id, result.run.id), created=result.created)
+    if result.created:
+        run_observability.run_created(result.run)
     return result
 
 
@@ -193,7 +196,9 @@ def transition_run(
 ) -> WizardRunDTO:
     with database_transaction.atomic():
         run = store.get_run(team_id, run_id, lock=True)
+        previous = run
         next_status = transition(run.status, next_status, error_code=error_code)
         run = store.set_run_status(team_id, run_id, next_status, error_code)
 
+    run_observability.run_transitioned(previous, run)
     return run
