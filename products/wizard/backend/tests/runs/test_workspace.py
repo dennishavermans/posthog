@@ -4,7 +4,7 @@ from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, Loc
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardWorkspaceType
 from products.wizard.backend.facade.errors import InvalidWorkspaceEnvironmentError
 from products.wizard.backend.facade.serializers.workspaces import WIZARD_WORKSPACE_SERIALIZER
-from products.wizard.backend.logic.runs.workspaces import validate_workspace_environment
+from products.wizard.backend.logic.runs.validation import validate_workspace_environment
 
 
 @pytest.mark.parametrize(
