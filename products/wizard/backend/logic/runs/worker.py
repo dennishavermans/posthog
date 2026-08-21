@@ -18,7 +18,7 @@ from products.tasks.backend.facade.sandbox import (
     get_sandbox_class,
     sandbox_repo_path,
 )
-from products.wizard.backend.logic.registry.versions import is_executable_wizard_version
+from products.wizard.backend.facade.versions import is_executable_wizard_version
 from products.wizard.backend.logic.runs import publishing
 
 WIZARD_TIMEOUT_SECONDS = 45 * 60

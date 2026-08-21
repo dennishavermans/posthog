@@ -5,9 +5,10 @@ Frozen dataclasses that define what this product exposes.
 No Django imports. Used by facade as inputs/outputs.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, Protocol, Self
 from uuid import UUID
 
 from posthog.dataclasses import frozen
@@ -20,8 +21,29 @@ from .enums import (
     WizardSessionRunPhase,
     WizardSessionTaskStatus,
 )
+from .versions import LEGACY_WIZARD_VERSION, is_exact_wizard_version
 
 STALE_AFTER = timedelta(minutes=10)
+_PROGRAM_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_PROGRAM_FIELDS = frozenset(
+    {
+        "id",
+        "name",
+        "description",
+        "wizard_version",
+        "command",
+        "tags",
+        "required_programs",
+        "supported_environments",
+    }
+)
+
+
+class DictSerializable(Protocol):
+    def to_dict(self) -> dict[str, object]: ...
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self: ...
 
 
 @dataclass(frozen=True)
@@ -119,6 +141,53 @@ class WizardProgram:
     required_programs: tuple[str, ...]
     supported_environments: tuple[WizardRunEnvironment, ...]
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "wizard_version": self.wizard_version,
+            "command": list(self.command),
+            "tags": list(self.tags),
+            "required_programs": list(self.required_programs),
+            "supported_environments": [environment.value for environment in self.supported_environments],
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        return cls._from_dict(value, allow_legacy_version=False)
+
+    @classmethod
+    def from_persisted_dict(cls, value: object) -> Self:
+        return cls._from_dict(value, allow_legacy_version=True)
+
+    @classmethod
+    def _from_dict(cls, value: object, *, allow_legacy_version: bool) -> Self:
+        if not isinstance(value, dict) or set(value) != _PROGRAM_FIELDS:
+            raise ValueError("Invalid Wizard program")
+
+        program_id = _program_slug(value["id"])
+        name = _program_nonempty_string(value["name"])
+        description = _program_nonempty_string(value["description"])
+        wizard_version = _program_wizard_version(value["wizard_version"], allow_legacy_version=allow_legacy_version)
+        command = _program_slug_list(value["command"])
+        tags = _program_slug_list(value["tags"])
+        required_programs = _program_slug_list(value["required_programs"])
+        supported_environments = _program_environments(value["supported_environments"])
+        if not supported_environments:
+            raise ValueError("Invalid Wizard program")
+
+        return cls(
+            id=program_id,
+            name=name,
+            description=description,
+            wizard_version=wizard_version,
+            command=command,
+            tags=tags,
+            required_programs=required_programs,
+            supported_environments=supported_environments,
+        )
+
 
 @frozen
 class CreateWizardRunInput:
@@ -191,3 +260,44 @@ class WizardRunPullRequestArtifactDTO:
 
 
 type WizardRunArtifactDTO = WizardRunGitDiffArtifactDTO | WizardRunPullRequestArtifactDTO
+
+
+def _program_nonempty_string(value: object) -> str:
+    if not isinstance(value, str) or value != value.strip() or not value:
+        raise ValueError("Invalid Wizard program")
+    return value
+
+
+def _program_slug(value: object) -> str:
+    if not isinstance(value, str) or _PROGRAM_ID_PATTERN.fullmatch(value) is None:
+        raise ValueError("Invalid Wizard program")
+    return value
+
+
+def _program_wizard_version(value: object, *, allow_legacy_version: bool) -> str:
+    if allow_legacy_version and value == LEGACY_WIZARD_VERSION:
+        return LEGACY_WIZARD_VERSION
+    if not isinstance(value, str) or not is_exact_wizard_version(value):
+        raise ValueError("Invalid Wizard program")
+    return value
+
+
+def _program_slug_list(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ValueError("Invalid Wizard program")
+    values = tuple(_program_slug(item) for item in value)
+    if len(values) != len(set(values)):
+        raise ValueError("Invalid Wizard program")
+    return values
+
+
+def _program_environments(value: object) -> tuple[WizardRunEnvironment, ...]:
+    if not isinstance(value, list):
+        raise ValueError("Invalid Wizard program")
+    try:
+        environments = tuple(WizardRunEnvironment(item) for item in value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Invalid Wizard program") from error
+    if len(environments) != len(set(environments)):
+        raise ValueError("Invalid Wizard program")
+    return environments

@@ -71,7 +71,7 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
             environment=params.environment.value,
             workspace_type=workspace_type.value,
             workspace=workspace_metadata,
-            program=registry_service.serialize_program(program),
+            program=program.to_dict(),
             status=initial_status.value,
         )
         if params.environment == WizardRunEnvironment.CLOUD:
