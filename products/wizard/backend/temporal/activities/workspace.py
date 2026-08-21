@@ -6,7 +6,7 @@ from posthog.temporal.common.utils import asyncify
 from products.tasks.backend.facade import repo_selection
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, WizardRunDTO
-from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardWorkspaceType
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus, WizardWorkspaceType
 from products.wizard.backend.logic.runs import worker as cloud_worker
 from products.wizard.backend.logic.runs.worker import GitRepositoryCloneRequest, WizardWorkerProvisionRequest
 from products.wizard.backend.temporal.activities.errors import (
@@ -14,6 +14,7 @@ from products.wizard.backend.temporal.activities.errors import (
     WIZARD_RUN_CONFIGURATION_ERROR_TYPE,
     WIZARD_WORKER_EXECUTION_ERROR_TYPE,
 )
+from products.wizard.backend.temporal.activities.lifecycle import transition_cloud_run
 from products.wizard.backend.temporal.contracts import (
     PreparedGitRepositoryWorkspace,
     ProvisionedWizardWorker,
@@ -37,6 +38,8 @@ def provision_worker(input: WizardRunActivityInput) -> ProvisionedWizardWorker:
             type=WIZARD_RUN_CONFIGURATION_ERROR_TYPE,
             non_retryable=True,
         )
+
+    transition_cloud_run(input.team_id, input.run_id, WizardRunStatus.RUNNING)
 
     sandbox_id = cloud_worker.provision_worker(
         WizardWorkerProvisionRequest(

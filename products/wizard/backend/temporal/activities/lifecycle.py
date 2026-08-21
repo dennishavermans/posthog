@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from uuid import UUID
 
 from temporalio import activity
 
@@ -8,77 +8,44 @@ from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import WizardRunDTO
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
 from products.wizard.backend.facade.errors import IllegalStatusTransitionError
-from products.wizard.backend.temporal.contracts import WizardRunActivityInput, WizardRunFailureActivityInput
+from products.wizard.backend.temporal.contracts import WizardRunFinalizationActivityInput
 
 
-@activity.defn(name="wizard_start_run")
+@activity.defn(name="wizard_finalize_run")
 @asyncify
-def start_run(input: WizardRunActivityInput) -> None:
-    _transition(
-        input,
-        expected_status=WizardRunStatus.RUNNING,
-        expected_error_code=None,
-        operation=lambda: wizard_facade.start_run(input.team_id, input.run_id),
+def finalize_run(input: WizardRunFinalizationActivityInput) -> None:
+    transition_cloud_run(
+        input.team_id,
+        input.run_id,
+        input.status,
+        error_code=input.error_code,
     )
 
 
-@activity.defn(name="wizard_complete_run")
-@asyncify
-def complete_run(input: WizardRunActivityInput) -> None:
-    _transition(
-        input,
-        expected_status=WizardRunStatus.COMPLETED,
-        expected_error_code=None,
-        operation=lambda: wizard_facade.complete_run(input.team_id, input.run_id),
-    )
-
-
-@activity.defn(name="wizard_fail_run")
-@asyncify
-def fail_run(input: WizardRunFailureActivityInput) -> None:
-    _transition(
-        input,
-        expected_status=WizardRunStatus.FAILED,
-        expected_error_code=input.error_code,
-        operation=lambda: wizard_facade.fail_run(input.team_id, input.run_id, error_code=input.error_code),
-    )
-
-
-@activity.defn(name="wizard_cancel_run")
-@asyncify
-def cancel_run(input: WizardRunActivityInput) -> None:
-    _transition(
-        input,
-        expected_status=WizardRunStatus.CANCELLED,
-        expected_error_code=None,
-        operation=lambda: wizard_facade.cancel_run(input.team_id, input.run_id),
-    )
-
-
-def _transition(
-    input: WizardRunActivityInput | WizardRunFailureActivityInput,
+def transition_cloud_run(
+    team_id: int,
+    run_id: UUID,
+    status: WizardRunStatus,
     *,
-    expected_status: WizardRunStatus,
-    expected_error_code: WizardRunErrorCode | None,
-    operation: Callable[[], WizardRunDTO],
+    error_code: WizardRunErrorCode | None = None,
 ) -> None:
-    current = _get_cloud_run(input)
-    if _matches(current, expected_status, expected_error_code):
+    current = _get_cloud_run(team_id, run_id)
+    if _matches(current, status, error_code):
         return
 
     try:
-        operation()
+        wizard_facade.transition_run(team_id, run_id, status, error_code=error_code)
     except IllegalStatusTransitionError:
-        current = _get_cloud_run(input)
-        if _matches(current, expected_status, expected_error_code):
+        current = _get_cloud_run(team_id, run_id)
+        if _matches(current, status, error_code):
             return
         raise
 
 
-def _get_cloud_run(input: WizardRunActivityInput | WizardRunFailureActivityInput) -> WizardRunDTO:
-    run = wizard_facade.get_run(input.team_id, input.run_id)
+def _get_cloud_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    run = wizard_facade.get_run(team_id, run_id)
     if run.environment != WizardRunEnvironment.CLOUD:
-        raise ValueError("Lifecycle activity requires a cloud Wizard run.")
+        raise ValueError("Wizard Run transitions require a cloud Wizard Run.")
     return run
 
 

@@ -16,7 +16,12 @@ from products.wizard.backend.facade.contracts import (
     WizardRunGitDiffArtifactDTO,
     WizardRunPullRequestArtifactDTO,
 )
-from products.wizard.backend.facade.enums import WizardRunArtifactType, WizardRunEnvironment, WizardWorkspaceType
+from products.wizard.backend.facade.enums import (
+    WizardRunArtifactType,
+    WizardRunEnvironment,
+    WizardRunStatus,
+    WizardWorkspaceType,
+)
 from products.wizard.backend.logic.runs.worker import (
     GitRepositoryCloneRequest,
     GitRepositoryHandoffRequest,
@@ -117,6 +122,7 @@ def test_provision_worker_uses_persisted_run_identity(team, user) -> None:
         result = async_to_sync(_run_provision_worker)(WizardRunActivityInput(team_id=team.id, run_id=run.id))
 
     assert result == _worker(run)
+    assert wizard_facade.get_run(team.id, run.id).status == WizardRunStatus.RUNNING
     provision.assert_called_once_with(
         WizardWorkerProvisionRequest(team_id=team.id, created_by_id=user.id, run_id=run.id)
     )
@@ -218,6 +224,7 @@ def test_execute_wizard_maps_worker_error(worker_error: Exception, error_type: s
 @patch("products.wizard.backend.logic.runs.artifacts.object_storage.write")
 def test_create_run_artifacts_persists_git_diff_and_pull_request(_write: MagicMock, team, user) -> None:
     run = _create_cloud_run(team.id, user.id)
+    wizard_facade.start_run(team.id, run.id)
     workspace = _workspace(run)
     diff = b"diff --git a/a b/a\n"
     pull_request = RepositoryPullRequest(
@@ -256,3 +263,4 @@ def test_create_run_artifacts_persists_git_diff_and_pull_request(_write: MagicMo
     )
     assert pull_request_artifact.url == pull_request.url
     assert pull_request_artifact.number == pull_request.number
+    assert wizard_facade.get_run(team.id, run.id).status == WizardRunStatus.COMPLETED

@@ -2,20 +2,20 @@ import asyncio
 from uuid import UUID, uuid4
 
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from temporalio.exceptions import ActivityError, ApplicationError, RetryState, TimeoutError, TimeoutType
 
-from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardWorkspaceType
+from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus, WizardWorkspaceType
 from products.wizard.backend.temporal.activities.execution import WIZARD_WORKER_TIMEOUT_ERROR_TYPE, execute_wizard
 from products.wizard.backend.temporal.activities.handoff import create_run_artifacts
-from products.wizard.backend.temporal.activities.lifecycle import cancel_run, complete_run, fail_run, start_run
+from products.wizard.backend.temporal.activities.lifecycle import finalize_run
 from products.wizard.backend.temporal.activities.workspace import clone_repository, destroy_worker, provision_worker
 from products.wizard.backend.temporal.contracts import (
     PreparedGitRepositoryWorkspace,
     ProvisionedWizardWorker,
     WizardRunActivityInput,
-    WizardRunFailureActivityInput,
+    WizardRunFinalizationActivityInput,
 )
 from products.wizard.backend.temporal.workflows import execute_run as execute_run_workflow_module
 from products.wizard.backend.temporal.workflows.execute_run import ExecuteWizardRunWorkflow
@@ -72,34 +72,28 @@ async def test_cloud_workflow_completes_after_worker_execution(
     worker: ProvisionedWizardWorker,
     workspace: PreparedGitRepositoryWorkspace,
 ) -> None:
-    execute_activity = AsyncMock(side_effect=[None, worker, workspace, None, None, None, None])
+    execute_activity = AsyncMock(side_effect=[worker, workspace, None, None, None])
     monkeypatch.setattr(execute_run_workflow_module.workflow, "execute_activity", execute_activity)
 
     await ExecuteWizardRunWorkflow().run(workflow_input)
 
     assert [call.args[0] for call in execute_activity.await_args_list] == [
-        start_run,
         provision_worker,
         clone_repository,
         execute_wizard,
         create_run_artifacts,
         destroy_worker,
-        complete_run,
     ]
     assert execute_activity.await_args_list[0].args[1] == workflow_input
-    assert execute_activity.await_args_list[1].args[1] == workflow_input
-    assert execute_activity.await_args_list[2].args[1] == worker
+    assert execute_activity.await_args_list[1].args[1] == worker
+    assert execute_activity.await_args_list[2].args[1] == workspace
     assert execute_activity.await_args_list[3].args[1] == workspace
-    assert execute_activity.await_args_list[4].args[1] == workspace
-    assert execute_activity.await_args_list[5].args[1] == worker
-    assert execute_activity.await_args_list[6].args[1] == workflow_input
-    assert execute_activity.await_args_list[0].kwargs["retry_policy"].maximum_attempts == 3
+    assert execute_activity.await_args_list[4].args[1] == worker
     assert execute_activity.await_args_list[1].kwargs["retry_policy"].maximum_attempts == 1
     assert execute_activity.await_args_list[2].kwargs["retry_policy"].maximum_attempts == 1
     assert execute_activity.await_args_list[3].kwargs["retry_policy"].maximum_attempts == 1
-    assert execute_activity.await_args_list[4].kwargs["retry_policy"].maximum_attempts == 1
-    assert execute_activity.await_args_list[5].kwargs["retry_policy"].maximum_attempts == 3
-    assert execute_activity.await_args_list[6].kwargs["retry_policy"].maximum_attempts == 3
+    assert execute_activity.await_args_list[0].kwargs["retry_policy"].maximum_attempts == 1
+    assert execute_activity.await_args_list[4].kwargs["retry_policy"].maximum_attempts == 3
 
 
 @pytest.mark.asyncio
@@ -126,19 +120,20 @@ async def test_cloud_workflow_persists_execution_failure(
     expected_error_code: WizardRunErrorCode,
 ) -> None:
     activity_error = _activity_error(cause)
-    execute_activity = AsyncMock(side_effect=[None, worker, workspace, activity_error, None, None])
+    execute_activity = AsyncMock(side_effect=[worker, workspace, activity_error, None, None])
     monkeypatch.setattr(execute_run_workflow_module.workflow, "execute_activity", execute_activity)
 
     with pytest.raises(ActivityError) as raised:
         await ExecuteWizardRunWorkflow().run(workflow_input)
 
     assert raised.value is activity_error
-    assert execute_activity.await_args_list[4].args == (destroy_worker, worker)
-    assert execute_activity.await_args_list[5].args == (
-        fail_run,
-        WizardRunFailureActivityInput(
+    assert execute_activity.await_args_list[3].args == (destroy_worker, worker)
+    assert execute_activity.await_args_list[4].args == (
+        finalize_run,
+        WizardRunFinalizationActivityInput(
             team_id=workflow_input.team_id,
             run_id=workflow_input.run_id,
+            status=WizardRunStatus.FAILED,
             error_code=expected_error_code,
         ),
     )
@@ -151,14 +146,40 @@ async def test_cloud_workflow_persists_cancellation(
     worker: ProvisionedWizardWorker,
     workspace: PreparedGitRepositoryWorkspace,
 ) -> None:
-    execute_activity = AsyncMock(side_effect=[None, worker, workspace, asyncio.CancelledError(), None, None])
+    execute_activity = AsyncMock(side_effect=[worker, workspace, asyncio.CancelledError(), None, None])
     monkeypatch.setattr(execute_run_workflow_module.workflow, "execute_activity", execute_activity)
 
     with pytest.raises(asyncio.CancelledError):
         await ExecuteWizardRunWorkflow().run(workflow_input)
 
-    assert execute_activity.await_args_list[4].args == (destroy_worker, worker)
-    assert execute_activity.await_args_list[5].args == (cancel_run, workflow_input)
+    assert execute_activity.await_args_list[3].args == (destroy_worker, worker)
+    assert execute_activity.await_args_list[4].args == (
+        finalize_run,
+        WizardRunFinalizationActivityInput(
+            team_id=workflow_input.team_id,
+            run_id=workflow_input.run_id,
+            status=WizardRunStatus.CANCELLED,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_cloud_workflow_keeps_success_when_worker_cleanup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    workflow_input: WizardRunActivityInput,
+    worker: ProvisionedWizardWorker,
+    workspace: PreparedGitRepositoryWorkspace,
+) -> None:
+    cleanup_error = _activity_error(ApplicationError("Worker cleanup failed", type="CleanupFailure"))
+    execute_activity = AsyncMock(side_effect=[worker, workspace, None, None, cleanup_error])
+    workflow_logger = MagicMock()
+    monkeypatch.setattr(execute_run_workflow_module.workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(execute_run_workflow_module.workflow, "logger", workflow_logger)
+
+    await ExecuteWizardRunWorkflow().run(workflow_input)
+
+    assert len(execute_activity.await_args_list) == 5
+    workflow_logger.exception.assert_called_once()
 
 
 def test_cloud_workflow_identity_and_input_parsing() -> None:

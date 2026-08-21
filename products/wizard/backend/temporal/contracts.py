@@ -2,7 +2,7 @@ from uuid import UUID
 
 from posthog.dataclasses import frozen
 
-from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardWorkspaceType
+from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus, WizardWorkspaceType
 
 
 @frozen
@@ -12,10 +12,17 @@ class WizardRunActivityInput:
 
 
 @frozen
-class WizardRunFailureActivityInput:
+class WizardRunFinalizationActivityInput:
     team_id: int
     run_id: UUID
-    error_code: WizardRunErrorCode
+    status: WizardRunStatus
+    error_code: WizardRunErrorCode | None = None
+
+    def __post_init__(self) -> None:
+        if self.status not in (WizardRunStatus.FAILED, WizardRunStatus.CANCELLED):
+            raise ValueError("Wizard Run finalization requires a failed or cancelled status.")
+        if self.status != WizardRunStatus.FAILED and self.error_code is not None:
+            raise ValueError("Only failed Wizard Runs can have an error code.")
 
 
 @frozen
