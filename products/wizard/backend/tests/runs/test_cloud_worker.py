@@ -174,9 +174,11 @@ def test_execute_wizard_maps_command_timeout(get_sandbox_class: MagicMock) -> No
 
 
 @patch("products.wizard.backend.logic.runs.worker.repository_facade.create_pull_request")
+@patch("products.wizard.backend.logic.runs.worker.repository_facade.create_signed_commit")
 @patch("products.wizard.backend.logic.runs.worker.get_sandbox_class")
 def test_git_repository_handoff_captures_diff_and_publishes_pull_request(
     get_sandbox_class: MagicMock,
+    create_signed_commit: MagicMock,
     create_pull_request: MagicMock,
 ) -> None:
     request = GitRepositoryHandoffRequest(
@@ -188,11 +190,7 @@ def test_git_repository_handoff_captures_diff_and_publishes_pull_request(
         repository="PostHog/PostHog",
     )
     sandbox = get_sandbox_class.return_value.get_by_id.return_value
-    sandbox.execute.side_effect = [
-        _execution_result(stdout="diff --git a/a b/a\n"),
-        _execution_result(),
-        _execution_result(),
-    ]
+    sandbox.execute.return_value = _execution_result(stdout="diff --git a/a b/a\n")
     branch = f"posthog/wizard-{request.run_id.hex[:12]}"
     pull_request = RepositoryPullRequest(
         repository=request.repository,
@@ -207,7 +205,12 @@ def test_git_repository_handoff_captures_diff_and_publishes_pull_request(
 
     assert result == WizardWorkerResult(diff=b"diff --git a/a b/a\n", pull_request=pull_request)
     assert "git add -N --all" in sandbox.execute.call_args_list[0].args[0]
-    assert "git add --all" in sandbox.execute.call_args_list[1].args[0]
+    create_signed_commit.assert_called_once_with(
+        sandbox,
+        repository=request.repository,
+        branch=branch,
+        message="Set up PostHog",
+    )
     create_pull_request.assert_called_once_with(
         team_id=request.team_id,
         integration_id=request.github_integration_id,
