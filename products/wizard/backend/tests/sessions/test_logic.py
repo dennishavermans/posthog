@@ -55,7 +55,7 @@ def test_upsert_creates_new_session(team):
     assert dto.run_phase == WizardSessionRunPhase.RUNNING
     assert len(dto.tasks) == 1
     assert dto.tasks[0].status == WizardSessionTaskStatus.IN_PROGRESS
-    assert dto.run_id is None
+    assert not hasattr(dto, "run_id")
 
 
 @pytest.mark.django_db

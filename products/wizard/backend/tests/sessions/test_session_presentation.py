@@ -76,7 +76,7 @@ class TestWizardSessionViewSet(APIBaseTest):
         self.assertEqual(data["run_phase"], "running")
         self.assertEqual(len(data["tasks"]), 2)
         self.assertEqual(data["team_id"], self.team.id)
-        self.assertIsNone(data["run_id"])
+        self.assertNotIn("run_id", data)
 
         self.assertEqual(WizardSession.objects.unscoped().filter(team=self.team).count(), 1)
 
