@@ -454,7 +454,7 @@ tools:
         annotations:
             readOnly: false
             destructive: false
-            idempotent: true
+            idempotent: false
         title: Suggest a workflow change
         description: >
             Suggest a change to a workflow for a human to review. Send only the content fields you want to change
