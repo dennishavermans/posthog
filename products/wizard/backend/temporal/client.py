@@ -1,4 +1,5 @@
 from datetime import timedelta
+from uuid import UUID
 
 from django.conf import settings
 
@@ -30,3 +31,9 @@ async def start_wizard_run_workflow(input: WizardRunActivityInput) -> None:
         )
     except WorkflowAlreadyStartedError:
         return
+
+
+@async_to_sync
+async def cancel_wizard_run_workflow(run_id: UUID) -> None:
+    client = await async_connect()
+    await client.get_workflow_handle(wizard_run_workflow_id(run_id)).cancel()

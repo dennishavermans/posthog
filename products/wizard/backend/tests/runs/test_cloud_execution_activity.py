@@ -50,6 +50,7 @@ def test_execute_wizard_uses_persisted_program_snapshot(team, user) -> None:
                 team_id=team.id,
                 created_by_id=user.id,
                 environment=WizardRunEnvironment.CLOUD,
+                idempotency_key="test-cloud-execution",
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
                 program_id="web-analytics-audit",
             )

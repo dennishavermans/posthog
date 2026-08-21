@@ -15,7 +15,7 @@ from posthog.exceptions import Conflict
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import WizardRunDTO
-from products.wizard.backend.facade.enums import WizardRunEnvironment
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
 from products.wizard.backend.facade.errors import (
     IllegalStatusTransitionError,
     InvalidRepositoryError,
@@ -24,6 +24,7 @@ from products.wizard.backend.facade.errors import (
     RepositoryNotAccessibleError,
     WizardProgramEnvironmentNotSupportedError,
     WizardProgramNotAvailableError,
+    WizardRunIdempotencyConflictError,
     WizardRunNotFoundError,
 )
 from products.wizard.backend.presentation.runs.pagination import WizardRunPagination
@@ -71,7 +72,7 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         if params.environment == WizardRunEnvironment.CLOUD:
             self._validate_cloud_creation(request)
         try:
-            run = wizard_facade.create_run(params)
+            result = wizard_facade.create_run_with_result(params)
         except InvalidWorkspaceEnvironmentError:
             raise ValidationError({"detail": "Choose a workspace supported by this run environment."})
         except InvalidRepositoryError:
@@ -80,9 +81,15 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
             raise ValidationError({"detail": "Choose an available Wizard program."})
         except WizardProgramEnvironmentNotSupportedError:
             raise ValidationError({"detail": "Choose a Wizard program supported by this run environment."})
+        except WizardRunIdempotencyConflictError:
+            raise Conflict(
+                "This idempotency key was already used for a different Wizard run.",
+                code="idempotency_conflict",
+            )
         except (MissingGitHubIntegrationError, RepositoryNotAccessibleError):
             raise ValidationError({"detail": "Connect GitHub with access to this repository, then try again."})
-        return Response(WizardRunSerializer(run).data, status=status.HTTP_201_CREATED)
+        response_status = status.HTTP_201_CREATED if result.created else status.HTTP_200_OK
+        return Response(WizardRunSerializer(result.run).data, status=response_status)
 
     @staticmethod
     def _validate_cloud_creation(request: Request) -> None:
@@ -120,12 +127,20 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         next_status = serializer.to_status()
         try:
-            run = wizard_facade.transition_run(
-                self.team_id,
-                self._local_run_id(),
-                next_status,
-                error_code=serializer.to_error_code(),
-            )
+            current = self._get_owned_run()
+            if current.environment == WizardRunEnvironment.CLOUD:
+                if next_status != WizardRunStatus.CANCELLED:
+                    raise Conflict(
+                        "Only cancellation can be requested for a cloud Wizard run.", code="cloud_run_managed"
+                    )
+                run = wizard_facade.cancel_cloud_run(self.team_id, current.id)
+            else:
+                run = wizard_facade.transition_run(
+                    self.team_id,
+                    current.id,
+                    next_status,
+                    error_code=serializer.to_error_code(),
+                )
         except IllegalStatusTransitionError:
             raise Conflict(
                 f"This Wizard run cannot be {next_status.value} from its current status.",
@@ -142,10 +157,8 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
     def _run_id(self) -> UUID:
         return UUID(cast(str, self.kwargs["run_id"]))
 
-    def _local_run_id(self) -> UUID:
+    def _get_owned_run(self) -> WizardRunDTO:
         run = self._get_run()
-        if run.environment != WizardRunEnvironment.LOCAL:
-            raise Conflict("Cloud Wizard runs are managed by their worker.", code="cloud_run_managed")
         if run.created_by_id != self.request.user.id:
             raise PermissionDenied("Only the user who started this Wizard run can update it.")
-        return run.id
+        return run

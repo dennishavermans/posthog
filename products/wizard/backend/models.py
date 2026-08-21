@@ -107,8 +107,17 @@ class WizardRun(UUIDModel, TeamScopedRootMixin, CreatedMetaFields, UpdatedMetaFi
         max_length=50, choices=[(error.value, error.value) for error in WizardRunErrorCode], null=True, blank=True
     )
 
+    idempotency_key = models.CharField(max_length=255, null=True, blank=True)
+    request_fingerprint = models.CharField(max_length=64, null=True, blank=True)
+
     class Meta(TeamScopedRootMixin.Meta):
-        pass
+        constraints = [
+            models.UniqueConstraint(
+                fields=["team", "idempotency_key"],
+                condition=models.Q(idempotency_key__isnull=False),
+                name="unique_wizard_run_idempotency_key_per_team",
+            )
+        ]
 
 
 class WizardRunArtifact(UUIDModel, TeamScopedRootMixin):

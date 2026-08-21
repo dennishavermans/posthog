@@ -41,6 +41,7 @@ def test_finalize_run_is_retry_safe(team, user, status: WizardRunStatus, error_c
                 created_by_id=user.id,
                 program_id="posthog-integration",
                 environment=WizardRunEnvironment.CLOUD,
+                idempotency_key="test-finalization",
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
         )

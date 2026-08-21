@@ -72,6 +72,7 @@ def test_create_run_rejects_unsupported_program_environment(team, user) -> None:
                 team_id=team.id,
                 created_by_id=user.id,
                 environment=WizardRunEnvironment.CLOUD,
+                idempotency_key="unsupported-program-environment",
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
                 program_id="web-analytics-audit",
             )
@@ -151,6 +152,7 @@ def test_cloud_run_starts_created(team, user) -> None:
                 created_by_id=user.id,
                 program_id="posthog-integration",
                 environment=WizardRunEnvironment.CLOUD,
+                idempotency_key="cloud-run-created",
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
         )
@@ -184,6 +186,7 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
                 created_by_id=user.id,
                 program_id="posthog-integration",
                 environment=WizardRunEnvironment.CLOUD,
+                idempotency_key="cloud-run-dispatch",
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
         )
@@ -214,6 +217,7 @@ def test_cloud_run_persists_dispatch_failure(team, user) -> None:
                 created_by_id=user.id,
                 program_id="posthog-integration",
                 environment=WizardRunEnvironment.CLOUD,
+                idempotency_key="cloud-run-dispatch-failure",
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
         )
@@ -243,6 +247,7 @@ def test_cloud_run_rollback_prevents_dispatch(team, user) -> None:
                 created_by_id=user.id,
                 program_id="posthog-integration",
                 environment=WizardRunEnvironment.CLOUD,
+                idempotency_key="cloud-run-rollback",
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
         )
@@ -280,6 +285,7 @@ def test_cloud_run_requires_github_integration(team, user) -> None:
                     created_by_id=user.id,
                     program_id="posthog-integration",
                     environment=WizardRunEnvironment.CLOUD,
+                    idempotency_key="missing-integration",
                     workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
                 )
             )
@@ -306,6 +312,7 @@ def test_cloud_run_rejects_inaccessible_repository(team, user) -> None:
                     created_by_id=user.id,
                     program_id="posthog-integration",
                     environment=WizardRunEnvironment.CLOUD,
+                    idempotency_key="inaccessible-repository",
                     workspace=GitRepositoryWorkspace(repository="private/example"),
                 )
             )
@@ -324,6 +331,7 @@ def test_cloud_run_rejects_invalid_repository_before_github_lookup(team, user, r
                     created_by_id=user.id,
                     program_id="posthog-integration",
                     environment=WizardRunEnvironment.CLOUD,
+                    idempotency_key=f"repository-{repository}",
                     workspace=GitRepositoryWorkspace(repository=repository),
                 )
             )

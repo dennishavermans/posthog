@@ -3,6 +3,7 @@ from uuid import UUID
 from products.wizard.backend.facade.contracts import (
     ListWizardRunsInput,
     WizardProgram,
+    WizardRunCreationResult,
     WizardRunDTO,
     WizardRunPage,
     WizardWorkspace,
@@ -34,18 +35,38 @@ def create_run(
     workspace: WizardWorkspace,
     program: WizardProgram,
     status: WizardRunStatus,
-) -> WizardRunDTO:
+    idempotency_key: str | None = None,
+    request_fingerprint: str | None = None,
+) -> WizardRunCreationResult:
     workspace_type, workspace_metadata = workspace_to_record(workspace)
-    run = WizardRun.objects.for_team(team_id).create(
+    values = {
+        "created_by_id": created_by_id,
+        "environment": environment.value,
+        "workspace_type": workspace_type.value,
+        "workspace": workspace_metadata,
+        "program": program_to_mapping(program),
+        "status": status.value,
+        "request_fingerprint": request_fingerprint,
+    }
+    if idempotency_key is None:
+        run = WizardRun.objects.for_team(team_id).create(team_id=team_id, idempotency_key=None, **values)
+        return WizardRunCreationResult(run=run_from_record(run), created=True)
+
+    run, created = WizardRun.objects.for_team(team_id).get_or_create(
         team_id=team_id,
-        created_by_id=created_by_id,
-        environment=environment.value,
-        workspace_type=workspace_type.value,
-        workspace=workspace_metadata,
-        program=program_to_mapping(program),
-        status=status.value,
+        idempotency_key=idempotency_key,
+        defaults=values,
     )
-    return run_from_record(run)
+    return WizardRunCreationResult(run=run_from_record(run), created=created)
+
+
+def get_run_by_idempotency_key(team_id: int, idempotency_key: str) -> WizardRunDTO | None:
+    run = WizardRun.objects.for_team(team_id).filter(idempotency_key=idempotency_key).first()
+    return run_from_record(run) if run is not None else None
+
+
+def get_request_fingerprint(team_id: int, run_id: UUID) -> str | None:
+    return _get_run_record(team_id, run_id).request_fingerprint
 
 
 def get_run(team_id: int, run_id: UUID, *, lock: bool = False) -> WizardRunDTO:

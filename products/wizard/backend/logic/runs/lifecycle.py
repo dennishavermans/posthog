@@ -12,6 +12,7 @@ from products.wizard.backend.facade.contracts import (
     GitRepositoryWorkspace,
     ListWizardRunsInput,
     LocalFolderWorkspace,
+    WizardRunCreationResult,
     WizardRunDTO,
     WizardRunPage,
 )
@@ -19,11 +20,14 @@ from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRun
 from products.wizard.backend.facade.errors import (
     InvalidWorkspaceEnvironmentError,
     MissingGitHubIntegrationError,
+    MissingWizardRunIdempotencyKeyError,
     RepositoryNotAccessibleError,
     WizardProgramEnvironmentNotSupportedError,
+    WizardRunIdempotencyConflictError,
 )
 from products.wizard.backend.logic import registry as registry_service
 from products.wizard.backend.logic.runs import store
+from products.wizard.backend.logic.runs.fingerprints import create_run_request_fingerprint
 from products.wizard.backend.logic.runs.transitions import transition
 from products.wizard.backend.logic.runs.validation import validate_git_repository
 from products.wizard.backend.temporal import client as temporal_client
@@ -33,6 +37,10 @@ logger = logging.getLogger(__name__)
 
 
 def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
+    return create_run_with_result(params).run
+
+
+def create_run_with_result(params: CreateWizardRunInput) -> WizardRunCreationResult:
     match params.environment, params.workspace:
         case WizardRunEnvironment.LOCAL, LocalFolderWorkspace():
             pass
@@ -40,6 +48,17 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
             pass
         case _:
             raise InvalidWorkspaceEnvironmentError
+
+    request_fingerprint: str | None = None
+    if params.environment == WizardRunEnvironment.CLOUD:
+        if params.idempotency_key is None:
+            raise MissingWizardRunIdempotencyKeyError
+        request_fingerprint = create_run_request_fingerprint(params)
+        existing = store.get_run_by_idempotency_key(params.team_id, params.idempotency_key)
+        if existing is not None:
+            if store.get_request_fingerprint(params.team_id, existing.id) != request_fingerprint:
+                raise WizardRunIdempotencyConflictError
+            return WizardRunCreationResult(run=existing, created=False)
 
     user = User.objects.only("distinct_id").get(id=params.created_by_id)
     team = Team.objects.only("organization_id").get(id=params.team_id)
@@ -73,26 +92,31 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
     )
 
     with database_transaction.atomic():
-        created = store.create_run(
+        result = store.create_run(
             team_id=params.team_id,
             created_by_id=params.created_by_id,
             environment=params.environment,
             workspace=params.workspace,
             program=program,
             status=initial_status,
+            idempotency_key=params.idempotency_key,
+            request_fingerprint=request_fingerprint,
         )
 
-        if params.environment == WizardRunEnvironment.CLOUD:
+        if not result.created and store.get_request_fingerprint(params.team_id, result.run.id) != request_fingerprint:
+            raise WizardRunIdempotencyConflictError
+
+        if params.environment == WizardRunEnvironment.CLOUD and result.created:
             database_transaction.on_commit(
                 partial(
                     _dispatch_cloud_run,
-                    WizardRunActivityInput(team_id=params.team_id, run_id=created.id),
+                    WizardRunActivityInput(team_id=params.team_id, run_id=result.run.id),
                 )
             )
 
     if params.environment == WizardRunEnvironment.CLOUD:
-        return store.get_run(params.team_id, created.id)
-    return created
+        return WizardRunCreationResult(run=store.get_run(params.team_id, result.run.id), created=result.created)
+    return result
 
 
 def _dispatch_cloud_run(input: WizardRunActivityInput) -> None:
@@ -133,6 +157,15 @@ def fail_run(
 
 def cancel_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     return transition_run(team_id, run_id, WizardRunStatus.CANCELLED)
+
+
+def cancel_cloud_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    run = store.get_run(team_id, run_id)
+    if run.environment != WizardRunEnvironment.CLOUD:
+        raise InvalidWorkspaceEnvironmentError
+    cancelled = transition_run(team_id, run_id, WizardRunStatus.CANCELLED)
+    temporal_client.cancel_wizard_run_workflow(run_id)
+    return cancelled
 
 
 def transition_run(

@@ -21,6 +21,7 @@ from products.wizard.backend.facade.contracts import (
     UpsertWizardSessionInput,
     WizardProgram,
     WizardRunArtifactDTO,
+    WizardRunCreationResult,
     WizardRunDTO,
     WizardRunGitDiffArtifactDTO,
     WizardRunPage,
@@ -95,6 +96,10 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
     return run_service.create_run(params)
 
 
+def create_run_with_result(params: CreateWizardRunInput) -> WizardRunCreationResult:
+    return run_service.create_run_with_result(params)
+
+
 def get_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     return run_service.get_run(team_id, run_id)
 
@@ -122,6 +127,10 @@ def fail_run(
 
 def cancel_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     return run_service.cancel_run(team_id, run_id)
+
+
+def cancel_cloud_run(team_id: int, run_id: UUID) -> WizardRunDTO:
+    return run_service.cancel_cloud_run(team_id, run_id)
 
 
 def transition_run(

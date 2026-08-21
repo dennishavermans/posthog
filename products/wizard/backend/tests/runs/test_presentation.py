@@ -194,6 +194,7 @@ class TestWizardRunViewSet(APIBaseTest):
                 {
                     "program_id": "posthog-integration",
                     "environment": "cloud",
+                    "idempotency_key": f"repository-admission-{scenario}",
                     "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
                 },
                 format="json",
@@ -217,6 +218,7 @@ class TestWizardRunViewSet(APIBaseTest):
             {
                 "program_id": "posthog-integration",
                 "environment": "cloud",
+                "idempotency_key": "disabled-cloud-execution",
                 "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
             },
             format="json",
@@ -241,6 +243,7 @@ class TestWizardRunViewSet(APIBaseTest):
             {
                 "program_id": "posthog-integration",
                 "environment": "cloud",
+                "idempotency_key": "automated-token",
                 "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
             },
             format="json",
@@ -470,18 +473,19 @@ class TestWizardRunViewSet(APIBaseTest):
         "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
         return_value=123,
     )
-    def test_transition_rejects_cloud_run(self, _resolve_integration, _repository_accessible) -> None:
+    def test_cloud_run_rejects_non_cancellation_transition(self, _resolve_integration, _repository_accessible) -> None:
         created = self.client.post(
             self._url(),
             {
                 "program_id": "posthog-integration",
                 "environment": "cloud",
+                "idempotency_key": "reject-cloud-completion",
                 "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
             },
             format="json",
         ).json()
 
-        response = self.client.patch(self._url(created["id"]), {"status": "cancelled"}, format="json")
+        response = self.client.patch(self._url(created["id"]), {"status": "completed"}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(response.json()["code"], "cloud_run_managed")

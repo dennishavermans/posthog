@@ -1,7 +1,9 @@
 from products.wizard.backend.logic.runs.lifecycle import (
+    cancel_cloud_run,
     cancel_run,
     complete_run,
     create_run,
+    create_run_with_result,
     fail_run,
     get_run,
     list_runs,
@@ -12,8 +14,10 @@ from products.wizard.backend.logic.runs.validation import validate_git_repositor
 
 __all__ = [
     "cancel_run",
+    "cancel_cloud_run",
     "complete_run",
     "create_run",
+    "create_run_with_result",
     "fail_run",
     "get_run",
     "list_runs",

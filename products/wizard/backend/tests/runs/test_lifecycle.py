@@ -46,6 +46,7 @@ def _create_cloud_run(team_id: int, user_id: int) -> WizardRunDTO:
                 created_by_id=user_id,
                 program_id="posthog-integration",
                 environment=WizardRunEnvironment.CLOUD,
+                idempotency_key="test-lifecycle",
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
             )
         )

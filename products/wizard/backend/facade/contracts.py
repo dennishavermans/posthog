@@ -128,6 +128,13 @@ class CreateWizardRunInput:
     environment: WizardRunEnvironment
     workspace: WizardWorkspace
     program_id: str
+    idempotency_key: str | None = None
+
+
+@frozen
+class WizardRunCreationResult:
+    run: "WizardRunDTO"
+    created: bool
 
 
 @frozen

@@ -36,3 +36,11 @@ class InvalidTransitionMetadataError(Exception):
 
 class WizardRunNotFoundError(Exception):
     pass
+
+
+class WizardRunIdempotencyConflictError(Exception):
+    pass
+
+
+class MissingWizardRunIdempotencyKeyError(Exception):
+    pass

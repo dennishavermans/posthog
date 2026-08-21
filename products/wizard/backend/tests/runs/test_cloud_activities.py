@@ -69,6 +69,7 @@ def _create_cloud_run(
                 team_id=team_id,
                 created_by_id=user_id,
                 environment=WizardRunEnvironment.CLOUD,
+                idempotency_key="test-cloud-activity",
                 workspace=GitRepositoryWorkspace(repository="posthog/posthog"),
                 program_id=program_id,
             )

@@ -121,6 +121,17 @@ class WizardRunCreateRequestSerializer(serializers.Serializer):
     workspace = WizardWorkspaceField(
         help_text="Project that the setup agent works on.",
     )
+    idempotency_key = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        max_length=255,
+        help_text="Unique key that makes cloud run creation safe to retry.",
+    )
+
+    def validate(self, attrs: dict[str, object]) -> dict[str, object]:
+        if attrs.get("environment") == WizardRunEnvironment.CLOUD.value and not attrs.get("idempotency_key"):
+            raise serializers.ValidationError({"idempotency_key": "This field is required for cloud runs."})
+        return attrs
 
     def to_contract(self, *, team_id: int, created_by_id: int) -> CreateWizardRunInput:
         return CreateWizardRunInput(
@@ -129,6 +140,7 @@ class WizardRunCreateRequestSerializer(serializers.Serializer):
             environment=WizardRunEnvironment(cast(str, self.validated_data["environment"])),
             workspace=cast(WizardWorkspace, self.validated_data["workspace"]),
             program_id=cast(str, self.validated_data["program_id"]),
+            idempotency_key=cast(str | None, self.validated_data.get("idempotency_key")),
         )
 
 
