@@ -1,7 +1,9 @@
 from uuid import UUID
 
 from django.db import models
+from django.utils import timezone
 
+from products.wizard.backend.facade.config import WIZARD_RUN_DEADLINE
 from products.wizard.backend.facade.contracts import (
     ListWizardRunsInput,
     WizardProgram,
@@ -14,10 +16,12 @@ from products.wizard.backend.facade.enums import (
     WizardRunDispatchStatus,
     WizardRunEnvironment,
     WizardRunErrorCode,
+    WizardRunStage,
     WizardRunStatus,
 )
 from products.wizard.backend.facade.errors import WizardRunNotFoundError
 from products.wizard.backend.logic.programs import program_to_mapping
+from products.wizard.backend.logic.runs.diagnostics import error_message
 from products.wizard.backend.logic.runs.mappers import run_from_record, workspace_to_record
 from products.wizard.backend.models import WizardRun
 
@@ -46,6 +50,7 @@ def create_run(
     request_fingerprint: str | None = None,
 ) -> WizardRunCreationResult:
     workspace_type, workspace_metadata = workspace_to_record(workspace)
+    now = timezone.now()
     values = {
         "created_by_id": created_by_id,
         "environment": environment.value,
@@ -57,6 +62,10 @@ def create_run(
         "dispatch_status": (
             WizardRunDispatchStatus.PENDING.value if environment == WizardRunEnvironment.CLOUD else None
         ),
+        "stage": WizardRunStage.DISPATCHING.value if environment == WizardRunEnvironment.CLOUD else None,
+        "stage_started_at": now if environment == WizardRunEnvironment.CLOUD else None,
+        "started_at": now if environment == WizardRunEnvironment.LOCAL else None,
+        "deadline_at": now + WIZARD_RUN_DEADLINE if environment == WizardRunEnvironment.CLOUD else None,
     }
     if idempotency_key is None:
         run = WizardRun.objects.for_team(team_id).create(team_id=team_id, idempotency_key=None, **values)
@@ -95,6 +104,14 @@ def mark_dispatch_failed(team_id: int, run_id: UUID) -> None:
     )
 
 
+def set_run_stage(team_id: int, run_id: UUID, stage: WizardRunStage) -> WizardRunDTO:
+    run = _get_run_record(team_id, run_id)
+    run.stage = stage.value
+    run.stage_started_at = timezone.now()
+    run.save(update_fields=["stage", "stage_started_at", "updated_at"])
+    return run_from_record(run)
+
+
 def get_run(team_id: int, run_id: UUID, *, lock: bool = False) -> WizardRunDTO:
     return run_from_record(_get_run_record(team_id, run_id, lock=lock))
 
@@ -114,5 +131,16 @@ def set_run_status(
     run = _get_run_record(team_id, run_id)
     run.status = status.value
     run.error_code = error_code.value if error_code is not None else None
-    run.save(update_fields=["status", "error_code", "updated_at"])
+    run.error_message = error_message(error_code)
+    update_fields = ["status", "error_code", "error_message", "updated_at"]
+    now = timezone.now()
+    if status == WizardRunStatus.RUNNING and run.started_at is None:
+        run.started_at = now
+        update_fields.append("started_at")
+    if status in (WizardRunStatus.COMPLETED, WizardRunStatus.FAILED, WizardRunStatus.CANCELLED):
+        run.finished_at = now
+        run.stage = None
+        run.stage_started_at = None
+        update_fields.extend(["finished_at", "stage", "stage_started_at"])
+    run.save(update_fields=update_fields)
     return run_from_record(run)

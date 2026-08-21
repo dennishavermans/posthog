@@ -18,8 +18,14 @@ from products.wizard.backend.facade.contracts import (
     WizardRunDTO,
     WizardRunPage,
 )
-from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
+from products.wizard.backend.facade.enums import (
+    WizardRunEnvironment,
+    WizardRunErrorCode,
+    WizardRunStage,
+    WizardRunStatus,
+)
 from products.wizard.backend.facade.errors import (
+    IllegalStatusTransitionError,
     InvalidWorkspaceEnvironmentError,
     MissingGitHubIntegrationError,
     MissingWizardRunIdempotencyKeyError,
@@ -169,6 +175,13 @@ def cancel_cloud_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     cancelled = transition_run(team_id, run_id, WizardRunStatus.CANCELLED)
     temporal_client.cancel_wizard_run_workflow(run_id)
     return cancelled
+
+
+def advance_run_stage(team_id: int, run_id: UUID, stage: WizardRunStage) -> WizardRunDTO:
+    run = store.get_run(team_id, run_id)
+    if run.status not in (WizardRunStatus.CREATED, WizardRunStatus.RUNNING):
+        raise IllegalStatusTransitionError
+    return store.set_run_stage(team_id, run_id, stage)
 
 
 def transition_run(

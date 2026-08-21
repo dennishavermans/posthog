@@ -5,7 +5,7 @@ from posthog.temporal.common.utils import asyncify
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import CreatePullRequestArtifactInput
-from products.wizard.backend.facade.enums import WizardRunStatus
+from products.wizard.backend.facade.enums import WizardRunStage, WizardRunStatus
 from products.wizard.backend.logic.runs import worker as cloud_worker
 from products.wizard.backend.logic.runs.worker import GitRepositoryHandoffRequest
 from products.wizard.backend.temporal.activities.errors import WIZARD_WORKER_EXECUTION_ERROR_TYPE
@@ -16,6 +16,7 @@ from products.wizard.backend.temporal.contracts import PreparedGitRepositoryWork
 @activity.defn(name="wizard_create_run_artifacts")
 @asyncify
 def create_run_artifacts(input: PreparedGitRepositoryWorkspace) -> None:
+    wizard_facade.advance_run_stage(input.team_id, input.run_id, WizardRunStage.CREATING_ARTIFACTS)
     try:
         result = cloud_worker.create_git_repository_handoff(
             GitRepositoryHandoffRequest(

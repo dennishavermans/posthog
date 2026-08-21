@@ -17,6 +17,7 @@ from products.wizard.backend.facade.enums import (
     WizardRunDispatchStatus,
     WizardRunEnvironment,
     WizardRunErrorCode,
+    WizardRunStage,
     WizardRunStatus,
     WizardSessionRunPhase,
     WizardWorkerCleanupStatus,
@@ -121,6 +122,18 @@ class WizardRun(UUIDModel, TeamScopedRootMixin, CreatedMetaFields, UpdatedMetaFi
     dispatch_attempts = models.PositiveSmallIntegerField(default=0)
     dispatch_error = models.CharField(max_length=255, null=True, blank=True)
     workflow_id = models.CharField(max_length=255, null=True, blank=True)
+
+    stage = models.CharField(
+        max_length=30,
+        choices=[(stage.value, stage.value) for stage in WizardRunStage],
+        null=True,
+        blank=True,
+    )
+    stage_started_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.CharField(max_length=255, null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    deadline_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(TeamScopedRootMixin.Meta):
         constraints = [

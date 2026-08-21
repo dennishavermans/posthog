@@ -14,6 +14,7 @@ from products.wizard.backend.facade.contracts import (
 from products.wizard.backend.facade.enums import (
     WizardRunEnvironment,
     WizardRunErrorCode,
+    WizardRunStage,
     WizardRunStatus,
     WizardWorkspaceType,
 )
@@ -198,6 +199,34 @@ class WizardRunSerializer(serializers.Serializer):
         allow_null=True,
         choices=[error_code.value for error_code in WizardRunErrorCode],
         help_text="Machine-readable failure reason, or null if the run has not failed.",
+    )
+    error_message = serializers.CharField(
+        read_only=True,
+        allow_null=True,
+        help_text="Safe failure explanation, or null if the run has not failed.",
+    )
+    stage = serializers.ChoiceField(
+        read_only=True,
+        allow_null=True,
+        choices=[stage.value for stage in WizardRunStage],
+        help_text="Current cloud worker stage, or null outside active cloud execution.",
+    )
+    created_at = serializers.DateTimeField(read_only=True, help_text="When the Wizard run was created.")
+    updated_at = serializers.DateTimeField(read_only=True, allow_null=True, help_text="When the run last changed.")
+    started_at = serializers.DateTimeField(
+        read_only=True,
+        allow_null=True,
+        help_text="When execution started, or null while queued.",
+    )
+    finished_at = serializers.DateTimeField(
+        read_only=True,
+        allow_null=True,
+        help_text="When execution reached a terminal status, or null while active.",
+    )
+    deadline_at = serializers.DateTimeField(
+        read_only=True,
+        allow_null=True,
+        help_text="Cloud execution deadline, or null for local runs.",
     )
 
 

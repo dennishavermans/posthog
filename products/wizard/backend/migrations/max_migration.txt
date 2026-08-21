@@ -1,1 +1,1 @@
-0016_create_wizard_worker
+0017_add_run_diagnostics

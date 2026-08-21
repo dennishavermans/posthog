@@ -4,6 +4,7 @@ from temporalio.exceptions import ApplicationError
 from posthog.temporal.common.utils import asyncify
 
 from products.wizard.backend.facade import api as wizard_facade
+from products.wizard.backend.facade.enums import WizardRunStage
 from products.wizard.backend.logic.runs import worker as cloud_worker
 from products.wizard.backend.logic.runs.worker import WizardExecutionRequest
 from products.wizard.backend.temporal.activities.errors import (
@@ -16,6 +17,7 @@ from products.wizard.backend.temporal.contracts import PreparedGitRepositoryWork
 @activity.defn(name="wizard_execute")
 @asyncify
 def execute_wizard(input: PreparedGitRepositoryWorkspace) -> None:
+    wizard_facade.advance_run_stage(input.team_id, input.run_id, WizardRunStage.EXECUTING_WIZARD)
     run = wizard_facade.get_run(input.team_id, input.run_id)
     try:
         cloud_worker.execute_wizard(

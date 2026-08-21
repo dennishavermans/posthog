@@ -16,6 +16,7 @@ from .enums import (
     WizardRunArtifactType,
     WizardRunEnvironment,
     WizardRunErrorCode,
+    WizardRunStage,
     WizardRunStatus,
     WizardSessionRunPhase,
     WizardSessionTaskStatus,
@@ -147,6 +148,13 @@ class WizardRunDTO:
     program: WizardProgram
     status: WizardRunStatus
     error_code: WizardRunErrorCode | None
+    error_message: str | None
+    stage: WizardRunStage | None
+    created_at: datetime
+    updated_at: datetime | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    deadline_at: datetime | None
 
 
 @frozen

@@ -39,6 +39,14 @@ class WizardRunDispatchStatus(StrEnum):
     DISPATCHED = "dispatched"
 
 
+class WizardRunStage(StrEnum):
+    DISPATCHING = "dispatching"
+    PROVISIONING = "provisioning"
+    PREPARING_WORKSPACE = "preparing_workspace"
+    EXECUTING_WIZARD = "executing_wizard"
+    CREATING_ARTIFACTS = "creating_artifacts"
+
+
 class WizardWorkerCleanupStatus(StrEnum):
     ACTIVE = "active"
     PENDING = "pending"
@@ -57,7 +65,11 @@ class WizardWorkspaceType(StrEnum):
 
 class WizardRunErrorCode(StrEnum):
     TIMEOUT = "timeout"
+    PROVISIONING_FAILED = "provisioning_failed"
+    REPOSITORY_ACCESS_FAILED = "repository_access_failed"
+    WORKSPACE_PREPARATION_FAILED = "workspace_preparation_failed"
     EXECUTION_FAILED = "execution_failed"
+    ARTIFACT_CREATION_FAILED = "artifact_creation_failed"
     DISPATCH_FAILED = "dispatch_failed"
 
 

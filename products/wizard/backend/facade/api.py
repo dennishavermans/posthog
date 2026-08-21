@@ -28,7 +28,7 @@ from products.wizard.backend.facade.contracts import (
     WizardRunPullRequestArtifactDTO,
     WizardSessionDTO,
 )
-from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus
+from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStage, WizardRunStatus
 from products.wizard.backend.logic import (
     registry as registry_service,
     runs as run_service,
@@ -110,6 +110,10 @@ def list_runs(params: ListWizardRunsInput) -> WizardRunPage:
 
 def start_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     return run_service.start_run(team_id, run_id)
+
+
+def advance_run_stage(team_id: int, run_id: UUID, stage: WizardRunStage) -> WizardRunDTO:
+    return run_service.advance_run_stage(team_id, run_id, stage)
 
 
 def complete_run(team_id: int, run_id: UUID) -> WizardRunDTO:

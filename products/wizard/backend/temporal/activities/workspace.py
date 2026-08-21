@@ -6,7 +6,12 @@ from posthog.temporal.common.utils import asyncify
 from products.tasks.backend.facade import repo_selection
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, WizardRunDTO
-from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus, WizardWorkspaceType
+from products.wizard.backend.facade.enums import (
+    WizardRunEnvironment,
+    WizardRunStage,
+    WizardRunStatus,
+    WizardWorkspaceType,
+)
 from products.wizard.backend.logic.runs import (
     worker as cloud_worker,
     worker_store,
@@ -29,6 +34,7 @@ from products.wizard.backend.temporal.contracts import (
 @asyncify
 def provision_worker(input: WizardRunActivityInput) -> ProvisionedWizardWorker:
     run = _get_cloud_run(input)
+    wizard_facade.advance_run_stage(input.team_id, input.run_id, WizardRunStage.PROVISIONING)
     if run.created_by_id is None:
         raise ApplicationError(
             "Wizard run creator is no longer available.",
@@ -72,6 +78,7 @@ def provision_worker(input: WizardRunActivityInput) -> ProvisionedWizardWorker:
 @asyncify
 def clone_repository(input: ProvisionedWizardWorker) -> PreparedGitRepositoryWorkspace:
     run = _get_cloud_run(WizardRunActivityInput(team_id=input.team_id, run_id=input.run_id))
+    wizard_facade.advance_run_stage(input.team_id, input.run_id, WizardRunStage.PREPARING_WORKSPACE)
     if not isinstance(run.workspace, GitRepositoryWorkspace):
         raise ApplicationError(
             "Wizard run does not have a Git repository workspace.",
