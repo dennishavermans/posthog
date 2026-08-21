@@ -4,8 +4,8 @@ import posthoganalytics
 
 from products.wizard.backend.facade.contracts import WizardProgram
 from products.wizard.backend.facade.errors import WizardProgramNotAvailableError
-from products.wizard.backend.facade.serializers.registry import WIZARD_REGISTRY_SERIALIZER
 from products.wizard.backend.logic.registry.config import FALLBACK_REGISTRY, REGISTRY_FEATURE_FLAG
+from products.wizard.backend.logic.registry.parser import parse_registry_payload
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def get_registry(*, distinct_id: str, organization_id: str) -> tuple[WizardProgr
         return FALLBACK_REGISTRY.programs
 
     try:
-        registry = WIZARD_REGISTRY_SERIALIZER.deserialize(payload)
+        registry = parse_registry_payload(payload)
     except ValueError:
         return FALLBACK_REGISTRY.programs
     return registry.programs

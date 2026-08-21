@@ -8,7 +8,7 @@ from parameterized import parameterized
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import WizardProgram
 from products.wizard.backend.facade.enums import WizardRunEnvironment
-from products.wizard.backend.facade.serializers.programs import WIZARD_PROGRAM_SERIALIZER
+from products.wizard.backend.logic.programs import program_from_mapping, program_to_mapping
 from products.wizard.backend.logic.registry.parser import parse_registry_payload
 
 POSTHOG_INTEGRATION_PROGRAM = WizardProgram(
@@ -55,10 +55,10 @@ def test_registry_rejects_invalid_serialized_value(_name: str, value: object) ->
 
 
 def test_program_serialization_round_trip() -> None:
-    program = WIZARD_PROGRAM_SERIALIZER.deserialize(AUDIT_PROGRAM_PAYLOAD)
+    program = program_from_mapping(AUDIT_PROGRAM_PAYLOAD)
 
-    assert WIZARD_PROGRAM_SERIALIZER.serialize(program) == AUDIT_PROGRAM_PAYLOAD
-    assert WIZARD_PROGRAM_SERIALIZER.deserialize(WIZARD_PROGRAM_SERIALIZER.serialize(program)) == program
+    assert program_to_mapping(program) == AUDIT_PROGRAM_PAYLOAD
+    assert program_from_mapping(program_to_mapping(program)) == program
 
 
 @parameterized.expand(
@@ -70,16 +70,16 @@ def test_program_serialization_round_trip() -> None:
 )
 def test_program_rejects_invalid_serialized_value(_name: str, value: object) -> None:
     with pytest.raises(ValueError):
-        WIZARD_PROGRAM_SERIALIZER.deserialize(value)
+        program_from_mapping(value)
 
 
 def test_program_persisted_deserialization_accepts_legacy_wizard_version() -> None:
     persisted_value = {**AUDIT_PROGRAM_PAYLOAD, "wizard_version": "latest"}
 
     with pytest.raises(ValueError):
-        WIZARD_PROGRAM_SERIALIZER.deserialize(persisted_value)
+        program_from_mapping(persisted_value)
 
-    assert WIZARD_PROGRAM_SERIALIZER.deserialize_persisted(persisted_value).wizard_version == "latest"
+    assert program_from_mapping(persisted_value, allow_legacy_version=True).wizard_version == "latest"
 
 
 @parameterized.expand(
