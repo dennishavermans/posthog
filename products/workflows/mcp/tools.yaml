@@ -78,6 +78,9 @@ tools:
     hog-flows-proposals-approve-create:
         operation: hog_flows_proposals_approve_create
         enabled: false
+    hog-flows-proposals-outcome-retrieve:
+        operation: hog_flows_proposals_outcome_retrieve
+        enabled: false
     hog-flows-proposals-reject-create:
         operation: hog_flows_proposals_reject_create
         enabled: false
