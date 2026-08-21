@@ -164,10 +164,14 @@ class Command(BaseCommand):
             guardrails = {name: int(totals.get(name, 0)) for name in GUARDRAIL_METRICS}
 
             # Untracked sends can never record an open, so the open rate and its sample floor read
-            # against tracked sends. The floor is checked first, so tracked is positive at the divide.
+            # against tracked sends. has_sample is checked first, so tracked is positive at the divide.
             tracked = max(0, sent - untracked)
-            enough_evidence = tracked >= MIN_SENDS_FOR_EVIDENCE and (opened / tracked) < OPEN_RATE_TARGET
-            if not enough_evidence and not force:
+            has_sample = tracked >= MIN_SENDS_FOR_EVIDENCE
+            below_target = has_sample and (opened / tracked) < OPEN_RATE_TARGET
+            # --force stands in for a missing sample (demoing against an empty metrics store), so it
+            # only relaxes the below-target requirement. A step selected by force still keeps whatever
+            # evidence it has — without_evidence means no sample, not "did not clear the target".
+            if not below_target and not force:
                 continue
 
             new_subject = _shorten_subject(subject)
@@ -182,7 +186,7 @@ class Command(BaseCommand):
                 opens=opened,
                 untracked=untracked,
                 guardrail_counts=guardrails,
-                without_evidence=not enough_evidence,
+                without_evidence=not has_sample,
             )
         return None
 

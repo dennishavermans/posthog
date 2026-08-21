@@ -1,3 +1,6 @@
+from types import SimpleNamespace
+from typing import cast
+
 from posthog.test.base import APIBaseTest
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +13,7 @@ from posthog.cdp.templates.hog_function_template import sync_template_to_db
 from products.cdp.backend.api.test.test_hog_function_templates import MOCK_NODE_TEMPLATES
 from products.workflows.backend.api.hog_flow import DRAFT_CONTENT_FIELDS
 from products.workflows.backend.management.commands.suggest_workflow_optimisations import (
+    Command as SuggestCommand,
     _shorten_subject,
     _SubjectCandidate,
 )
@@ -383,3 +387,45 @@ class TestShortenSubjectLiquid(SimpleTestCase):
     def test_shortens_when_the_separator_is_outside_the_tag(self):
         # The ` - ` separator sits outside the expression, so the shortening is safe and still applied.
         assert _shorten_subject("A {{ x: y }} - B") == "A {{ x: y }}"
+
+
+class TestForceModeEvidenceLabel(SimpleTestCase):
+    def _flow(self) -> HogFlow:
+        # A lightweight stand-in carrying only what _pick_candidate reads; the metric read is mocked,
+        # so no real HogFlow (and no database) is needed.
+        flow = SimpleNamespace(
+            id="flow-1",
+            version=3,
+            team_id=1,
+            name="Flow",
+            actions=[
+                {
+                    "id": "step_1",
+                    "type": "function_email",
+                    "config": {"inputs": {"email": {"value": {"subject": "Your weekly summary: everything here"}}}},
+                }
+            ],
+        )
+        return cast(HogFlow, flow)
+
+    @parameterized.expand(
+        [
+            # (totals, expected_without_evidence, expected_open_rate)
+            # --force picks a step above target too, but it has a real 60% sample and must not be
+            # labelled as having no metrics — that would null a measured current_value in the evidence.
+            ("above target with a sample", {"email_sent": 500, "email_opened": 300}, False, 0.6),
+            # --force against an empty metrics store: genuinely no sample.
+            ("no sample at all", {}, True, None),
+        ]
+    )
+    def test_force_labels_missing_sample_not_healthy_metrics(
+        self, _name: str, totals: dict, expected_without_evidence: bool, expected_rate: float | None
+    ):
+        with patch(
+            "products.workflows.backend.management.commands.suggest_workflow_optimisations.fetch_app_metric_totals",
+            return_value=MagicMock(totals=totals),
+        ):
+            candidate = SuggestCommand()._pick_candidate(self._flow(), after=None, force=True)
+        assert candidate is not None
+        assert candidate.without_evidence is expected_without_evidence
+        assert candidate.open_rate == expected_rate
