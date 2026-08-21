@@ -33,7 +33,7 @@ from products.wizard.backend.logic import (
     runs as run_service,
     sessions,
 )
-from products.wizard.backend.logic.runs import artifacts
+from products.wizard.backend.logic.artifacts import service as artifacts
 from products.wizard.backend.logic.sessions import pubsub
 
 

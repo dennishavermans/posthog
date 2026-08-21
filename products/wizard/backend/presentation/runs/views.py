@@ -5,7 +5,6 @@ from django.conf import settings
 
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
-from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -29,18 +28,16 @@ from products.wizard.backend.facade.errors import (
 )
 from products.wizard.backend.presentation.runs.pagination import WizardRunPagination
 from products.wizard.backend.presentation.runs.serializers import (
-    WizardRunArtifactSchema,
     WizardRunCreateRequestSerializer,
     WizardRunErrorSerializer,
     WizardRunSerializer,
     WizardRunStatusUpdateRequestSerializer,
-    serialize_wizard_run_artifact,
 )
 
 
 class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
     scope_object = "wizard_session"
-    scope_object_read_actions = ["list", "retrieve", "artifacts"]
+    scope_object_read_actions = ["list", "retrieve"]
     scope_object_write_actions = ["create", "partial_update"]
     http_method_names = ["get", "post", "patch", "head", "options"]
     lookup_field = "run_id"
@@ -102,22 +99,6 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
     def retrieve(self, request: Request, *args: object, **kwargs: object) -> Response:
         run = self._get_run()
         return Response(WizardRunSerializer(run).data)
-
-    @extend_schema(
-        responses={
-            200: WizardRunArtifactSchema,
-            404: OpenApiResponse(response=WizardRunErrorSerializer),
-        },
-        description="List metadata for artifacts produced by a Wizard run.",
-    )
-    @action(detail=True, methods=["get"], pagination_class=None)
-    def artifacts(self, request: Request, *args: object, **kwargs: object) -> Response:
-        run_id = self._run_id()
-        try:
-            artifacts = wizard_facade.list_run_artifacts(self.team_id, run_id)
-        except WizardRunNotFoundError:
-            raise NotFound("No Wizard run was found for this project.")
-        return Response([serialize_wizard_run_artifact(artifact) for artifact in artifacts])
 
     @extend_schema(
         request=WizardRunStatusUpdateRequestSerializer,

@@ -6,7 +6,7 @@ from products.wizard.backend.facade.contracts import (
     WizardRunPullRequestArtifactDTO,
 )
 from products.wizard.backend.facade.enums import WizardRunArtifactType
-from products.wizard.backend.logic.runs.artifact_mappers import artifact_from_record, pull_request_metadata_to_record
+from products.wizard.backend.logic.artifacts.mappers import artifact_from_record, pull_request_metadata_to_record
 from products.wizard.backend.models import WizardRunArtifact
 
 

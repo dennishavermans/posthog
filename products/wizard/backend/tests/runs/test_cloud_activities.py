@@ -221,7 +221,7 @@ def test_execute_wizard_maps_worker_error(worker_error: Exception, error_type: s
 
 
 @pytest.mark.django_db(transaction=True)
-@patch("products.wizard.backend.logic.runs.artifacts.object_storage.write")
+@patch("products.wizard.backend.logic.artifacts.service.object_storage.write")
 def test_create_run_artifacts_persists_git_diff_and_pull_request(_write: MagicMock, team, user) -> None:
     run = _create_cloud_run(team.id, user.id)
     wizard_facade.start_run(team.id, run.id)

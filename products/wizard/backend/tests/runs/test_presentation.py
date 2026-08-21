@@ -239,7 +239,7 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
 
-    @patch("products.wizard.backend.logic.runs.artifacts.object_storage.write")
+    @patch("products.wizard.backend.logic.artifacts.service.object_storage.write")
     def test_list_run_artifacts(self, _write) -> None:
         created = self.client.post(
             self._url(),
