@@ -14,13 +14,16 @@ from products.wizard.backend.temporal.activities.workspace import clone_reposito
 from products.wizard.backend.temporal.config import (
     CLEANUP_RETRY_POLICY,
     CLEANUP_TIMEOUT,
+    EXECUTION_RETRY_POLICY,
     EXECUTION_TIMEOUT,
     FINALIZATION_RETRY_POLICY,
     FINALIZATION_TIMEOUT,
+    HANDOFF_RETRY_POLICY,
     HANDOFF_TIMEOUT,
+    PREPARATION_RETRY_POLICY,
     PREPARATION_TIMEOUT,
+    PROVISION_RETRY_POLICY,
     PROVISION_TIMEOUT,
-    WORKER_RETRY_POLICY,
 )
 from products.wizard.backend.temporal.constants import EXECUTE_WIZARD_RUN_WORKFLOW, wizard_run_workflow_id
 from products.wizard.backend.temporal.contracts import (
@@ -51,28 +54,33 @@ class ExecuteWizardRunWorkflow(PostHogWorkflow):
                 provision_worker,
                 input,
                 start_to_close_timeout=PROVISION_TIMEOUT,
-                retry_policy=WORKER_RETRY_POLICY,
+                retry_policy=PROVISION_RETRY_POLICY,
                 cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
             )
+
             if worker is None:
                 raise RuntimeError("Wizard Worker provisioning returned no worker.")
+
             workspace = await self._prepare_workspace(worker)
+
             await workflow.execute_activity(
                 execute_wizard,
                 workspace,
                 start_to_close_timeout=EXECUTION_TIMEOUT,
-                retry_policy=WORKER_RETRY_POLICY,
+                retry_policy=EXECUTION_RETRY_POLICY,
                 cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
             )
+
             await workflow.execute_activity(
                 create_run_artifacts,
                 workspace,
                 start_to_close_timeout=HANDOFF_TIMEOUT,
-                retry_policy=WORKER_RETRY_POLICY,
+                retry_policy=HANDOFF_RETRY_POLICY,
                 cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
             )
         except asyncio.CancelledError:
             await self._destroy_worker(worker)
+
             await self._finalize_run(
                 WizardRunFinalizationActivityInput(
                     team_id=input.team_id,
@@ -83,6 +91,7 @@ class ExecuteWizardRunWorkflow(PostHogWorkflow):
             raise
         except ActivityError as error:
             await self._destroy_worker(worker)
+
             await self._finalize_run(
                 WizardRunFinalizationActivityInput(
                     team_id=input.team_id,
@@ -128,7 +137,7 @@ class ExecuteWizardRunWorkflow(PostHogWorkflow):
                 clone_repository,
                 worker,
                 start_to_close_timeout=PREPARATION_TIMEOUT,
-                retry_policy=WORKER_RETRY_POLICY,
+                retry_policy=PREPARATION_RETRY_POLICY,
                 cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
             )
         raise ValueError(f"Unsupported cloud workspace type: {worker.workspace_type}")

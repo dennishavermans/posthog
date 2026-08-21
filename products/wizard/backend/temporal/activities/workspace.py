@@ -7,7 +7,10 @@ from products.tasks.backend.facade import repo_selection
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, WizardRunDTO
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus, WizardWorkspaceType
-from products.wizard.backend.logic.runs import worker as cloud_worker
+from products.wizard.backend.logic.runs import (
+    worker as cloud_worker,
+    worker_store,
+)
 from products.wizard.backend.logic.runs.worker import GitRepositoryCloneRequest, WizardWorkerProvisionRequest
 from products.wizard.backend.temporal.activities.errors import (
     WIZARD_REPOSITORY_ACCESS_ERROR_TYPE,
@@ -39,7 +42,14 @@ def provision_worker(input: WizardRunActivityInput) -> ProvisionedWizardWorker:
             non_retryable=True,
         )
 
-    transition_cloud_run(input.team_id, input.run_id, WizardRunStatus.RUNNING)
+    existing_sandbox_id = worker_store.get_sandbox_id(input.team_id, input.run_id)
+    if existing_sandbox_id is not None:
+        return ProvisionedWizardWorker(
+            team_id=input.team_id,
+            run_id=input.run_id,
+            sandbox_id=existing_sandbox_id,
+            workspace_type=WizardWorkspaceType.GIT_REPOSITORY,
+        )
 
     sandbox_id = cloud_worker.provision_worker(
         WizardWorkerProvisionRequest(
@@ -48,6 +58,8 @@ def provision_worker(input: WizardRunActivityInput) -> ProvisionedWizardWorker:
             run_id=input.run_id,
         )
     )
+    worker_store.record_provisioned_worker(input.team_id, input.run_id, sandbox_id)
+    transition_cloud_run(input.team_id, input.run_id, WizardRunStatus.RUNNING)
     return ProvisionedWizardWorker(
         team_id=input.team_id,
         run_id=input.run_id,
@@ -107,7 +119,13 @@ def clone_repository(input: ProvisionedWizardWorker) -> PreparedGitRepositoryWor
 @activity.defn(name="wizard_destroy_worker")
 @asyncify
 def destroy_worker(input: ProvisionedWizardWorker) -> None:
-    cloud_worker.destroy_worker(input.sandbox_id)
+    worker_store.mark_cleanup_pending(input.team_id, input.run_id)
+    try:
+        cloud_worker.destroy_worker(input.sandbox_id)
+    except Exception:
+        worker_store.mark_cleanup_failed(input.team_id, input.run_id)
+        raise
+    worker_store.mark_cleaned(input.team_id, input.run_id)
 
 
 def _get_cloud_run(input: WizardRunActivityInput) -> WizardRunDTO:

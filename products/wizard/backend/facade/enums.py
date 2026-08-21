@@ -39,6 +39,12 @@ class WizardRunDispatchStatus(StrEnum):
     DISPATCHED = "dispatched"
 
 
+class WizardWorkerCleanupStatus(StrEnum):
+    ACTIVE = "active"
+    PENDING = "pending"
+    CLEANED = "cleaned"
+
+
 class WizardRunEnvironment(StrEnum):
     LOCAL = "local"
     CLOUD = "cloud"

@@ -19,6 +19,7 @@ from products.wizard.backend.facade.enums import (
     WizardRunErrorCode,
     WizardRunStatus,
     WizardSessionRunPhase,
+    WizardWorkerCleanupStatus,
     WizardWorkspaceType,
 )
 
@@ -147,3 +148,21 @@ class WizardRunArtifact(UUIDModel, TeamScopedRootMixin):
 
     class Meta(TeamScopedRootMixin.Meta):
         constraints = [models.UniqueConstraint(fields=["run", "type"], name="unique_wizard_artifact_type_per_run")]
+
+
+class WizardWorker(UUIDModel, TeamScopedRootMixin, UpdatedMetaFields):
+    team = models.ForeignKey("posthog.Team", on_delete=models.CASCADE, related_name="+", db_constraint=False)
+    run = models.OneToOneField(WizardRun, on_delete=models.CASCADE, related_name="worker")
+    created_at = models.DateTimeField(auto_now_add=True)
+    sandbox_id = models.CharField(max_length=255, null=True, blank=True, unique=True)
+    cleanup_status = models.CharField(
+        max_length=20,
+        choices=[(status.value, status.value) for status in WizardWorkerCleanupStatus],
+        default=WizardWorkerCleanupStatus.ACTIVE.value,
+    )
+    cleanup_attempts = models.PositiveSmallIntegerField(default=0)
+    cleanup_error = models.CharField(max_length=255, null=True, blank=True)
+    cleaned_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TeamScopedRootMixin.Meta):
+        pass

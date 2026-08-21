@@ -1,4 +1,3 @@
-from datetime import timedelta
 from uuid import UUID
 
 from django.conf import settings
@@ -13,7 +12,6 @@ from products.wizard.backend.temporal.constants import EXECUTE_WIZARD_RUN_WORKFL
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput
 
 WORKFLOW_RETRY_POLICY = RetryPolicy(maximum_attempts=1)
-WORKFLOW_EXECUTION_TIMEOUT = timedelta(minutes=60)
 
 
 @async_to_sync
@@ -27,7 +25,6 @@ async def start_wizard_run_workflow(input: WizardRunActivityInput) -> None:
             id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
             task_queue=settings.TASKS_TASK_QUEUE,
             retry_policy=WORKFLOW_RETRY_POLICY,
-            execution_timeout=WORKFLOW_EXECUTION_TIMEOUT,
         )
     except WorkflowAlreadyStartedError:
         return
