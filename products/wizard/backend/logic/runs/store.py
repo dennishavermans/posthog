@@ -88,6 +88,18 @@ def get_request_fingerprint(team_id: int, run_id: UUID) -> str | None:
     return _get_run_record(team_id, run_id).request_fingerprint
 
 
+def get_workflow_id(team_id: int, run_id: UUID) -> str | None:
+    return _get_run_record(team_id, run_id).workflow_id
+
+
+def mark_cancellation_requested(team_id: int, run_id: UUID) -> None:
+    WizardRun.objects.for_team(team_id).filter(id=run_id).update(cancellation_requested_at=timezone.now())
+
+
+def mark_cancellation_dispatched(team_id: int, run_id: UUID) -> None:
+    WizardRun.objects.for_team(team_id).filter(id=run_id).update(cancellation_dispatched_at=timezone.now())
+
+
 def mark_dispatch_succeeded(team_id: int, run_id: UUID, workflow_id: str) -> None:
     WizardRun.objects.for_team(team_id).filter(id=run_id).update(
         dispatch_status=WizardRunDispatchStatus.DISPATCHED.value,

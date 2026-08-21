@@ -171,10 +171,7 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
             "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
             return_value=True,
         ),
-        patch(
-            "products.wizard.backend.logic.runs.lifecycle.celery_app.send_task",
-        ) as send_task,
-        patch("products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow"),
+        patch("products.wizard.backend.logic.runs.lifecycle.enqueue_dispatch") as enqueue_dispatch,
     ):
         run = wizard_facade.create_run(
             CreateWizardRunInput(
@@ -187,7 +184,7 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
             )
         )
 
-    send_task.assert_called_once_with("wizard.dispatch_run", args=[team.id, str(run.id)])
+    enqueue_dispatch.assert_called_once_with(team.id, run.id)
     assert run.status == WizardRunStatus.CREATED
 
 
@@ -203,14 +200,10 @@ def test_cloud_run_survives_dispatch_enqueue_failure(team, user) -> None:
             return_value=True,
         ),
         patch(
-            "products.wizard.backend.logic.runs.lifecycle.celery_app.send_task",
-        ) as send_task,
-        patch(
-            "products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow",
-            side_effect=RuntimeError("Temporal unavailable"),
+            "products.wizard.backend.logic.runs.lifecycle.enqueue_dispatch",
+            side_effect=RuntimeError("Celery unavailable"),
         ),
     ):
-        send_task.side_effect = RuntimeError("Celery unavailable")
         run = wizard_facade.create_run(
             CreateWizardRunInput(
                 team_id=team.id,
@@ -240,7 +233,7 @@ def test_cloud_run_rollback_prevents_dispatch(team, user) -> None:
             "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
             return_value=True,
         ),
-        patch("products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow") as dispatch,
+        patch("products.wizard.backend.logic.runs.lifecycle.enqueue_dispatch") as dispatch,
         transaction.atomic(),
     ):
         wizard_facade.create_run(
@@ -260,7 +253,7 @@ def test_cloud_run_rollback_prevents_dispatch(team, user) -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_local_run_does_not_dispatch(team, user) -> None:
-    with patch("products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow") as dispatch:
+    with patch("products.wizard.backend.logic.runs.lifecycle.enqueue_dispatch") as dispatch:
         wizard_facade.create_run(
             CreateWizardRunInput(
                 team_id=team.id,

@@ -4,8 +4,6 @@ from uuid import UUID
 
 from django.db import transaction as database_transaction
 
-from celery import current_app as celery_app
-
 from posthog.models import Team, User
 
 from products.tasks.backend.facade import repo_selection
@@ -34,13 +32,15 @@ from products.wizard.backend.facade.errors import (
     WizardRunIdempotencyConflictError,
 )
 from products.wizard.backend.logic import registry as registry_service
-from products.wizard.backend.logic.runs import store
+from products.wizard.backend.logic.runs import (
+    cancellation as cancellation_service,
+    store,
+)
 from products.wizard.backend.logic.runs.fingerprints import create_run_request_fingerprint
+from products.wizard.backend.logic.runs.queue import enqueue_dispatch
 from products.wizard.backend.logic.runs.transitions import transition
 from products.wizard.backend.logic.runs.validation import validate_git_repository
 from products.wizard.backend.observability import service as run_observability
-from products.wizard.backend.tasks.config import DISPATCH_WIZARD_RUN_TASK
-from products.wizard.backend.temporal import client as temporal_client
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ def create_run_with_result(params: CreateWizardRunInput) -> WizardRunCreationRes
 
 def _enqueue_cloud_run(team_id: int, run_id: UUID) -> None:
     try:
-        celery_app.send_task(DISPATCH_WIZARD_RUN_TASK, args=[team_id, str(run_id)])
+        enqueue_dispatch(team_id, run_id)
     except Exception:
         logger.exception(
             "wizard_run_dispatch_enqueue_failed",
@@ -176,8 +176,13 @@ def cancel_cloud_run(team_id: int, run_id: UUID) -> WizardRunDTO:
     if run.environment != WizardRunEnvironment.CLOUD:
         raise InvalidWorkspaceEnvironmentError
     cancelled = transition_run(team_id, run_id, WizardRunStatus.CANCELLED)
-    temporal_client.cancel_wizard_run_workflow(run_id)
+    request_cloud_run_cancellation(team_id, run_id)
     return cancelled
+
+
+def request_cloud_run_cancellation(team_id: int, run_id: UUID) -> None:
+    store.mark_cancellation_requested(team_id, run_id)
+    cancellation_service.deliver_cancellation(team_id, run_id)
 
 
 def advance_run_stage(team_id: int, run_id: UUID, stage: WizardRunStage) -> WizardRunDTO:

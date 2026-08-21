@@ -57,7 +57,7 @@ def test_cloud_cancellation_survives_temporal_failure(team, user) -> None:
     )
 
     with patch(
-        "products.wizard.backend.logic.runs.lifecycle.temporal_client.cancel_wizard_run_workflow",
+        "products.wizard.backend.logic.runs.cancellation.temporal_client.cancel_wizard_run_workflow",
         side_effect=RuntimeError,
     ):
         cancelled = lifecycle.cancel_cloud_run(team.id, run.id)
@@ -79,9 +79,7 @@ def test_reconciliation_retries_pending_cancellation(team, user) -> None:
         cancellation_requested_at=timezone.now(),
     )
 
-    with patch(
-        "products.wizard.backend.logic.runs.reconciliation.temporal_client.cancel_wizard_run_workflow"
-    ) as cancel:
+    with patch("products.wizard.backend.logic.runs.cancellation.temporal_client.cancel_wizard_run_workflow") as cancel:
         result = reconciliation.reconcile_pending_cancellations()
 
     assert result == 1

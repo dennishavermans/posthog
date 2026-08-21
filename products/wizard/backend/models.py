@@ -134,6 +134,8 @@ class WizardRun(UUIDModel, TeamScopedRootMixin, CreatedMetaFields, UpdatedMetaFi
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     deadline_at = models.DateTimeField(null=True, blank=True)
+    cancellation_requested_at = models.DateTimeField(null=True, blank=True)
+    cancellation_dispatched_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(TeamScopedRootMixin.Meta):
         constraints = [

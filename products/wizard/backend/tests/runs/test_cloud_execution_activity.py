@@ -43,7 +43,7 @@ def test_execute_wizard_uses_persisted_program_snapshot(team, user) -> None:
             "products.wizard.backend.logic.runs.lifecycle.repo_selection.repository_accessible_via_integration",
             return_value=True,
         ),
-        patch("products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow"),
+        patch("products.wizard.backend.logic.runs.lifecycle.enqueue_dispatch"),
     ):
         run = wizard_facade.create_run(
             CreateWizardRunInput(
