@@ -6,8 +6,10 @@ from unittest.mock import patch
 from parameterized import parameterized
 
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.contracts import WizardProgram, WizardRegistry
+from products.wizard.backend.facade.contracts import WizardProgram
 from products.wizard.backend.facade.enums import WizardRunEnvironment
+from products.wizard.backend.facade.serializers.programs import WIZARD_PROGRAM_SERIALIZER
+from products.wizard.backend.facade.serializers.registry import WIZARD_REGISTRY_SERIALIZER
 
 POSTHOG_INTEGRATION_PROGRAM = WizardProgram(
     id="posthog-integration",
@@ -35,10 +37,10 @@ REGISTRY_PAYLOAD = {"version": 1, "programs": [AUDIT_PROGRAM_PAYLOAD]}
 
 
 def test_registry_serialization_round_trip() -> None:
-    registry = WizardRegistry.from_dict(REGISTRY_PAYLOAD)
+    registry = WIZARD_REGISTRY_SERIALIZER.deserialize(REGISTRY_PAYLOAD)
 
-    assert registry.to_dict() == REGISTRY_PAYLOAD
-    assert WizardRegistry.from_dict(registry.to_dict()) == registry
+    assert WIZARD_REGISTRY_SERIALIZER.serialize(registry) == REGISTRY_PAYLOAD
+    assert WIZARD_REGISTRY_SERIALIZER.deserialize(WIZARD_REGISTRY_SERIALIZER.serialize(registry)) == registry
 
 
 @parameterized.expand(
@@ -50,14 +52,14 @@ def test_registry_serialization_round_trip() -> None:
 )
 def test_registry_rejects_invalid_serialized_value(_name: str, value: object) -> None:
     with pytest.raises(ValueError):
-        WizardRegistry.from_dict(value)
+        WIZARD_REGISTRY_SERIALIZER.deserialize(value)
 
 
 def test_program_serialization_round_trip() -> None:
-    program = WizardProgram.from_dict(AUDIT_PROGRAM_PAYLOAD)
+    program = WIZARD_PROGRAM_SERIALIZER.deserialize(AUDIT_PROGRAM_PAYLOAD)
 
-    assert program.to_dict() == AUDIT_PROGRAM_PAYLOAD
-    assert WizardProgram.from_dict(program.to_dict()) == program
+    assert WIZARD_PROGRAM_SERIALIZER.serialize(program) == AUDIT_PROGRAM_PAYLOAD
+    assert WIZARD_PROGRAM_SERIALIZER.deserialize(WIZARD_PROGRAM_SERIALIZER.serialize(program)) == program
 
 
 @parameterized.expand(
@@ -69,16 +71,16 @@ def test_program_serialization_round_trip() -> None:
 )
 def test_program_rejects_invalid_serialized_value(_name: str, value: object) -> None:
     with pytest.raises(ValueError):
-        WizardProgram.from_dict(value)
+        WIZARD_PROGRAM_SERIALIZER.deserialize(value)
 
 
 def test_program_persisted_deserialization_accepts_legacy_wizard_version() -> None:
     persisted_value = {**AUDIT_PROGRAM_PAYLOAD, "wizard_version": "latest"}
 
     with pytest.raises(ValueError):
-        WizardProgram.from_dict(persisted_value)
+        WIZARD_PROGRAM_SERIALIZER.deserialize(persisted_value)
 
-    assert WizardProgram.from_persisted_dict(persisted_value).wizard_version == "latest"
+    assert WIZARD_PROGRAM_SERIALIZER.deserialize_persisted(persisted_value).wizard_version == "latest"
 
 
 @parameterized.expand(

@@ -1,49 +1,50 @@
 import pytest
 
 from products.wizard.backend.facade.contracts import GitRepositoryWorkspace, LocalFolderWorkspace, WizardWorkspace
-from products.wizard.backend.facade.enums import WizardRunEnvironment
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardWorkspaceType
 from products.wizard.backend.facade.errors import InvalidWorkspaceEnvironmentError
+from products.wizard.backend.facade.serializers.workspaces import WIZARD_WORKSPACE_SERIALIZER
 from products.wizard.backend.logic.runs.workspaces import validate_workspace_environment
 
 
 @pytest.mark.parametrize(
-    ("workspace_class", "metadata", "expected_workspace"),
+    ("workspace_type", "metadata", "expected_workspace"),
     [
         (
-            LocalFolderWorkspace,
+            WizardWorkspaceType.LOCAL_FOLDER,
             {"project_name": "example-project"},
             LocalFolderWorkspace(project_name="example-project"),
         ),
         (
-            GitRepositoryWorkspace,
+            WizardWorkspaceType.GIT_REPOSITORY,
             {"repository": "posthog/posthog"},
             GitRepositoryWorkspace(repository="posthog/posthog"),
         ),
     ],
 )
 def test_workspace_serialization_round_trip(
-    workspace_class: type[LocalFolderWorkspace] | type[GitRepositoryWorkspace],
+    workspace_type: WizardWorkspaceType,
     metadata: dict[str, str],
     expected_workspace: WizardWorkspace,
 ) -> None:
-    workspace = workspace_class.from_dict(metadata)
+    workspace = WIZARD_WORKSPACE_SERIALIZER.deserialize(workspace_type.value, metadata)
 
     assert workspace == expected_workspace
-    assert workspace.to_dict() == metadata
+    assert WIZARD_WORKSPACE_SERIALIZER.serialize(workspace) == (workspace_type, metadata)
 
 
 @pytest.mark.parametrize(
-    ("workspace_class", "metadata"),
+    ("workspace_type", "metadata"),
     [
-        (LocalFolderWorkspace, {"project_name": 123}),
-        (GitRepositoryWorkspace, {"repository": None}),
+        (WizardWorkspaceType.LOCAL_FOLDER, {"project_name": 123}),
+        (WizardWorkspaceType.GIT_REPOSITORY, {"repository": None}),
     ],
 )
 def test_workspace_rejects_invalid_serialized_value(
-    workspace_class: type[LocalFolderWorkspace] | type[GitRepositoryWorkspace], metadata: dict[str, object]
+    workspace_type: WizardWorkspaceType, metadata: dict[str, object]
 ) -> None:
     with pytest.raises(ValueError):
-        workspace_class.from_dict(metadata)
+        WIZARD_WORKSPACE_SERIALIZER.deserialize(workspace_type.value, metadata)
 
 
 @pytest.mark.parametrize(
