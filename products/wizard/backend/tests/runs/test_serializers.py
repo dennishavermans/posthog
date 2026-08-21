@@ -21,6 +21,7 @@ from products.wizard.backend.presentation.runs.serializers import WizardRunCreat
             {
                 "program_id": "posthog-integration",
                 "environment": "cloud",
+                "idempotency_key": "serialize-cloud-run",
                 "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
             },
             WizardRunEnvironment.CLOUD,

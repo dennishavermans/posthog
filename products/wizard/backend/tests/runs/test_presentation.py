@@ -354,6 +354,7 @@ class TestWizardRunViewSet(APIBaseTest):
             self._cloud_payload(idempotency_key="cancel-posthog-run"),
             format="json",
         ).json()
+        WizardRun.objects.for_team(self.team.id).filter(id=created["id"]).update(workflow_id="wizard-workflow")
 
         with patch(
             "products.wizard.backend.temporal.client.cancel_wizard_run_workflow",
