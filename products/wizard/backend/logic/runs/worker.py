@@ -15,7 +15,6 @@ from products.tasks.backend.facade.sandbox import (
     get_sandbox_class,
     sandbox_repo_path,
 )
-from products.wizard.backend.logic.runs import publishing
 from products.wizard.backend.logic.runs.commands import (
     build_git_diff_command,
     build_wizard_command,
@@ -158,9 +157,9 @@ def create_git_repository_handoff(request: GitRepositoryHandoffRequest) -> Wizar
 
     branch = pull_request_branch(request.run_id)
     try:
-        published_branch = publishing.create_signed_commit(
+        repository_facade.create_signed_commit(
             sandbox,
-            repository_path=request.workspace_path,
+            repository=request.repository,
             branch=branch,
             message=PULL_REQUEST_COMMIT_MESSAGE,
         )
@@ -168,12 +167,12 @@ def create_git_repository_handoff(request: GitRepositoryHandoffRequest) -> Wizar
             team_id=request.team_id,
             integration_id=request.github_integration_id,
             repository=request.repository,
-            head_branch=published_branch,
+            head_branch=branch,
             title=PULL_REQUEST_TITLE,
             body=PULL_REQUEST_BODY,
             source="wizard",
         )
-    except (publishing.WizardRepositoryPublishingError, repository_facade.RepositoryPublishingError) as error:
+    except repository_facade.RepositoryPublishingError as error:
         raise WizardWorkerExecutionError("publishing", 1, str(error)) from error
     return WizardWorkerResult(diff=diff, pull_request=pull_request)
 
