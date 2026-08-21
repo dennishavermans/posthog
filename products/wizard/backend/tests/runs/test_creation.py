@@ -11,7 +11,7 @@ from products.wizard.backend.facade.contracts import (
     LocalFolderWorkspace,
     WizardProgram,
 )
-from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
 from products.wizard.backend.facade.errors import (
     InvalidRepositoryError,
     InvalidWorkspaceEnvironmentError,
@@ -20,7 +20,6 @@ from products.wizard.backend.facade.errors import (
     WizardProgramEnvironmentNotSupportedError,
 )
 from products.wizard.backend.models import WizardRun
-from products.wizard.backend.temporal.contracts import WizardRunActivityInput
 
 PROGRAM_DEFINITION = {
     "id": "web-analytics-audit",
@@ -163,9 +162,6 @@ def test_cloud_run_starts_created(team, user) -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_cloud_run_dispatches_after_persistence(team, user) -> None:
-    def assert_run_exists(input: WizardRunActivityInput) -> None:
-        assert WizardRun.objects.for_team(input.team_id).filter(id=input.run_id).exists()
-
     with (
         patch(
             "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
@@ -176,9 +172,10 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
             return_value=True,
         ),
         patch(
-            "products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow",
-            side_effect=assert_run_exists,
-        ) as dispatch,
+            "products.wizard.backend.logic.runs.lifecycle.dispatch_wizard_run",
+            create=True,
+        ) as dispatch_task,
+        patch("products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow"),
     ):
         run = wizard_facade.create_run(
             CreateWizardRunInput(
@@ -191,12 +188,12 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
             )
         )
 
-    dispatch.assert_called_once_with(WizardRunActivityInput(team_id=team.id, run_id=run.id))
+    dispatch_task.delay.assert_called_once_with(team.id, run.id)
     assert run.status == WizardRunStatus.CREATED
 
 
 @pytest.mark.django_db(transaction=True)
-def test_cloud_run_persists_dispatch_failure(team, user) -> None:
+def test_cloud_run_survives_dispatch_enqueue_failure(team, user) -> None:
     with (
         patch(
             "products.wizard.backend.logic.runs.lifecycle.repo_selection.resolve_team_github_integration_id",
@@ -207,10 +204,15 @@ def test_cloud_run_persists_dispatch_failure(team, user) -> None:
             return_value=True,
         ),
         patch(
+            "products.wizard.backend.logic.runs.lifecycle.dispatch_wizard_run",
+            create=True,
+        ) as dispatch_task,
+        patch(
             "products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow",
             side_effect=RuntimeError("Temporal unavailable"),
         ),
     ):
+        dispatch_task.delay.side_effect = RuntimeError("Celery unavailable")
         run = wizard_facade.create_run(
             CreateWizardRunInput(
                 team_id=team.id,
@@ -222,9 +224,11 @@ def test_cloud_run_persists_dispatch_failure(team, user) -> None:
             )
         )
 
-    assert run.status == WizardRunStatus.FAILED
-    assert run.error_code == WizardRunErrorCode.DISPATCH_FAILED
-    assert wizard_facade.get_run(team.id, run.id) == run
+    record = WizardRun.objects.for_team(team.id).get(id=run.id)
+    assert run.status == WizardRunStatus.CREATED
+    assert run.error_code is None
+    assert record.dispatch_status == "pending"
+    assert record.dispatch_attempts == 0
 
 
 @pytest.mark.django_db(transaction=True)
