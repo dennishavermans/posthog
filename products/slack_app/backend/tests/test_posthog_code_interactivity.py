@@ -186,12 +186,13 @@ class TestRepoPickerOptions(TestCase):
         assert response.status_code == 200
         assert response.json()["options"] == []
 
+    @patch("products.slack_app.backend.api.inbox_interactivity.post_response_url")
     @patch("posthog.models.integration.slack.WebClient")
     @patch("products.slack_app.backend.api.asyncio.run")
     @patch("products.slack_app.backend.api.sync_connect")
     @patch("products.slack_app.backend.api.SlackIntegration.slack_config")
     def test_submit_signals_temporal_workflow(
-        self, mock_config, mock_sync_connect, mock_asyncio_run, mock_webclient_class
+        self, mock_config, mock_sync_connect, mock_asyncio_run, mock_webclient_class, mock_post_response_url
     ):
         mock_config.return_value = {"SLACK_APP_SIGNING_SECRET": self.signing_secret}
         mock_webclient_class.return_value = MagicMock()
@@ -210,6 +211,7 @@ class TestRepoPickerOptions(TestCase):
                 }
             ],
             "message": {"ts": "1234.9999"},
+            "response_url": "https://hooks.slack.example/actions/T1/1/abc",
         }
         response = self._post_interactivity(payload)
         assert response.status_code == 200
@@ -218,14 +220,21 @@ class TestRepoPickerOptions(TestCase):
             "posthog-code-mention-T12345:C001:1234.5678"
         )
         mock_asyncio_run.assert_called_once()
-        mock_webclient_class.return_value.chat_update.assert_called_once()
+        # An ephemeral picker can only be settled through the interaction's response_url;
+        # chat.update cannot address it.
+        assert mock_webclient_class.return_value.chat_update.call_count == 0
+        url, body = mock_post_response_url.call_args.args
+        assert url == "https://hooks.slack.example/actions/T1/1/abc"
+        assert body["replace_original"] is True
+        assert "posthog/posthog" in body["text"]
 
+    @patch("products.slack_app.backend.api.inbox_interactivity.post_response_url")
     @patch("posthog.models.integration.slack.WebClient")
     @patch("products.slack_app.backend.api.asyncio.run")
     @patch("products.slack_app.backend.api.sync_connect")
     @patch("products.slack_app.backend.api.SlackIntegration.slack_config")
     def test_no_repo_button_signals_temporal_workflow(
-        self, mock_config, mock_sync_connect, mock_asyncio_run, mock_webclient_class
+        self, mock_config, mock_sync_connect, mock_asyncio_run, mock_webclient_class, mock_post_response_url
     ):
         mock_config.return_value = {"SLACK_APP_SIGNING_SECRET": self.signing_secret}
         mock_webclient_class.return_value = MagicMock()
@@ -244,6 +253,7 @@ class TestRepoPickerOptions(TestCase):
                 }
             ],
             "message": {"ts": "1234.9999"},
+            "response_url": "https://hooks.slack.example/actions/T1/1/abc",
         }
         response = self._post_interactivity(payload)
         assert response.status_code == 200
@@ -252,9 +262,10 @@ class TestRepoPickerOptions(TestCase):
             "posthog-code-mention-T12345:C001:1234.5678"
         )
         mock_asyncio_run.assert_called_once()
-        mock_webclient_class.return_value.chat_update.assert_called_once()
-        update_call = mock_webclient_class.return_value.chat_update.call_args.kwargs
-        assert "without a repository" in update_call["text"].lower()
+        assert mock_webclient_class.return_value.chat_update.call_count == 0
+        _url, body = mock_post_response_url.call_args.args
+        assert body["replace_original"] is True
+        assert "without a repository" in body["text"].lower()
 
     @patch("posthog.models.integration.slack.WebClient")
     @patch("products.slack_app.backend.api.SlackIntegration.slack_config")
