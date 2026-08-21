@@ -15,6 +15,7 @@ from products.workflows.backend.metrics import (
     MIN_EVIDENCE_SAMPLE,
     TARGET_OPEN_METRIC,
     TARGET_SEND_METRIC,
+    TARGET_UNTRACKED_METRIC,
     UNAVAILABLE_GUARDRAILS,
 )
 from products.workflows.backend.models.hog_flow.hog_flow import HogFlow
@@ -34,6 +35,9 @@ class _SubjectCandidate:
     proposed_subject: str
     sends: int
     opens: int
+    # Sends with open tracking off. They raise `sends` but can never raise `opens`, so the open rate
+    # divides by tracked sends rather than all sends — otherwise a tracking change reads as poor copy.
+    untracked: int
     # Raw counter-metric counts over the same window, step and version as the target, keyed by
     # app-metric name. Read alongside the target so a suggestion that lifts opens while raising
     # complaints or bounces is visible at review time rather than after it ships.
@@ -42,8 +46,12 @@ class _SubjectCandidate:
     without_evidence: bool
 
     @property
+    def tracked_sends(self) -> int:
+        return max(0, self.sends - self.untracked)
+
+    @property
     def open_rate(self) -> Optional[float]:
-        return (self.opens / self.sends) if self.sends else None
+        return (self.opens / self.tracked_sends) if self.tracked_sends else None
 
     def guardrails(self) -> list[dict[str, Any]]:
         """The counter-metrics, as rates per send, carrying their own denominator.
@@ -148,13 +156,17 @@ class Command(BaseCommand):
                 breakdown_by="name",
                 after=after,
                 instance_id=str(action_id),
-                name=[TARGET_SEND_METRIC, TARGET_OPEN_METRIC, *GUARDRAIL_METRICS],
+                name=[TARGET_SEND_METRIC, TARGET_OPEN_METRIC, TARGET_UNTRACKED_METRIC, *GUARDRAIL_METRICS],
             ).totals
             sent = int(totals.get(TARGET_SEND_METRIC, 0))
             opened = int(totals.get(TARGET_OPEN_METRIC, 0))
+            untracked = int(totals.get(TARGET_UNTRACKED_METRIC, 0))
             guardrails = {name: int(totals.get(name, 0)) for name in GUARDRAIL_METRICS}
 
-            enough_evidence = sent >= MIN_SENDS_FOR_EVIDENCE and (opened / sent) < OPEN_RATE_TARGET
+            # Untracked sends can never record an open, so the open rate and its sample floor read
+            # against tracked sends. The floor is checked first, so tracked is positive at the divide.
+            tracked = max(0, sent - untracked)
+            enough_evidence = tracked >= MIN_SENDS_FOR_EVIDENCE and (opened / tracked) < OPEN_RATE_TARGET
             if not enough_evidence and not force:
                 continue
 
@@ -168,6 +180,7 @@ class Command(BaseCommand):
                 proposed_subject=new_subject,
                 sends=sent,
                 opens=opened,
+                untracked=untracked,
                 guardrail_counts=guardrails,
                 without_evidence=not enough_evidence,
             )
@@ -216,12 +229,13 @@ class Command(BaseCommand):
                 "target_value": OPEN_RATE_TARGET,
                 "window": window,
                 # The denominator rides with the rate: a rate on its own is what lets a loop call
-                # twenty sends an improvement.
-                "n": candidate.sends,
+                # twenty sends an improvement. Open rate is against tracked sends, so `n` is too.
+                "n": candidate.tracked_sends,
                 "minimum_n": MIN_SENDS_FOR_EVIDENCE,
                 "guardrails": candidate.guardrails(),
                 "guardrails_unavailable": list(UNAVAILABLE_GUARDRAILS),
                 "sends": candidate.sends,
+                "untracked": candidate.untracked,
                 "opens": candidate.opens,
                 "forced": candidate.without_evidence,
                 "app_source_id": f"{flow.id}/{flow.version}",

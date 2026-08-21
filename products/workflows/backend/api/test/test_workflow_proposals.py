@@ -1,13 +1,18 @@
 from posthog.test.base import APIBaseTest
 from unittest.mock import MagicMock, patch
 
+from django.test import SimpleTestCase
+
 from parameterized import parameterized
 
 from posthog.cdp.templates.hog_function_template import sync_template_to_db
 
 from products.cdp.backend.api.test.test_hog_function_templates import MOCK_NODE_TEMPLATES
 from products.workflows.backend.api.hog_flow import DRAFT_CONTENT_FIELDS
-from products.workflows.backend.management.commands.suggest_workflow_optimisations import _shorten_subject
+from products.workflows.backend.management.commands.suggest_workflow_optimisations import (
+    _shorten_subject,
+    _SubjectCandidate,
+)
 from products.workflows.backend.models.hog_flow.hog_flow import HogFlow
 from products.workflows.backend.models.workflow_proposal import WorkflowProposal
 
@@ -329,3 +334,31 @@ class TestShortenSubject(APIBaseTest):
         # silently blank a live subject line.
         for subject in [": leading separator", "-", "x" * 200, "   spaced   "]:
             assert _shorten_subject(subject) != ""
+
+
+class TestOpenRateDenominator(SimpleTestCase):
+    @parameterized.expand(
+        [
+            # (sends, untracked, opens, expected_rate)
+            ("all sends tracked", 100, 0, 25, 0.25),
+            # Untracked sends raise `sends` but can never open, so raw sends would read 0.25 here.
+            ("untracked sends leave the denominator", 100, 50, 25, 0.5),
+            # Every send untracked: the denominator is 0, so the rate is None rather than a crash.
+            ("all sends untracked", 40, 40, 0, None),
+            ("no sends", 0, 0, 0, None),
+        ]
+    )
+    def test_open_rate_reads_against_tracked_sends(
+        self, _name: str, sends: int, untracked: int, opens: int, expected: float | None
+    ):
+        candidate = _SubjectCandidate(
+            action_id="step_1",
+            current_subject="before",
+            proposed_subject="after",
+            sends=sends,
+            opens=opens,
+            untracked=untracked,
+            guardrail_counts={},
+            without_evidence=False,
+        )
+        assert candidate.open_rate == expected

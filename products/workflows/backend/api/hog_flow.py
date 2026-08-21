@@ -114,6 +114,7 @@ from products.workflows.backend.metrics import (
     MIN_EVIDENCE_SAMPLE,
     TARGET_OPEN_METRIC,
     TARGET_SEND_METRIC,
+    TARGET_UNTRACKED_METRIC,
     UNAVAILABLE_GUARDRAILS,
 )
 from products.workflows.backend.models.hog_flow.hog_flow import (
@@ -4216,22 +4217,25 @@ class HogFlowViewSet(
             app_source_id=f"{hog_flow.id}/{version}",
             breakdown_by="name",
             after=after,
-            name=[TARGET_SEND_METRIC, TARGET_OPEN_METRIC, *GUARDRAIL_METRICS],
+            name=[TARGET_SEND_METRIC, TARGET_OPEN_METRIC, TARGET_UNTRACKED_METRIC, *GUARDRAIL_METRICS],
         ).totals
         sends = int(totals.get(TARGET_SEND_METRIC, 0))
+        # Untracked sends can never record an open, so the open rate reads against tracked sends. The
+        # guardrail rates apply to every send and keep the raw denominator.
+        tracked_sends = max(0, sends - int(totals.get(TARGET_UNTRACKED_METRIC, 0)))
 
-        def rate(count: int, label: str) -> dict:
+        def rate(count: int, label: str, denominator: int) -> dict:
             return {
                 "metric": label,
-                "value": (count / sends) if sends else None,
-                "n": sends,
-                "below_minimum_sample": sends < MIN_EVIDENCE_SAMPLE,
+                "value": (count / denominator) if denominator else None,
+                "n": denominator,
+                "below_minimum_sample": denominator < MIN_EVIDENCE_SAMPLE,
             }
 
         return {
             "version": version,
-            "target": rate(int(totals.get(TARGET_OPEN_METRIC, 0)), "email open rate"),
-            "guardrails": [rate(int(totals.get(name, 0)), GUARDRAIL_LABELS[name]) for name in GUARDRAIL_METRICS],
+            "target": rate(int(totals.get(TARGET_OPEN_METRIC, 0)), "email open rate", tracked_sends),
+            "guardrails": [rate(int(totals.get(name, 0)), GUARDRAIL_LABELS[name], sends) for name in GUARDRAIL_METRICS],
         }
 
     @extend_schema(

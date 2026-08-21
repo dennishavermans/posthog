@@ -13,6 +13,12 @@ HOG_FLOW_VERSION_APP_SOURCE = "hog_flow_version"
 TARGET_SEND_METRIC = "email_sent"
 TARGET_OPEN_METRIC = "email_opened"
 
+# Sends with open/click tracking off. They raise email_sent but can never raise email_opened, so the
+# open rate reads against (email_sent - email_untracked); the guardrail rates below apply to every send
+# and keep the raw send count. Emitted on the same keys as email_sent at send time, so the subtraction
+# is exact — the same contract the metrics summary surface uses (workflowMetricsSummaryLogic trackedSends).
+TARGET_UNTRACKED_METRIC = "email_untracked"
+
 # Counter-metrics, read over the same window, step and version as the target. A suggestion that
 # lifts opens while raising complaints or bounces is a loss, and these are what make that visible
 # before someone approves it.
