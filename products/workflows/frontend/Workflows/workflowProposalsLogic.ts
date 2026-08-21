@@ -33,7 +33,6 @@ export interface workflowProposalsLogicValues {
     appliedResponse: PaginatedWorkflowProposalListApi | null
     appliedResponseLoading: boolean
     outcomes: Record<string, WorkflowProposalOutcomeApi>
-    outcomesLoading: boolean
     pendingProposals: WorkflowProposalApi[]
     proposalsResponse: PaginatedWorkflowProposalListApi | null
     proposalsResponseLoading: boolean
@@ -74,24 +73,6 @@ export interface workflowProposalsLogicActions {
     loadOutcome: (proposalId: string) => {
         proposalId: string
     }
-    loadOutcomeFailure: (
-        error: string,
-        errorObject?: any
-    ) => {
-        error: string
-        errorObject?: any
-    }
-    loadOutcomeSuccess: (
-        outcomes: Record<string, WorkflowProposalOutcomeApi>,
-        payload?: {
-            proposalId: string
-        }
-    ) => {
-        outcomes: Record<string, WorkflowProposalOutcomeApi>
-        payload?: {
-            proposalId: string
-        }
-    }
     loadProposals: () => any
     loadProposalsFailure: (
         error: string,
@@ -108,6 +89,13 @@ export interface workflowProposalsLogicActions {
         payload?: any
     }
     rejectProposal: (proposalId: string) => {
+        proposalId: string
+    }
+    setOutcome: (
+        proposalId: string,
+        outcome: WorkflowProposalOutcomeApi
+    ) => {
+        outcome: WorkflowProposalOutcomeApi
         proposalId: string
     }
     setResolvingId: (
@@ -155,6 +143,7 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
             action,
         }),
         loadOutcome: (proposalId: string) => ({ proposalId }),
+        setOutcome: (proposalId: string, outcome: WorkflowProposalOutcomeApi) => ({ proposalId, outcome }),
     }),
     reducers({
         resolvingId: [
@@ -171,6 +160,15 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
                 setResolvingId: (_, { action }) => action,
             },
         ],
+        // Merge each finished request's entry here at reducer time, not inside the request. A request
+        // that read prior state to build the merged map would read it stale, so two near-simultaneous
+        // loads would drop each other's entry.
+        outcomes: [
+            {} as Record<string, WorkflowProposalOutcomeApi>,
+            {
+                setOutcome: (state, { proposalId, outcome }) => ({ ...state, [proposalId]: outcome }),
+            },
+        ],
     }),
     loaders(({ props, values }) => ({
         appliedResponse: [
@@ -183,23 +181,6 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
                         })
                     } catch {
                         return { count: 0, results: [] }
-                    }
-                },
-            },
-        ],
-        outcomes: [
-            {} as Record<string, WorkflowProposalOutcomeApi>,
-            {
-                loadOutcome: async ({ proposalId }) => {
-                    try {
-                        const outcome = await hogFlowsProposalsOutcomeRetrieve(
-                            String(values.currentTeamIdStrict),
-                            props.id,
-                            proposalId
-                        )
-                        return { ...values.outcomes, [proposalId]: outcome }
-                    } catch {
-                        return values.outcomes
                     }
                 },
             },
@@ -314,12 +295,24 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
             }
         },
     })),
-    listeners(({ actions, values }) => ({
+    listeners(({ actions, props, values }) => ({
         loadAppliedSuccess: () => {
             for (const proposal of values.appliedProposals) {
                 if (!values.outcomes[proposal.id]) {
                     actions.loadOutcome(proposal.id)
                 }
+            }
+        },
+        loadOutcome: async ({ proposalId }) => {
+            try {
+                const outcome = await hogFlowsProposalsOutcomeRetrieve(
+                    String(values.currentTeamIdStrict),
+                    props.id,
+                    proposalId
+                )
+                actions.setOutcome(proposalId, outcome)
+            } catch {
+                // A read-only retrospective card: a failed load just leaves it unrendered, no toast.
             }
         },
     })),
