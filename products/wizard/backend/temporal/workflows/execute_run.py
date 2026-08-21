@@ -1,20 +1,27 @@
-import json
 import asyncio
-from datetime import timedelta
 from uuid import UUID
 
 from temporalio import workflow
-from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ApplicationError, TimeoutError
+from temporalio.exceptions import ActivityError
 
 from posthog.temporal.common.base import PostHogWorkflow
 
-from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus, WizardWorkspaceType
-from products.wizard.backend.temporal.activities.errors import WIZARD_WORKER_TIMEOUT_ERROR_TYPE
+from products.wizard.backend.facade.enums import WizardRunStatus, WizardWorkspaceType
 from products.wizard.backend.temporal.activities.execution import execute_wizard
 from products.wizard.backend.temporal.activities.handoff import create_run_artifacts
 from products.wizard.backend.temporal.activities.lifecycle import finalize_run
 from products.wizard.backend.temporal.activities.workspace import clone_repository, destroy_worker, provision_worker
+from products.wizard.backend.temporal.config import (
+    CLEANUP_RETRY_POLICY,
+    CLEANUP_TIMEOUT,
+    EXECUTION_TIMEOUT,
+    FINALIZATION_RETRY_POLICY,
+    FINALIZATION_TIMEOUT,
+    HANDOFF_TIMEOUT,
+    PREPARATION_TIMEOUT,
+    PROVISION_TIMEOUT,
+    WORKER_RETRY_POLICY,
+)
 from products.wizard.backend.temporal.constants import EXECUTE_WIZARD_RUN_WORKFLOW, wizard_run_workflow_id
 from products.wizard.backend.temporal.contracts import (
     PreparedGitRepositoryWorkspace,
@@ -22,16 +29,8 @@ from products.wizard.backend.temporal.contracts import (
     WizardRunActivityInput,
     WizardRunFinalizationActivityInput,
 )
-
-FINALIZATION_TIMEOUT = timedelta(minutes=1)
-PROVISION_TIMEOUT = timedelta(minutes=5)
-PREPARATION_TIMEOUT = timedelta(minutes=10)
-EXECUTION_TIMEOUT = timedelta(minutes=50)
-HANDOFF_TIMEOUT = timedelta(minutes=5)
-CLEANUP_TIMEOUT = timedelta(minutes=5)
-FINALIZATION_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
-WORKER_RETRY_POLICY = RetryPolicy(maximum_attempts=1)
-CLEANUP_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
+from products.wizard.backend.temporal.errors import wizard_run_error_code
+from products.wizard.backend.temporal.serializers import deserialize_workflow_input
 
 
 @workflow.defn(name=EXECUTE_WIZARD_RUN_WORKFLOW)
@@ -42,8 +41,7 @@ class ExecuteWizardRunWorkflow(PostHogWorkflow):
 
     @staticmethod
     def parse_inputs(inputs: list[str]) -> WizardRunActivityInput:
-        loaded = json.loads(inputs[0])
-        return WizardRunActivityInput(team_id=loaded["team_id"], run_id=UUID(loaded["run_id"]))
+        return deserialize_workflow_input(inputs)
 
     @workflow.run
     async def run(self, input: WizardRunActivityInput) -> None:
@@ -90,7 +88,7 @@ class ExecuteWizardRunWorkflow(PostHogWorkflow):
                     team_id=input.team_id,
                     run_id=input.run_id,
                     status=WizardRunStatus.FAILED,
-                    error_code=self._error_code_for(error),
+                    error_code=wizard_run_error_code(error),
                 )
             )
             raise
@@ -134,12 +132,3 @@ class ExecuteWizardRunWorkflow(PostHogWorkflow):
                 cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
             )
         raise ValueError(f"Unsupported cloud workspace type: {worker.workspace_type}")
-
-    @staticmethod
-    def _error_code_for(error: ActivityError) -> WizardRunErrorCode:
-        cause = error.cause
-        if isinstance(cause, TimeoutError):
-            return WizardRunErrorCode.TIMEOUT
-        if isinstance(cause, ApplicationError) and cause.type == WIZARD_WORKER_TIMEOUT_ERROR_TYPE:
-            return WizardRunErrorCode.TIMEOUT
-        return WizardRunErrorCode.EXECUTION_FAILED

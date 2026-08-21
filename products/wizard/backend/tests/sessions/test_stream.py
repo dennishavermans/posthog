@@ -177,7 +177,7 @@ async def test_stream_terminates_on_max_duration(team):
     patcher, exit_marker = _patch_subscribe(pubsub_mock)
     with (
         patcher,
-        patch("products.wizard.backend.presentation.sessions.views.SSE_MAX_DURATION_SECONDS", 0),
+        patch("products.wizard.backend.presentation.sessions.config.SSE_MAX_DURATION_SECONDS", 0),
     ):
         gen = _wizard_session_event_stream(team_id=team.id, workflow_id="missing", skill_id="missing")
         events = await _drain(gen, max_events=5)

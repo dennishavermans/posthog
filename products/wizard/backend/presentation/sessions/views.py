@@ -40,6 +40,7 @@ from products.wizard.backend.facade.errors import (
     WizardSessionOwnershipError,
     WizardSessionRunMismatchError,
 )
+from products.wizard.backend.presentation.sessions import config as session_config
 from products.wizard.backend.presentation.sessions.pagination import pagination_window
 from products.wizard.backend.presentation.sessions.serializers import (
     UpsertWizardSessionRequestSerializer,
@@ -100,23 +101,13 @@ def _log_request_auth(request: Request, *, action: str, team_id: int | None) -> 
     )
 
 
-SSE_HEARTBEAT_INTERVAL_SECONDS = 15.0
-SSE_POLL_TIMEOUT_SECONDS = 1.0
-# Long-lived connections pin NGINX Unit processes during recycle-drain; the
-# `event: end` close makes EventSource reconnect, so the cap is near-invisible to
-# users (the progress tracker may show a brief "reconnecting" blip per rotation).
-SSE_MAX_DURATION_SECONDS = 15 * 60
-
-WIZARD_SYNC_KILLSWITCH_FLAG = "onboarding-wizard-sync-killswitch"
-
-
 def _wizard_sync_killswitch_enabled(distinct_id: str) -> bool:
     # Local-only eval: no per-request network/decide call on this hot endpoint.
     # Flag definitions are served via HyperCache (posthog/apps.py). Fail-open:
     # if the flag can't be evaluated locally, the stream behaves normally.
     return bool(
         posthoganalytics.feature_enabled(
-            WIZARD_SYNC_KILLSWITCH_FLAG,
+            session_config.WIZARD_SYNC_KILLSWITCH_FLAG,
             distinct_id,
             only_evaluate_locally=True,
             send_feature_flag_events=False,
@@ -325,7 +316,7 @@ class WizardSessionViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
             "(workflow_id, skill_id) pair. On connect, the current latest "
             "session (if any) is emitted as the first event; subsequent "
             "upserts are streamed in real time. The server closes the "
-            f"connection after {SSE_MAX_DURATION_SECONDS} seconds with an "
+            f"connection after {session_config.SSE_MAX_DURATION_SECONDS} seconds with an "
             "`event: end` line so the client (EventSource) can reconnect.\n\n"
             "**SDK consumers**: do not call the generated fetch wrapper for "
             "this path — it will buffer the entire infinite stream. Use the "
@@ -407,7 +398,7 @@ async def _wizard_session_event_stream(
 
         last_heartbeat = time.monotonic()
         while True:
-            if time.monotonic() - started_at >= SSE_MAX_DURATION_SECONDS:
+            if time.monotonic() - started_at >= session_config.SSE_MAX_DURATION_SECONDS:
                 yield b"event: end\ndata: reconnect\n\n"
                 return
 
@@ -420,7 +411,7 @@ async def _wizard_session_event_stream(
                     except Exception:
                         pass
 
-            message = await pubsub.get_message(timeout=SSE_POLL_TIMEOUT_SECONDS)
+            message = await pubsub.get_message(timeout=session_config.SSE_POLL_TIMEOUT_SECONDS)
             now = time.monotonic()
 
             # `pmessage` arrives via pattern subscribe; `message` via exact.
@@ -429,6 +420,6 @@ async def _wizard_session_event_stream(
                 last_heartbeat = now
                 continue
 
-            if now - last_heartbeat >= SSE_HEARTBEAT_INTERVAL_SECONDS:
+            if now - last_heartbeat >= session_config.SSE_HEARTBEAT_INTERVAL_SECONDS:
                 yield b": ping\n\n"
                 last_heartbeat = now
