@@ -55894,7 +55894,7 @@ export namespace Schemas {
     export type WorkflowProposalContent = { [key: string]: unknown };
 
     /**
-     * The numbers behind the proposal. Conventional keys: metric, current_value, target_value, window, query, app_source_id.
+     * The numbers behind the proposal. Conventional keys: metric, current_value, target_value, window, query, app_source_id. Two are required whenever a rate is claimed: `n`, the denominator that rate was computed over, and `guardrails`, a list of {metric, value, n} counter-metrics read over the same window. A rate with no denominator lets a reviewer mistake noise for a result, and a target with no counter-metrics hides a change that lifts one number by harming another.
      */
     export type WorkflowProposalEvidence = { [key: string]: unknown };
 
@@ -55906,7 +55906,7 @@ export namespace Schemas {
       readonly rationale: string;
       /** Only the content fields the proposal changes. Valid keys are the workflow's content fields: actions, edges, trigger, trigger_masking, conversion, exit_condition, abort_action, variables. Each value has the same shape as on the workflow itself. */
       readonly content: WorkflowProposalContent;
-      /** The numbers behind the proposal. Conventional keys: metric, current_value, target_value, window, query, app_source_id. */
+      /** The numbers behind the proposal. Conventional keys: metric, current_value, target_value, window, query, app_source_id. Two are required whenever a rate is claimed: `n`, the denominator that rate was computed over, and `guardrails`, a list of {metric, value, n} counter-metrics read over the same window. A rate with no denominator lets a reviewer mistake noise for a result, and a target with no counter-metrics hides a change that lifts one number by harming another. */
       readonly evidence: WorkflowProposalEvidence;
       /** Live workflow version this was authored against. Drives a staleness warning, not a block. */
       readonly base_version: number;
@@ -81714,6 +81714,40 @@ export namespace Schemas {
       source_id?: string | null;
     }
 
+    export interface WorkflowProposalMetric {
+      /** What was measured, e.g. 'email open rate'. */
+      metric: string;
+      /**
+         * The rate over the window, or null when there was nothing to divide.
+         * @nullable
+         */
+      value: number | null;
+      /** Observations the rate was computed over. */
+      n: number;
+      /** True when n is too small for the rate to mean anything. Show it labelled, not as a finding. */
+      below_minimum_sample: boolean;
+    }
+
+    export interface WorkflowProposalVersionOutcome {
+      /** Workflow version these numbers belong to. */
+      version: number;
+      /** The metric the suggestion aimed at. */
+      target: WorkflowProposalMetric;
+      /** Counter-metrics over the same window, so a harmful win is visible. */
+      guardrails: WorkflowProposalMetric[];
+    }
+
+    export interface WorkflowProposalOutcome {
+      /** Relative window both sides were measured over. */
+      window: string;
+      /** The version the change was proposed against. */
+      before: WorkflowProposalVersionOutcome | null;
+      /** The version it went live as. Null until the proposal is applied. */
+      after: WorkflowProposalVersionOutcome | null;
+      /** Counter-metrics that cannot be read yet, named so their absence is not read as zero. */
+      unavailable_guardrails: string[];
+    }
+
     export interface WorkflowProposalRejectRequest {
       /**
          * Why the proposal was rejected. Read back by whoever tunes the agent that produced it.
@@ -88778,6 +88812,13 @@ export namespace Schemas {
       Rejected: 'rejected',
       Suggested: 'suggested',
     } as const;
+
+    export type HogFlowsProposalsOutcomeRetrieveParams = {
+    /**
+     * Relative window, e.g. -7d. Defaults to -7d.
+     */
+    window?: string;
+    };
 
     export type HogFlowsRevisionsListParams = {
     /**

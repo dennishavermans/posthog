@@ -131,6 +131,28 @@ The real replacement is an Autonomy Scout: scheduled, prompted, reasoning over t
 Reading the versioned series turned up a live bug in the shared helper: `fetch_app_metric_totals` rendered its `instance_id` / `name` / `kind` placeholders into the SQL but never bound them, so every caller that passed one got a `KeyError` (a 500 on `GET .../metrics/totals?name=…` for hog functions and hog flows alike).
 Fixed here, with a regression case in `posthog/api/test/test_app_metrics2.py`.
 
+## Evidence a reviewer can act on
+
+Two failures make a suggestion loop harmful rather than useful, so both are refused or labelled at the seam rather than left to a producer's prompt.
+
+**A rate with no denominator.** `evidence` must carry `n` whenever it claims a `current_value`; the create endpoint rejects it otherwise.
+Under `MIN_EVIDENCE_SAMPLE` (20) observations the surfaces label the number instead of presenting it as a finding.
+Statistical significance is deliberately not attempted: that is the A/B step's job.
+
+**A win that costs something else.** `evidence` must carry `guardrails`, a list of `{metric, value, n}` read over the same window, step and version as the target.
+Optimising open rate can raise complaints and bounces, and without the counter-metrics next to the target nobody sees that until reputation moves.
+An empty list is allowed but has to be explicit.
+
+The vocabulary lives in `products/workflows/backend/metrics.py` so the generator that writes evidence and the endpoint that reports outcomes cannot name different metrics.
+Available today: `email_blocked` (complaints) and `email_bounced`, both mirrored per version by #75100.
+**Unsubscribes are not available**: `email_unsubscribed` exists only as a name in the worker's metric union with no producer, so it is reported as unavailable rather than as zero.
+Adding it is a nodejs-side change, and it is the most valuable next addition to this list.
+
+`GET .../proposals/<id>/outcome` reads the target and its guardrails for the version the change was proposed against and the version it went live as, each with its own `n`.
+It is two windows side by side, not a controlled comparison, and both the endpoint's docstring and the UI say so.
+Breakdowns by ISP, device or step position cannot come from this series at all: `app_metrics2` is an AggregatingMergeTree whose sort key is its aggregation key, which is why the version had to be encoded into `app_source_id` in the first place.
+Those need the `$workflows_email_*` events via HogQL, a different read path.
+
 ## Where A/B is stubbed
 
 Out of scope, deliberately.

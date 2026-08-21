@@ -33,7 +33,7 @@ from rest_framework.serializers import BaseSerializer
 
 from posthog.schema import ProductKey
 
-from posthog.api.app_metrics2 import AppMetricsMixin, fetch_app_metric_totals_by_source
+from posthog.api.app_metrics2 import AppMetricsMixin, fetch_app_metric_totals, fetch_app_metric_totals_by_source
 from posthog.api.documentation import _FallbackSerializer
 from posthog.api.hog_invocation_cancel import (
     HogInvocationCancelRequestSerializer,
@@ -107,6 +107,15 @@ from products.workflows.backend.api.message_assets import (
     fetch_message_assets,
 )
 from products.workflows.backend.api.publish_impact import build_publish_impact
+from products.workflows.backend.metrics import (
+    GUARDRAIL_LABELS,
+    GUARDRAIL_METRICS,
+    HOG_FLOW_VERSION_APP_SOURCE,
+    MIN_EVIDENCE_SAMPLE,
+    TARGET_OPEN_METRIC,
+    TARGET_SEND_METRIC,
+    UNAVAILABLE_GUARDRAILS,
+)
 from products.workflows.backend.models.hog_flow.hog_flow import (
     BILLABLE_ACTION_TYPES,
     PERSON_DEPENDENT_ACTION_TYPES,
@@ -2637,7 +2646,11 @@ WORKFLOW_PROPOSAL_EVIDENCE_SCHEMA = {
     "additionalProperties": True,
     "description": (
         "The numbers behind the proposal. Conventional keys: metric, current_value, target_value, "
-        "window, query, app_source_id."
+        "window, query, app_source_id. Two are required whenever a rate is claimed: `n`, the "
+        "denominator that rate was computed over, and `guardrails`, a list of "
+        "{metric, value, n} counter-metrics read over the same window. A rate with no denominator "
+        "lets a reviewer mistake noise for a result, and a target with no counter-metrics hides a "
+        "change that lifts one number by harming another."
     ),
 }
 
@@ -2715,6 +2728,26 @@ class WorkflowProposalCreateSerializer(serializers.Serializer):
         ),
     )
 
+    def validate_evidence(self, value: Any) -> dict:
+        if not isinstance(value, dict) or not value:
+            return value or {}
+        claims_a_rate = value.get("current_value") is not None
+        if claims_a_rate and not isinstance(value.get("n"), int):
+            raise exceptions.ValidationError(
+                "Include `n`, the number of observations behind current_value. A rate without its "
+                "denominator cannot be judged."
+            )
+        if claims_a_rate and not isinstance(value.get("guardrails"), list):
+            raise exceptions.ValidationError(
+                "Include `guardrails`: a list of {metric, value, n} counter-metrics read over the same "
+                "window, so a change that lifts the target by harming something else is visible. Send "
+                "an empty list only if none apply."
+            )
+        for guardrail in value.get("guardrails") or []:
+            if not isinstance(guardrail, dict) or "metric" not in guardrail:
+                raise exceptions.ValidationError("Each guardrail needs at least a `metric` name.")
+        return value
+
     def validate_content(self, value: Any) -> dict:
         if not isinstance(value, dict) or not value:
             raise exceptions.ValidationError("Provide at least one workflow content field to change.")
@@ -2758,6 +2791,39 @@ def _flatten_graph_errors(error: serializers.ValidationError) -> list[str]:
     if isinstance(detail, dict):
         return [str(message) for messages in detail.values() for message in messages]
     return [str(message) for message in detail]
+
+
+class WorkflowProposalMetricSerializer(serializers.Serializer):
+    metric = serializers.CharField(help_text="What was measured, e.g. 'email open rate'.")
+    value = serializers.FloatField(
+        allow_null=True, help_text="The rate over the window, or null when there was nothing to divide."
+    )
+    n = serializers.IntegerField(help_text="Observations the rate was computed over.")
+    below_minimum_sample = serializers.BooleanField(
+        help_text="True when n is too small for the rate to mean anything. Show it labelled, not as a finding."
+    )
+
+
+class WorkflowProposalVersionOutcomeSerializer(serializers.Serializer):
+    version = serializers.IntegerField(help_text="Workflow version these numbers belong to.")
+    target = WorkflowProposalMetricSerializer(help_text="The metric the suggestion aimed at.")
+    guardrails = WorkflowProposalMetricSerializer(
+        many=True, help_text="Counter-metrics over the same window, so a harmful win is visible."
+    )
+
+
+class WorkflowProposalOutcomeSerializer(serializers.Serializer):
+    window = serializers.CharField(help_text="Relative window both sides were measured over.")
+    before = WorkflowProposalVersionOutcomeSerializer(
+        allow_null=True, help_text="The version the change was proposed against."
+    )
+    after = WorkflowProposalVersionOutcomeSerializer(
+        allow_null=True, help_text="The version it went live as. Null until the proposal is applied."
+    )
+    unavailable_guardrails = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="Counter-metrics that cannot be read yet, named so their absence is not read as zero.",
+    )
 
 
 class ProposalAlreadyResolvedError(exceptions.APIException):
@@ -4099,6 +4165,74 @@ class HogFlowViewSet(
         self._emit_resource_edited(locked)
         self._report_workflow_action("hog_flow_proposal_approved", locked, {"proposal_id": str(locked_proposal.id)})
         return Response(WorkflowProposalSerializer(locked_proposal).data)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "proposal_id", OpenApiTypes.UUID, OpenApiParameter.PATH, description="Proposal to read outcomes for."
+            ),
+            OpenApiParameter("window", OpenApiTypes.STR, description="Relative window, e.g. -7d. Defaults to -7d."),
+        ],
+        responses={200: WorkflowProposalOutcomeSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["GET"],
+        url_path=r"proposals/(?P<proposal_id>[^/.]+)/outcome",
+        filter_backends=[],
+    )
+    def proposal_outcome(self, request: Request, proposal_id: Optional[str] = None, *args, **kwargs):
+        """What the change did: the target metric and its counter-metrics, before and after.
+
+        Both sides are read from the per-version metric series, so "before" is the version the
+        suggestion was written against and "after" is the version it went live as. Each number
+        carries its own `n`, and anything under the minimum sample is flagged rather than presented
+        as a result — a verdict off twenty sends is the loop's most embarrassing failure mode.
+        Comparing two windows is not a controlled experiment; that is what the A/B step is for.
+        """
+        self._require_self_optimising_enabled()
+        instance = self.get_object()
+        proposal = self._get_proposal_or_404(instance, proposal_id)
+        window = request.query_params.get("window") or "-7d"
+        after_date, _, _ = relative_date_parse_with_delta_mapping(window, self.team.timezone_info)
+
+        return Response(
+            WorkflowProposalOutcomeSerializer(
+                {
+                    "window": window,
+                    "before": self._version_outcome(instance, proposal.base_version, after_date),
+                    "after": self._version_outcome(instance, proposal.applied_version, after_date),
+                    "unavailable_guardrails": list(UNAVAILABLE_GUARDRAILS),
+                }
+            ).data
+        )
+
+    def _version_outcome(self, hog_flow: HogFlow, version: Optional[int], after: Any) -> Optional[dict]:
+        if version is None:
+            return None
+        totals = fetch_app_metric_totals(
+            team_id=self.team_id,
+            app_source=HOG_FLOW_VERSION_APP_SOURCE,
+            app_source_id=f"{hog_flow.id}/{version}",
+            breakdown_by="name",
+            after=after,
+            name=[TARGET_SEND_METRIC, TARGET_OPEN_METRIC, *GUARDRAIL_METRICS],
+        ).totals
+        sends = int(totals.get(TARGET_SEND_METRIC, 0))
+
+        def rate(count: int, label: str) -> dict:
+            return {
+                "metric": label,
+                "value": (count / sends) if sends else None,
+                "n": sends,
+                "below_minimum_sample": sends < MIN_EVIDENCE_SAMPLE,
+            }
+
+        return {
+            "version": version,
+            "target": rate(int(totals.get(TARGET_OPEN_METRIC, 0)), "email open rate"),
+            "guardrails": [rate(int(totals.get(name, 0)), GUARDRAIL_LABELS[name]) for name in GUARDRAIL_METRICS],
+        }
 
     @extend_schema(
         parameters=[

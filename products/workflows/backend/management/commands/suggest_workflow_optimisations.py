@@ -8,12 +8,20 @@ from posthog.dataclasses import frozen
 from posthog.models.scoping import team_scope
 from posthog.utils import relative_date_parse_with_delta_mapping
 
+from products.workflows.backend.metrics import (
+    GUARDRAIL_LABELS,
+    GUARDRAIL_METRICS,
+    HOG_FLOW_VERSION_APP_SOURCE,
+    MIN_EVIDENCE_SAMPLE,
+    TARGET_OPEN_METRIC,
+    TARGET_SEND_METRIC,
+    UNAVAILABLE_GUARDRAILS,
+)
 from products.workflows.backend.models.hog_flow.hog_flow import HogFlow
 from products.workflows.backend.models.workflow_proposal import WorkflowProposal
 
-HOG_FLOW_VERSION_APP_SOURCE = "hog_flow_version"
 OPEN_RATE_TARGET = 0.2
-MIN_SENDS_FOR_EVIDENCE = 20
+MIN_SENDS_FOR_EVIDENCE = MIN_EVIDENCE_SAMPLE
 SHORT_SUBJECT_CHARS = 45
 
 
@@ -26,12 +34,31 @@ class _SubjectCandidate:
     proposed_subject: str
     sends: int
     opens: int
+    # Raw counter-metric counts over the same window, step and version as the target, keyed by
+    # app-metric name. Read alongside the target so a suggestion that lifts opens while raising
+    # complaints or bounces is visible at review time rather than after it ships.
+    guardrail_counts: dict[str, int]
     # True when the step was picked by --force rather than by its own metrics.
     without_evidence: bool
 
     @property
     def open_rate(self) -> Optional[float]:
         return (self.opens / self.sends) if self.sends else None
+
+    def guardrails(self) -> list[dict[str, Any]]:
+        """The counter-metrics, as rates per send, carrying their own denominator.
+
+        `n` rides on every entry because a rate without its sample size is what lets a loop call
+        20 sends an improvement.
+        """
+        return [
+            {
+                "metric": GUARDRAIL_LABELS[name],
+                "value": (count / self.sends) if self.sends else None,
+                "n": self.sends,
+            }
+            for name, count in self.guardrail_counts.items()
+        ]
 
 
 class Command(BaseCommand):
@@ -121,10 +148,11 @@ class Command(BaseCommand):
                 breakdown_by="name",
                 after=after,
                 instance_id=str(action_id),
-                name=["email_sent", "email_opened"],
+                name=[TARGET_SEND_METRIC, TARGET_OPEN_METRIC, *GUARDRAIL_METRICS],
             ).totals
-            sent = int(totals.get("email_sent", 0))
-            opened = int(totals.get("email_opened", 0))
+            sent = int(totals.get(TARGET_SEND_METRIC, 0))
+            opened = int(totals.get(TARGET_OPEN_METRIC, 0))
+            guardrails = {name: int(totals.get(name, 0)) for name in GUARDRAIL_METRICS}
 
             enough_evidence = sent >= MIN_SENDS_FOR_EVIDENCE and (opened / sent) < OPEN_RATE_TARGET
             if not enough_evidence and not force:
@@ -140,6 +168,7 @@ class Command(BaseCommand):
                 proposed_subject=new_subject,
                 sends=sent,
                 opens=opened,
+                guardrail_counts=guardrails,
                 without_evidence=not enough_evidence,
             )
         return None
@@ -186,6 +215,12 @@ class Command(BaseCommand):
                 "current_value": None if candidate.without_evidence else round(rate or 0, 4),
                 "target_value": OPEN_RATE_TARGET,
                 "window": window,
+                # The denominator rides with the rate: a rate on its own is what lets a loop call
+                # twenty sends an improvement.
+                "n": candidate.sends,
+                "minimum_n": MIN_SENDS_FOR_EVIDENCE,
+                "guardrails": candidate.guardrails(),
+                "guardrails_unavailable": list(UNAVAILABLE_GUARDRAILS),
                 "sends": candidate.sends,
                 "opens": candidate.opens,
                 "forced": candidate.without_evidence,

@@ -6,8 +6,17 @@ import { LemonDialog } from 'lib/lemon-ui/LemonDialog'
 import { lemonToast } from 'lib/lemon-ui/LemonToast'
 import { teamLogic } from 'scenes/teamLogic'
 
-import { hogFlowsProposalsApproveCreate, hogFlowsProposalsList, hogFlowsProposalsRejectCreate } from '../generated/api'
-import type { PaginatedWorkflowProposalListApi, WorkflowProposalApi } from '../generated/api.schemas'
+import {
+    hogFlowsProposalsApproveCreate,
+    hogFlowsProposalsList,
+    hogFlowsProposalsOutcomeRetrieve,
+    hogFlowsProposalsRejectCreate,
+} from '../generated/api'
+import type {
+    PaginatedWorkflowProposalListApi,
+    WorkflowProposalApi,
+    WorkflowProposalOutcomeApi,
+} from '../generated/api.schemas'
 import type { HogFlow } from './hogflows/types'
 import { workflowLogic } from './workflowLogic'
 
@@ -20,6 +29,11 @@ export interface workflowProposalsLogicValues {
     currentTeamIdStrict: number | string // teamLogic
     hasStagedDraft: boolean // workflowLogic
     originalWorkflow: HogFlow | null // workflowLogic
+    appliedProposals: WorkflowProposalApi[]
+    appliedResponse: PaginatedWorkflowProposalListApi | null
+    appliedResponseLoading: boolean
+    outcomes: Record<string, WorkflowProposalOutcomeApi>
+    outcomesLoading: boolean
     pendingProposals: WorkflowProposalApi[]
     proposalsResponse: PaginatedWorkflowProposalListApi | null
     proposalsResponseLoading: boolean
@@ -40,6 +54,42 @@ export interface workflowProposalsLogicActions {
     }
     confirmRejectProposal: (proposalId: string) => {
         proposalId: string
+    }
+    loadApplied: () => any
+    loadAppliedFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadAppliedSuccess: (
+        appliedResponse: PaginatedWorkflowProposalListApi,
+        payload?: any
+    ) => {
+        appliedResponse: PaginatedWorkflowProposalListApi
+        payload?: any
+    }
+    loadOutcome: (proposalId: string) => {
+        proposalId: string
+    }
+    loadOutcomeFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadOutcomeSuccess: (
+        outcomes: Record<string, WorkflowProposalOutcomeApi>,
+        payload?: {
+            proposalId: string
+        }
+    ) => {
+        outcomes: Record<string, WorkflowProposalOutcomeApi>
+        payload?: {
+            proposalId: string
+        }
     }
     loadProposals: () => any
     loadProposalsFailure: (
@@ -68,6 +118,7 @@ export interface workflowProposalsLogicActions {
 export interface workflowProposalsLogicMeta {
     key: string
     __keaTypeGenInternalSelectorTypes: {
+        appliedProposals: (appliedResponse: any) => WorkflowProposalApi[]
         pendingProposals: (proposalsResponse: PaginatedWorkflowProposalListApi | null) => WorkflowProposalApi[]
     }
 }
@@ -95,6 +146,7 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
         rejectProposal: (proposalId: string) => ({ proposalId }),
         confirmRejectProposal: (proposalId: string) => ({ proposalId }),
         setResolvingId: (proposalId: string | null) => ({ proposalId }),
+        loadOutcome: (proposalId: string) => ({ proposalId }),
     }),
     reducers({
         resolvingId: [
@@ -105,6 +157,37 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
         ],
     }),
     loaders(({ props, values }) => ({
+        appliedResponse: [
+            null as PaginatedWorkflowProposalListApi | null,
+            {
+                loadApplied: async () => {
+                    try {
+                        return await hogFlowsProposalsList(String(values.currentTeamIdStrict), props.id, {
+                            status: 'applied',
+                        })
+                    } catch {
+                        return { count: 0, results: [] }
+                    }
+                },
+            },
+        ],
+        outcomes: [
+            {} as Record<string, WorkflowProposalOutcomeApi>,
+            {
+                loadOutcome: async ({ proposalId }) => {
+                    try {
+                        const outcome = await hogFlowsProposalsOutcomeRetrieve(
+                            String(values.currentTeamIdStrict),
+                            props.id,
+                            proposalId
+                        )
+                        return { ...values.outcomes, [proposalId]: outcome }
+                    } catch {
+                        return values.outcomes
+                    }
+                },
+            },
+        ],
         proposalsResponse: [
             null as PaginatedWorkflowProposalListApi | null,
             {
@@ -124,6 +207,10 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
         ],
     })),
     selectors({
+        appliedProposals: [
+            (s) => [s.appliedResponse],
+            (response: PaginatedWorkflowProposalListApi | null): WorkflowProposalApi[] => response?.results ?? [],
+        ],
         pendingProposals: [
             (s) => [s.proposalsResponse],
             (response: PaginatedWorkflowProposalListApi | null): WorkflowProposalApi[] => response?.results ?? [],
@@ -211,7 +298,17 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
             }
         },
     })),
+    listeners(({ actions, values }) => ({
+        loadAppliedSuccess: () => {
+            for (const proposal of values.appliedProposals) {
+                if (!values.outcomes[proposal.id]) {
+                    actions.loadOutcome(proposal.id)
+                }
+            }
+        },
+    })),
     afterMount(({ actions }) => {
         actions.loadProposals()
+        actions.loadApplied()
     }),
 ])

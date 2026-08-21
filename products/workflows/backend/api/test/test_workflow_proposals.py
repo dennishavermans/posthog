@@ -57,7 +57,14 @@ class TestWorkflowProposals(APIBaseTest):
             "title": "Point the webhook somewhere that answers",
             "rationale": "Every call to the current URL failed over the last week.",
             "content": {"actions": [_trigger_action(), _webhook_action(url="https://proposed.example.com")]},
-            "evidence": {"metric": "failure rate", "current_value": 1.0, "target_value": 0.0, "window": "-7d"},
+            "evidence": {
+                "metric": "failure rate",
+                "current_value": 1.0,
+                "target_value": 0.0,
+                "window": "-7d",
+                "n": 240,
+                "guardrails": [{"metric": "complaint rate", "value": 0.0, "n": 240}],
+            },
             "source_type": "scout",
             **overrides,
         }
@@ -148,6 +155,72 @@ class TestWorkflowProposals(APIBaseTest):
         assert again.status_code == 200, again.json()
         assert again.json()["id"] == first["id"]
         assert WorkflowProposal.objects.for_team(self.team.id).filter(hog_flow_id=flow_id).count() == 1
+
+    @parameterized.expand(
+        [
+            ("no sample size", {"metric": "email open rate", "current_value": 0.07, "guardrails": []}, "`n`"),
+            (
+                "no counter-metrics",
+                {"metric": "email open rate", "current_value": 0.07, "n": 120},
+                "guardrails",
+            ),
+        ]
+    )
+    def test_a_rate_without_its_denominator_or_counter_metrics_is_refused(
+        self, _mock_flag, _name: str, evidence: dict, expected: str
+    ):
+        # The loop's two worst failures are declaring a win off twenty sends and lifting one metric
+        # while harming another. Both are refused at the seam rather than left to a producer's prompt.
+        flow_id = self._create_active_flow()
+        response = self.client.post(
+            f"/api/projects/{self.team.id}/hog_flows/{flow_id}/proposals/",
+            {
+                "title": "Shorten the subject",
+                "rationale": "Testing the evidence contract.",
+                "content": {"actions": [_trigger_action(), _webhook_action()]},
+                "evidence": evidence,
+                "source_type": "scout",
+            },
+            format="json",
+        )
+        assert response.status_code == 400, response.json()
+        assert expected in str(response.json())
+
+    def test_evidence_with_a_denominator_and_guardrails_is_accepted(self, _mock_flag):
+        flow_id = self._create_active_flow()
+        proposal = self._propose(
+            flow_id,
+            evidence={
+                "metric": "email open rate",
+                "current_value": 0.07,
+                "n": 120,
+                "guardrails": [{"metric": "complaint rate", "value": 0.001, "n": 120}],
+            },
+        )
+        assert proposal["evidence"]["guardrails"][0]["metric"] == "complaint rate"
+
+    def test_outcome_reports_both_versions_with_their_sample_sizes(self, _mock_flag):
+        flow_id = self._create_active_flow()
+        proposal = self._propose(flow_id)
+        self.client.post(f"/api/projects/{self.team.id}/hog_flows/{flow_id}/proposals/{proposal['id']}/approve/", {})
+        self._publish(flow_id)
+
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/hog_flows/{flow_id}/proposals/{proposal['id']}/outcome"
+        )
+        assert response.status_code == 200, response.json()
+        body = response.json()
+        # Before is the version proposed against, after is the version it went live as, so a reader
+        # cannot accidentally compare a version against itself.
+        assert body["before"]["version"] == 1
+        assert body["after"]["version"] == 2
+        assert body["after"]["target"]["n"] == 0
+        assert body["after"]["target"]["below_minimum_sample"] is True
+        assert [guardrail["metric"] for guardrail in body["after"]["guardrails"]] == [
+            "complaint rate",
+            "bounce rate",
+        ]
+        assert body["unavailable_guardrails"] == ["unsubscribe rate"]
 
     def test_a_partial_action_list_is_refused(self, _mock_flag):
         flow_id = self._create_active_flow()
