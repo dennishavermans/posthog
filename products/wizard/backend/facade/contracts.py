@@ -120,11 +120,25 @@ class LocalFolderWorkspace:
     project_name: str
     type: Literal["local_folder"] = "local_folder"
 
+    def to_dict(self) -> dict[str, object]:
+        return {"project_name": self.project_name}
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        return cls(project_name=_workspace_metadata_value(value, "project_name"))
+
 
 @frozen
 class GitRepositoryWorkspace:
     repository: str
     type: Literal["git_repository"] = "git_repository"
+
+    def to_dict(self) -> dict[str, object]:
+        return {"repository": self.repository}
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        return cls(repository=_workspace_metadata_value(value, "repository"))
 
 
 type WizardWorkspace = LocalFolderWorkspace | GitRepositoryWorkspace
@@ -301,3 +315,13 @@ def _program_environments(value: object) -> tuple[WizardRunEnvironment, ...]:
     if len(environments) != len(set(environments)):
         raise ValueError("Invalid Wizard program")
     return environments
+
+
+def _workspace_metadata_value(metadata: object, key: str) -> str:
+    if not isinstance(metadata, dict):
+        raise ValueError("Wizard workspace metadata must be an object")
+
+    value: object = metadata.get(key)
+    if not isinstance(value, str):
+        raise ValueError(f"Wizard workspace metadata field {key!r} must be a string")
+    return value

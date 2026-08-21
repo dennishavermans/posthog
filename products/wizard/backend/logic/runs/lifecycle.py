@@ -14,7 +14,12 @@ from products.wizard.backend.facade.contracts import (
     WizardRunDTO,
     WizardRunPage,
 )
-from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
+from products.wizard.backend.facade.enums import (
+    WizardRunEnvironment,
+    WizardRunErrorCode,
+    WizardRunStatus,
+    WizardWorkspaceType,
+)
 from products.wizard.backend.facade.errors import (
     MissingGitHubIntegrationError,
     RepositoryNotAccessibleError,
@@ -23,11 +28,7 @@ from products.wizard.backend.facade.errors import (
 from products.wizard.backend.logic import registry as registry_service
 from products.wizard.backend.logic.runs.store import get_run_model, to_dto
 from products.wizard.backend.logic.runs.transitions import transition
-from products.wizard.backend.logic.runs.workspaces import (
-    serialize_workspace,
-    validate_git_repository,
-    validate_workspace_environment,
-)
+from products.wizard.backend.logic.runs.workspaces import validate_git_repository, validate_workspace_environment
 from products.wizard.backend.models import WizardRun
 from products.wizard.backend.temporal import client as temporal_client
 from products.wizard.backend.temporal.contracts import WizardRunActivityInput
@@ -59,7 +60,8 @@ def create_run(params: CreateWizardRunInput) -> WizardRunDTO:
         ):
             raise RepositoryNotAccessibleError
 
-    workspace_type, workspace_metadata = serialize_workspace(params.workspace)
+    workspace_type = WizardWorkspaceType(params.workspace.type)
+    workspace_metadata = params.workspace.to_dict()
     initial_status = (
         WizardRunStatus.RUNNING if params.environment == WizardRunEnvironment.LOCAL else WizardRunStatus.CREATED
     )

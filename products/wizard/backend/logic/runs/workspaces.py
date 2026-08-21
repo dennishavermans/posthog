@@ -19,30 +19,10 @@ def validate_git_repository(repository: str) -> None:
         raise InvalidRepositoryError
 
 
-def serialize_workspace(workspace: WizardWorkspace) -> tuple[WizardWorkspaceType, dict[str, str]]:
-    match workspace:
-        case LocalFolderWorkspace(project_name=project_name):
-            return WizardWorkspaceType.LOCAL_FOLDER, {"project_name": project_name}
-        case GitRepositoryWorkspace(repository=repository):
-            return WizardWorkspaceType.GIT_REPOSITORY, {"repository": repository}
-    raise ValueError("Unsupported Wizard workspace")
-
-
 def deserialize_workspace(workspace_type: str, metadata: object) -> WizardWorkspace:
     match WizardWorkspaceType(workspace_type):
         case WizardWorkspaceType.LOCAL_FOLDER:
-            return LocalFolderWorkspace(project_name=_workspace_metadata_value(metadata, "project_name"))
+            return LocalFolderWorkspace.from_dict(metadata)
         case WizardWorkspaceType.GIT_REPOSITORY:
-            return GitRepositoryWorkspace(repository=_workspace_metadata_value(metadata, "repository"))
+            return GitRepositoryWorkspace.from_dict(metadata)
     raise ValueError("Unsupported Wizard workspace type")
-
-
-def _workspace_metadata_value(metadata: object, key: str) -> str:
-    if not isinstance(metadata, dict):
-        raise ValueError("Wizard workspace metadata must be an object")
-
-    value: object = metadata.get(key)
-    if not isinstance(value, str):
-        raise ValueError(f"Wizard workspace metadata field {key!r} must be a string")
-
-    return value
