@@ -1,5 +1,3 @@
-import re
-import shlex
 from uuid import UUID
 
 from django.conf import settings
@@ -7,7 +5,6 @@ from django.conf import settings
 from posthog.dataclasses import frozen
 from posthog.models.user import User
 from posthog.temporal.oauth import create_wizard_oauth_access_token_for_user
-from posthog.utils import get_instance_region
 
 from products.tasks.backend.facade import repository as repository_facade
 from products.tasks.backend.facade.repo_selection import get_github_token
@@ -18,18 +15,21 @@ from products.tasks.backend.facade.sandbox import (
     get_sandbox_class,
     sandbox_repo_path,
 )
-from products.wizard.backend.facade.validation import is_executable_wizard_version
 from products.wizard.backend.logic.runs import publishing
-
-WIZARD_TIMEOUT_SECONDS = 45 * 60
-WIZARD_TIMEOUT_EXIT_CODE = 124
-WIZARD_ERROR_DETAIL_LENGTH = 2000
-WIZARD_PROGRAM_COMMAND_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-SANDBOX_EXECUTION_TIMEOUT_SECONDS = WIZARD_TIMEOUT_SECONDS + 120
-SANDBOX_TTL_SECONDS = WIZARD_TIMEOUT_SECONDS + 300
-PULL_REQUEST_TITLE = "Set up PostHog"
-PULL_REQUEST_BODY = "This pull request contains changes created by Wizard, PostHog's setup agent."
-PULL_REQUEST_COMMIT_MESSAGE = "Set up PostHog"
+from products.wizard.backend.logic.runs.commands import (
+    build_git_diff_command,
+    build_wizard_command,
+    pull_request_branch,
+)
+from products.wizard.backend.logic.runs.config import (
+    PULL_REQUEST_BODY,
+    PULL_REQUEST_COMMIT_MESSAGE,
+    PULL_REQUEST_TITLE,
+    SANDBOX_EXECUTION_TIMEOUT_SECONDS,
+    SANDBOX_TTL_SECONDS,
+    WIZARD_ERROR_DETAIL_LENGTH,
+    WIZARD_TIMEOUT_EXIT_CODE,
+)
 
 
 @frozen
@@ -127,7 +127,7 @@ def clone_repository(request: GitRepositoryCloneRequest) -> str:
 def execute_wizard(request: WizardExecutionRequest) -> None:
     sandbox = get_sandbox_class().get_by_id(request.sandbox_id)
     wizard_result = sandbox.execute(
-        _wizard_command(request.workspace_path, request.team_id, request.wizard_version, request.program_command),
+        build_wizard_command(request.workspace_path, request.team_id, request.wizard_version, request.program_command),
         timeout_seconds=SANDBOX_EXECUTION_TIMEOUT_SECONDS,
     )
     if wizard_result.exit_code == WIZARD_TIMEOUT_EXIT_CODE:
@@ -143,7 +143,7 @@ def execute_wizard(request: WizardExecutionRequest) -> None:
 def create_git_repository_handoff(request: GitRepositoryHandoffRequest) -> WizardWorkerResult:
     sandbox = get_sandbox_class().get_by_id(request.sandbox_id)
     diff_result = sandbox.execute(
-        _git_diff_command(request.workspace_path),
+        build_git_diff_command(request.workspace_path),
         timeout_seconds=60,
     )
     _raise_for_failure(
@@ -156,7 +156,7 @@ def create_git_repository_handoff(request: GitRepositoryHandoffRequest) -> Wizar
     if not diff:
         return WizardWorkerResult(diff=diff, pull_request=None)
 
-    branch = _pull_request_branch(request.run_id)
+    branch = pull_request_branch(request.run_id)
     try:
         published_branch = publishing.create_signed_commit(
             sandbox,
@@ -184,44 +184,6 @@ def destroy_worker(sandbox_id: str) -> None:
     except SandboxNotFoundError:
         return
     sandbox.destroy()
-
-
-def _wizard_command(
-    repository_path: str,
-    team_id: int,
-    wizard_version: str,
-    program_command: tuple[str, ...],
-) -> str:
-    if not is_executable_wizard_version(wizard_version):
-        raise ValueError("Invalid Wizard version")
-    if any(WIZARD_PROGRAM_COMMAND_PATTERN.fullmatch(argument) is None for argument in program_command):
-        raise ValueError("Invalid Wizard program command")
-    wizard_package = shlex.quote(f"@posthog/wizard@{wizard_version}")
-    parts = [
-        f"cd {shlex.quote(repository_path)} &&",
-        f"timeout -k 30 {WIZARD_TIMEOUT_SECONDS}",
-        f"npx --yes {wizard_package}",
-        *(shlex.quote(argument) for argument in program_command),
-        "--headless-DONOTUSE-EXPERIMENTAL",
-        "--install-dir .",
-        f"--region {shlex.quote(_wizard_region())}",
-        f"--project-id {shlex.quote(str(team_id))}",
-    ]
-    if settings.DEBUG:
-        parts.append('--base-url "$POSTHOG_API_URL"')
-    return " ".join(parts)
-
-
-def _git_diff_command(repository_path: str) -> str:
-    return f"cd {shlex.quote(repository_path)} && git add -N --all && git diff --binary --no-ext-diff HEAD"
-
-
-def _pull_request_branch(run_id: UUID) -> str:
-    return f"posthog/wizard-{run_id.hex[:12]}"
-
-
-def _wizard_region() -> str:
-    return "eu" if get_instance_region() == "EU" else "us"
 
 
 def _raise_for_failure(stage: str, exit_code: int, *, stdout: str = "", stderr: str = "") -> None:

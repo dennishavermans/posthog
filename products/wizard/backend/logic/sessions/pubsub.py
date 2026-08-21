@@ -9,52 +9,39 @@ asgiref pool.
 
 from __future__ import annotations
 
-import re
-import dataclasses
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
-from enum import Enum
 from typing import Any
 
 from django.db import transaction
 
-import orjson
 import structlog
 
 from posthog.redis import get_async_client, get_client
 
 from products.wizard.backend.facade.contracts import WizardSessionDTO
+from products.wizard.backend.logic.sessions.config import CHANNEL_PREFIX
+from products.wizard.backend.logic.sessions.serializers import serialize_session_dto
+from products.wizard.backend.logic.sessions.validation import validate_channel_identifier
 from products.wizard.backend.metrics import WIZARD_PUBSUB_PUBLISH_TOTAL
 
 logger = structlog.get_logger(__name__)
 
-CHANNEL_PREFIX = "wizard_sessions"
-
-# workflow_id / skill_id appear unescaped in Redis channel names / patterns;
-# reject anything that could be a glob metacharacter (`*?[]\`) or the `:` delimiter.
-_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,255}$")
-
-
-def _validate_id(value: str, name: str) -> None:
-    if not _SAFE_ID_RE.match(value):
-        raise ValueError(f"{name} must match {_SAFE_ID_RE.pattern}; got {value!r}")
-
 
 def channel_name(team_id: int, workflow_id: str, skill_id: str) -> str:
-    _validate_id(workflow_id, "workflow_id")
-    _validate_id(skill_id, "skill_id")
+    validate_channel_identifier(workflow_id, "workflow_id")
+    validate_channel_identifier(skill_id, "skill_id")
     return f"{CHANNEL_PREFIX}:team:{team_id}:workflow:{workflow_id}:skill:{skill_id}"
 
 
 def channel_pattern(team_id: int, workflow_id: str) -> str:
     """Pattern for subscribing to all skills under a (team, workflow_id)."""
-    _validate_id(workflow_id, "workflow_id")
+    validate_channel_identifier(workflow_id, "workflow_id")
     return f"{CHANNEL_PREFIX}:team:{team_id}:workflow:{workflow_id}:skill:*"
 
 
 def serialize_dto(dto: WizardSessionDTO) -> bytes:
-    return orjson.dumps(dto, default=_json_default)
+    return serialize_session_dto(dto)
 
 
 def publish_session_update(dto: WizardSessionDTO) -> None:
@@ -135,13 +122,3 @@ async def subscribe(team_id: int, workflow_id: str, skill_id: str | None = None)
                 await pubsub.close()
             except Exception:
                 logger.warning("wizard_sessions pubsub close failed", target=target)
-
-
-def _json_default(value: Any) -> Any:
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return dataclasses.asdict(value)
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, datetime):
-        return value.isoformat()
-    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
