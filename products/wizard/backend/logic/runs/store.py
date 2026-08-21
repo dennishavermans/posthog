@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from django.db import models
+
 from products.wizard.backend.facade.contracts import (
     ListWizardRunsInput,
     WizardProgram,
@@ -8,7 +10,12 @@ from products.wizard.backend.facade.contracts import (
     WizardRunPage,
     WizardWorkspace,
 )
-from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
+from products.wizard.backend.facade.enums import (
+    WizardRunDispatchStatus,
+    WizardRunEnvironment,
+    WizardRunErrorCode,
+    WizardRunStatus,
+)
 from products.wizard.backend.facade.errors import WizardRunNotFoundError
 from products.wizard.backend.logic.programs import program_to_mapping
 from products.wizard.backend.logic.runs.mappers import run_from_record, workspace_to_record
@@ -47,6 +54,9 @@ def create_run(
         "program": program_to_mapping(program),
         "status": status.value,
         "request_fingerprint": request_fingerprint,
+        "dispatch_status": (
+            WizardRunDispatchStatus.PENDING.value if environment == WizardRunEnvironment.CLOUD else None
+        ),
     }
     if idempotency_key is None:
         run = WizardRun.objects.for_team(team_id).create(team_id=team_id, idempotency_key=None, **values)
@@ -67,6 +77,22 @@ def get_run_by_idempotency_key(team_id: int, idempotency_key: str) -> WizardRunD
 
 def get_request_fingerprint(team_id: int, run_id: UUID) -> str | None:
     return _get_run_record(team_id, run_id).request_fingerprint
+
+
+def mark_dispatch_succeeded(team_id: int, run_id: UUID, workflow_id: str) -> None:
+    WizardRun.objects.for_team(team_id).filter(id=run_id).update(
+        dispatch_status=WizardRunDispatchStatus.DISPATCHED.value,
+        dispatch_attempts=models.F("dispatch_attempts") + 1,
+        dispatch_error=None,
+        workflow_id=workflow_id,
+    )
+
+
+def mark_dispatch_failed(team_id: int, run_id: UUID) -> None:
+    WizardRun.objects.for_team(team_id).filter(id=run_id).update(
+        dispatch_attempts=models.F("dispatch_attempts") + 1,
+        dispatch_error="Temporal dispatch failed.",
+    )
 
 
 def get_run(team_id: int, run_id: UUID, *, lock: bool = False) -> WizardRunDTO:

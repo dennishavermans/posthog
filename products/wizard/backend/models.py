@@ -14,6 +14,7 @@ from posthog.models.utils import CreatedMetaFields, UpdatedMetaFields, UUIDModel
 
 from products.wizard.backend.facade.enums import (
     WizardRunArtifactType,
+    WizardRunDispatchStatus,
     WizardRunEnvironment,
     WizardRunErrorCode,
     WizardRunStatus,
@@ -109,6 +110,16 @@ class WizardRun(UUIDModel, TeamScopedRootMixin, CreatedMetaFields, UpdatedMetaFi
 
     idempotency_key = models.CharField(max_length=255, null=True, blank=True)
     request_fingerprint = models.CharField(max_length=64, null=True, blank=True)
+
+    dispatch_status = models.CharField(
+        max_length=20,
+        choices=[(status.value, status.value) for status in WizardRunDispatchStatus],
+        null=True,
+        blank=True,
+    )
+    dispatch_attempts = models.PositiveSmallIntegerField(default=0)
+    dispatch_error = models.CharField(max_length=255, null=True, blank=True)
+    workflow_id = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta(TeamScopedRootMixin.Meta):
         constraints = [

@@ -4,6 +4,8 @@ from uuid import UUID
 
 from django.db import transaction as database_transaction
 
+from celery import current_app as celery_app
+
 from posthog.models import Team, User
 
 from products.tasks.backend.facade import repo_selection
@@ -30,8 +32,8 @@ from products.wizard.backend.logic.runs import store
 from products.wizard.backend.logic.runs.fingerprints import create_run_request_fingerprint
 from products.wizard.backend.logic.runs.transitions import transition
 from products.wizard.backend.logic.runs.validation import validate_git_repository
+from products.wizard.backend.tasks.config import DISPATCH_WIZARD_RUN_TASK
 from products.wizard.backend.temporal import client as temporal_client
-from products.wizard.backend.temporal.contracts import WizardRunActivityInput
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +111,11 @@ def create_run_with_result(params: CreateWizardRunInput) -> WizardRunCreationRes
         if params.environment == WizardRunEnvironment.CLOUD and result.created:
             database_transaction.on_commit(
                 partial(
-                    _dispatch_cloud_run,
-                    WizardRunActivityInput(team_id=params.team_id, run_id=result.run.id),
-                )
+                    _enqueue_cloud_run,
+                    params.team_id,
+                    result.run.id,
+                ),
+                robust=True,
             )
 
     if params.environment == WizardRunEnvironment.CLOUD:
@@ -119,15 +123,14 @@ def create_run_with_result(params: CreateWizardRunInput) -> WizardRunCreationRes
     return result
 
 
-def _dispatch_cloud_run(input: WizardRunActivityInput) -> None:
+def _enqueue_cloud_run(team_id: int, run_id: UUID) -> None:
     try:
-        temporal_client.start_wizard_run_workflow(input)
+        celery_app.send_task(DISPATCH_WIZARD_RUN_TASK, args=[team_id, str(run_id)])
     except Exception:
         logger.exception(
-            "wizard_run_dispatch_failed",
-            extra={"team_id": input.team_id, "run_id": str(input.run_id)},
+            "wizard_run_dispatch_enqueue_failed",
+            extra={"team_id": team_id, "run_id": str(run_id)},
         )
-        fail_run(input.team_id, input.run_id, error_code=WizardRunErrorCode.DISPATCH_FAILED)
 
 
 def get_run(team_id: int, run_id: UUID) -> WizardRunDTO:

@@ -34,6 +34,11 @@ class WizardRunStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class WizardRunDispatchStatus(StrEnum):
+    PENDING = "pending"
+    DISPATCHED = "dispatched"
+
+
 class WizardRunEnvironment(StrEnum):
     LOCAL = "local"
     CLOUD = "cloud"

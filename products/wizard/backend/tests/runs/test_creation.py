@@ -172,9 +172,8 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
             return_value=True,
         ),
         patch(
-            "products.wizard.backend.logic.runs.lifecycle.dispatch_wizard_run",
-            create=True,
-        ) as dispatch_task,
+            "products.wizard.backend.logic.runs.lifecycle.celery_app.send_task",
+        ) as send_task,
         patch("products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow"),
     ):
         run = wizard_facade.create_run(
@@ -188,7 +187,7 @@ def test_cloud_run_dispatches_after_persistence(team, user) -> None:
             )
         )
 
-    dispatch_task.delay.assert_called_once_with(team.id, run.id)
+    send_task.assert_called_once_with("wizard.dispatch_run", args=[team.id, str(run.id)])
     assert run.status == WizardRunStatus.CREATED
 
 
@@ -204,15 +203,14 @@ def test_cloud_run_survives_dispatch_enqueue_failure(team, user) -> None:
             return_value=True,
         ),
         patch(
-            "products.wizard.backend.logic.runs.lifecycle.dispatch_wizard_run",
-            create=True,
-        ) as dispatch_task,
+            "products.wizard.backend.logic.runs.lifecycle.celery_app.send_task",
+        ) as send_task,
         patch(
             "products.wizard.backend.logic.runs.lifecycle.temporal_client.start_wizard_run_workflow",
             side_effect=RuntimeError("Temporal unavailable"),
         ),
     ):
-        dispatch_task.delay.side_effect = RuntimeError("Celery unavailable")
+        send_task.side_effect = RuntimeError("Celery unavailable")
         run = wizard_facade.create_run(
             CreateWizardRunInput(
                 team_id=team.id,
