@@ -125,7 +125,9 @@ def test_provision_worker_uses_persisted_run_identity(team, user) -> None:
         result = async_to_sync(_run_provision_worker)(WizardRunActivityInput(team_id=team.id, run_id=run.id))
 
     assert result == _worker(run)
-    assert wizard_facade.get_run(team.id, run.id).status == WizardRunStatus.RUNNING
+    persisted_run = wizard_facade.get_run(team.id, run.id)
+    assert persisted_run.status == WizardRunStatus.RUNNING
+    assert persisted_run.stage == "provisioning"
     provision.assert_called_once_with(
         WizardWorkerProvisionRequest(team_id=team.id, created_by_id=user.id, run_id=run.id)
     )
@@ -163,6 +165,7 @@ def test_clone_repository_rechecks_access_before_preparing_workspace(team, user)
         result = async_to_sync(_run_clone_repository)(worker)
 
     assert result == _workspace(run)
+    assert wizard_facade.get_run(team.id, run.id).stage == "preparing_workspace"
     resolve_integration.assert_called_once_with(team.id)
     repository_accessible.assert_called_once_with(team.id, 456, "posthog/posthog")
     clone.assert_called_once_with(

@@ -70,6 +70,8 @@ def test_start_run_persists_running_status(team, user) -> None:
     started = wizard_facade.start_run(team.id, created.id)
 
     assert started.status == WizardRunStatus.RUNNING
+    assert started.started_at is not None
+    assert started.finished_at is None
     assert wizard_facade.get_run(team.id, created.id) == started
 
 
@@ -92,6 +94,8 @@ def test_running_run_persists_terminal_status(
     transitioned = transition_action(team.id, created.id)
 
     assert transitioned.status == expected_status
+    assert transitioned.finished_at is not None
+    assert transitioned.stage is None
     assert wizard_facade.get_run(team.id, created.id) == transitioned
 
 
@@ -103,6 +107,8 @@ def test_fail_run_persists_error_code(team, user) -> None:
 
     assert failed.status == WizardRunStatus.FAILED
     assert failed.error_code == WizardRunErrorCode.TIMEOUT
+    assert failed.error_message == "The Wizard run timed out."
+    assert failed.finished_at is not None
     assert wizard_facade.get_run(team.id, created.id) == failed
 
 

@@ -21,13 +21,13 @@ from products.wizard.backend.temporal.workflows import execute_run as execute_ru
 from products.wizard.backend.temporal.workflows.execute_run import ExecuteWizardRunWorkflow
 
 
-def _activity_error(cause: BaseException) -> ActivityError:
+def _activity_error(cause: BaseException, activity_type: str = "wizard_execute") -> ActivityError:
     error = ActivityError(
         "Activity failed",
         scheduled_event_id=1,
         started_event_id=2,
         identity="worker",
-        activity_type="wizard_execute",
+        activity_type=activity_type,
         activity_id="activity",
         retry_state=RetryState.MAXIMUM_ATTEMPTS_REACHED,
     )
@@ -190,3 +190,18 @@ def test_cloud_workflow_identity_and_input_parsing() -> None:
         team_id=1,
         run_id=UUID(str(run_id)),
     )
+
+
+@pytest.mark.parametrize(
+    ("activity_type", "expected_error_code"),
+    (
+        ("wizard_provision_worker", "provisioning_failed"),
+        ("wizard_clone_repository", "workspace_preparation_failed"),
+        ("wizard_execute", "execution_failed"),
+        ("wizard_create_run_artifacts", "artifact_creation_failed"),
+    ),
+)
+def test_activity_failures_map_to_their_stage(activity_type: str, expected_error_code: str) -> None:
+    error = _activity_error(ApplicationError("failed", type="ExternalFailure"), activity_type)
+
+    assert execute_run_workflow_module.wizard_run_error_code(error).value == expected_error_code

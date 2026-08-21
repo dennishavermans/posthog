@@ -79,6 +79,13 @@ class TestWizardRunViewSet(APIBaseTest):
                 },
                 "status": "running",
                 "error_code": None,
+                "error_message": None,
+                "stage": None,
+                "created_at": response.json()["created_at"],
+                "updated_at": response.json()["updated_at"],
+                "started_at": response.json()["started_at"],
+                "finished_at": None,
+                "deadline_at": None,
             },
         )
 
