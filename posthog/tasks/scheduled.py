@@ -72,6 +72,7 @@ from posthog.tasks.team_llm_gateway_policy import refresh_expiring_llm_gateway_p
 from posthog.tasks.team_metadata import cleanup_stale_expiry_tracking_task, refresh_expiring_team_metadata_cache_entries
 from posthog.utils import get_crontab, get_instance_region
 
+from products.aeo.backend.facade.tasks import run_aeo_citation_checks_task
 from products.approvals.backend.tasks import expire_old_change_requests, validate_pending_change_requests
 from products.canvas.backend.tasks import cleanup_canvas_builds, sweep_canvas_builds
 from products.conversations.backend.tasks import (
@@ -964,4 +965,12 @@ def setup_periodic_tasks(sender: Celery, **kwargs: Any) -> None:
         DAILY_DIGEST_CRONTAB,
         send_daily_digests.s(),
         name="stamphog daily merged-pr digests",
+    )
+
+    # AEO citation-tracking POC: daily citation checks for allowlisted, flag-enabled teams.
+    add_periodic_task_with_expiry(
+        sender,
+        crontab(hour="7", minute="30"),
+        run_aeo_citation_checks_task.s(),
+        name="AEO citation checks",
     )
