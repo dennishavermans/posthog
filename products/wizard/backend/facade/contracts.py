@@ -37,6 +37,8 @@ _PROGRAM_FIELDS = frozenset(
         "supported_environments",
     }
 )
+_REGISTRY_FIELDS = frozenset({"version", "programs"})
+_WIZARD_REGISTRY_VERSION = 1
 
 
 class DictSerializable(Protocol):
@@ -201,6 +203,29 @@ class WizardProgram:
             required_programs=required_programs,
             supported_environments=supported_environments,
         )
+
+
+@frozen
+class WizardRegistry:
+    programs: tuple[WizardProgram, ...]
+    version: Literal[1] = 1
+
+    def to_dict(self) -> dict[str, object]:
+        return {"version": self.version, "programs": [program.to_dict() for program in self.programs]}
+
+    @classmethod
+    def from_dict(cls, value: object) -> Self:
+        if not isinstance(value, dict) or set(value) != _REGISTRY_FIELDS:
+            raise ValueError("Invalid Wizard registry")
+        if type(value["version"]) is not int or value["version"] != _WIZARD_REGISTRY_VERSION:
+            raise ValueError("Invalid Wizard registry")
+        if not isinstance(value["programs"], list):
+            raise ValueError("Invalid Wizard registry")
+
+        programs = tuple(WizardProgram.from_dict(program) for program in value["programs"])
+        if len(programs) != len({program.id for program in programs}):
+            raise ValueError("Invalid Wizard registry")
+        return cls(programs=programs)
 
 
 @frozen
