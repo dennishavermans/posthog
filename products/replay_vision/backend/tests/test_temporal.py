@@ -2214,7 +2214,9 @@ async def test_apply_scanner_workflow_labels_child_timeout_as_infra_transient() 
             ensure_session_asset_activity: EnsureSessionAssetOutput(asset_id=42),
         },
         child_error=_wrap_in_child_workflow_error(
-            TemporalTimeoutError("render exceeded its budget", type=TimeoutType.START_TO_CLOSE, last_heartbeat_details=[])
+            TemporalTimeoutError(
+                "render exceeded its budget", type=TimeoutType.START_TO_CLOSE, last_heartbeat_details=[]
+            )
         ),
     )
 
