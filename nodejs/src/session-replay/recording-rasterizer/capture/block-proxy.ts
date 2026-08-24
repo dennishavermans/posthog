@@ -19,7 +19,7 @@ export class BlockProxy {
     private recordingApiToken = ''
 
     constructor(
-        private cfg: { recordingApiBaseUrl: string; recordingApiSecret: string },
+        private cfg: { recordingApiBaseUrl: string; recordingApiSecret: string; blockListingTimeoutMs: number },
         private log: Logger = createLogger()
     ) {}
 
@@ -54,6 +54,7 @@ export class BlockProxy {
         try {
             resp = await internalFetch(url, {
                 headers: this.authHeaders(),
+                timeoutMs: this.cfg.blockListingTimeoutMs,
             })
         } catch (err) {
             // Connection-level failures (recording-api rollout, DNS blip) would otherwise surface as

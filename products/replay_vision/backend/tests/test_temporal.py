@@ -2073,6 +2073,8 @@ async def _run_workflow(inputs: ApplyScannerInputs, mocks: _WorkflowMocks, workf
         patch("temporalio.workflow.info", return_value=workflow_info),
         patch("temporalio.workflow.execute_activity", side_effect=mocks.execute_activity),
         patch("temporalio.workflow.execute_child_workflow", side_effect=mocks.execute_child_workflow),
+        # `wf.patched` needs a real workflow context; the timeout path gates its stuck-counter bump on it.
+        patch("temporalio.workflow.patched", return_value=True),
         # `wf.logger` requires a real workflow event loop, which this direct-call harness skips.
         patch("temporalio.workflow.logger"),
     ):
@@ -2197,6 +2199,33 @@ async def test_apply_scanner_workflow_splits_rasterizer_failures_by_cause(
     assert mocks.activity_calls[-1][1].error_reason.startswith(f"{expected_kind}:")
     # The video is never uploaded when the render fails, so there is nothing to bill or clean up.
     assert upload_video_to_gemini_activity not in called
+
+
+@pytest.mark.asyncio
+async def test_apply_scanner_workflow_labels_child_timeout_as_infra_transient() -> None:
+    # A child timeout is the render riding out its budget against a PostHog dependency, not a render
+    # fault. It must land as infra_transient so the copy tells the user to wait, not to contact support.
+    new_observation_id = uuid.uuid4()
+    mocks = _WorkflowMocks(
+        activity_results={
+            create_observation_activity: CreateObservationOutput(
+                observation_id=new_observation_id, was_created=True, scanner_type=ScannerType.MONITOR
+            ),
+            ensure_session_asset_activity: EnsureSessionAssetOutput(asset_id=42),
+        },
+        child_error=_wrap_in_child_workflow_error(
+            TemporalTimeoutError("render exceeded its budget", type=TimeoutType.START_TO_CLOSE, last_heartbeat_details=[])
+        ),
+    )
+
+    with pytest.raises(Exception):
+        await _run_workflow(_build_inputs(session_id="sess-timeout"), mocks)
+
+    called = {fn for fn, _ in mocks.activity_calls}
+    assert mark_observation_failed_activity in called
+    # The timeout also bumps the stuck counter, so the failed row is not the last call.
+    failed_input = next(arg for fn, arg in mocks.activity_calls if fn is mark_observation_failed_activity)
+    assert failed_input.error_reason.startswith("infra_transient:")
 
 
 @pytest.mark.asyncio

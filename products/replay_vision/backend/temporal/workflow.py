@@ -420,13 +420,13 @@ class ApplyScannerWorkflow(PostHogWorkflow):
                 # "nothing to analyze" as a session with no events, which we already gate as ineligible, so calling
                 # it a failure would point the user at support over a recording that can never produce a video.
                 raise IneligibleSessionError(_root_cause_message(e), kind=IneligibleSessionKind.NO_SNAPSHOTS) from e
+            # A child timeout means the render rode out its whole budget waiting on a PostHog dependency
+            # (recording-api, ClickHouse, object storage), not the renderer. That is infra, so retry usually
+            # helps; the rasterization_failed copy would point the user at a video-render fault and support.
+            child_timed_out = isinstance(e, ChildWorkflowError) and isinstance(e.cause, TemporalTimeoutError)
             # Direct cause only: a nested activity timeout inside the child already bumped the
             # counter there, and matching it here would double-count one run.
-            if (
-                isinstance(e, ChildWorkflowError)
-                and isinstance(e.cause, TemporalTimeoutError)
-                and wf.patched("bump-stuck-on-rasterize-timeout-2026-08")
-            ):
+            if child_timed_out and wf.patched("bump-stuck-on-rasterize-timeout-2026-08"):
                 # The single-attempt execution_timeout terminates the child before its own final-attempt
                 # bump can run, so a render that rode out the whole budget would never reach the
                 # quarantine threshold. Bump from here instead; the child's own bump covers every
@@ -440,8 +440,9 @@ class ApplyScannerWorkflow(PostHogWorkflow):
                     )
                 except Exception as exc:
                     wf.logger.warning("replay_vision.stuck_counter_bump_failed", extra={"error": str(exc)})
-            # Re-classify the rasterizer's failure so the user sees a rasterizer label, not a generic "internal error".
-            raise ScannerFailureError(_root_cause_message(e), kind=FailureKind.RASTERIZATION_FAILED) from e
+            # Re-classify the rasterizer's failure so the user sees a cause-matched label, not a generic "internal error".
+            kind = FailureKind.INFRA_TRANSIENT if child_timed_out else FailureKind.RASTERIZATION_FAILED
+            raise ScannerFailureError(_root_cause_message(e), kind=kind) from e
 
     async def _mark_failed(self, observation_id: UUID, scanner_type: ScannerType, kind: str, message: str) -> None:
         await wf.execute_activity(

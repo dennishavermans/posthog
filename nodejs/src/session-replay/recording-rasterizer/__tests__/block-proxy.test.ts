@@ -20,6 +20,7 @@ function baseInput(overrides: Partial<RasterizeRecordingInput> = {}): RasterizeR
 const testCfg = {
     recordingApiBaseUrl: 'http://localhost:6738',
     recordingApiSecret: 'test-secret',
+    blockListingTimeoutMs: 30_000,
 }
 
 const mockLog = {
@@ -55,7 +56,7 @@ describe('BlockProxy', () => {
             expect(proxy.blockCount).toBe(2)
             expect(mockInternalFetch).toHaveBeenCalledWith(
                 'http://localhost:6738/api/projects/1/recordings/test-session-123/blocks',
-                { headers: { 'X-Internal-Api-Secret': 'test-secret' } }
+                { headers: { 'X-Internal-Api-Secret': 'test-secret' }, timeoutMs: 30_000 }
             )
         })
 
@@ -70,7 +71,10 @@ describe('BlockProxy', () => {
 
             expect(mockInternalFetch).toHaveBeenCalledWith(
                 'http://localhost:6738/api/projects/1/recordings/test-session-123/blocks',
-                { headers: { 'X-Internal-Api-Secret': 'test-secret', Authorization: 'Bearer minted-token' } }
+                {
+                    headers: { 'X-Internal-Api-Secret': 'test-secret', Authorization: 'Bearer minted-token' },
+                    timeoutMs: 30_000,
+                }
             )
         })
 

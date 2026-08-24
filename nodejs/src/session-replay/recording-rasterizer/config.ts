@@ -49,6 +49,9 @@ export const config = {
     // Recording API. The dev recording-api listens on 6741 (bin/temporal-recording-rasterizer-worker).
     recordingApiBaseUrl: process.env.RECORDING_API_BASE_URL || 'http://localhost:6741',
     recordingApiSecret: process.env.INTERNAL_API_SECRET || '',
+    // The block listing hits ClickHouse through recording-api, so the 3s internalFetch default (from
+    // EXTERNAL_REQUEST_TIMEOUT_MS) aborts it under load and fails the render before it starts.
+    blockListingTimeoutMs: parsePositiveInt(process.env.BLOCK_LISTING_TIMEOUT_MS, 30_000),
 
     // Player
     siteUrl: process.env.SITE_URL || 'http://localhost:8000',
