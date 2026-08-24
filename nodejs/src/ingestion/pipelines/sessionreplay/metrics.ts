@@ -11,6 +11,9 @@ export type MlAnonymizeRoute = 'stream' | 'tree' | ''
 
 export type MlImageLaneStage = 'collected' | 'deduped' | 'queued' | 'produced' | 'produce_failed'
 
+/** Whether the sender device clock reads ahead of or behind the server-stamped message time. */
+export type ClockSkewDirection = 'device_ahead' | 'device_behind'
+
 /** Stages of the URL lane. Deliberately the same vocabulary as {@link MlImageLaneStage}, so the two
  *  lanes read the same way on a dashboard even though only `collected` exists until the fetch lane
  *  ships. */
@@ -67,6 +70,13 @@ export class SessionRecordingIngesterMetrics {
         name: 'recording_blob_ingestion_v2_messages_by_encoding',
         help: 'The number of messages received from Kafka broken down by envelope content-encoding',
         labelNames: ['content_encoding'],
+    })
+
+    private static readonly messageClockSkew = new Histogram({
+        name: 'recording_blob_ingestion_v2_message_clock_skew_seconds',
+        help: 'Absolute gap between a replay message latest rrweb event time (the sender device clock) and the server-stamped Kafka message time, by direction. Replay skips the skew correction every other event gets, so a large gap means the recording start_time — the default playlist sort — disagrees with the corrected event time.',
+        labelNames: ['direction'],
+        buckets: [1, 5, 30, 60, 300, 900, 1800, 3600, 7200, 21600, 43200, 86400],
     })
 
     private static readonly mlAnonymizeDuration = new Histogram({
@@ -139,6 +149,10 @@ export class SessionRecordingIngesterMetrics {
 
     public static incrementMessagesByEncoding(encoding: string): void {
         this.messagesByEncoding.labels(encoding).inc()
+    }
+
+    public static observeMessageClockSkew(direction: ClockSkewDirection, seconds: number): void {
+        this.messageClockSkew.labels(direction).observe(seconds)
     }
 
     public static resetSessionsRevoked(): void {
