@@ -110,6 +110,21 @@ describe('BlockProxy', () => {
             })
         })
 
+        it('classifies a stalled body read as retryable BLOCK_LISTING_FAILED', async () => {
+            // Headers arrive, then the body read aborts past the budget. Without wrapping this reads
+            // as a generic UNKNOWN failure instead of the retryable block-listing code.
+            mockInternalFetch.mockResolvedValue({
+                status: 200,
+                json: jest.fn().mockRejectedValue(new Error('The operation was aborted due to timeout')),
+            })
+
+            const proxy = new BlockProxy(testCfg, mockLog)
+            await expect(proxy.fetchBlocks(baseInput())).rejects.toMatchObject({
+                retryable: true,
+                code: 'BLOCK_LISTING_FAILED',
+            })
+        })
+
         it('throws on invalid blocks response', async () => {
             mockInternalFetch.mockResolvedValue({
                 status: 200,
