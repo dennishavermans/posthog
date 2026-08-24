@@ -19,6 +19,9 @@ from products.warehouse_sources.backend.facade.models import ExternalDataDestina
 # a user cannot select one until its writer ships.
 DESTINATION_INTEGRATION_KINDS: dict[str, tuple[str, ...]] = {
     ExternalDataDestination.Type.POSTGRES: (Integration.IntegrationKind.POSTGRESQL,),
+    # Redshift is Postgres-wire, and the aws-redshift kind is itself a PostgreSQL-server
+    # integration, so it carries the cluster's host, user and password.
+    ExternalDataDestination.Type.REDSHIFT: (Integration.IntegrationKind.AWS_REDSHIFT,),
 }
 
 # Types a user may create. The PostHog warehouse row is created by the sync itself the first
