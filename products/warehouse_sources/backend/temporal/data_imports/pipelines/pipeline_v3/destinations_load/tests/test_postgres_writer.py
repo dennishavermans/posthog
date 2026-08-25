@@ -303,3 +303,75 @@ class TestValueFidelity:
             assert rows == [({"note": 'has\ta tab, a "quote" and a\nnewline'},)]
         finally:
             _drop(dsn, table_name, staging_table_name(ctx))
+
+
+class TestMergeConstraints:
+    """The merge target's unique constraint, which `ON CONFLICT` needs to exist."""
+
+    @staticmethod
+    def _unique_indexes(dsn: str, table: str) -> list[tuple[str, list[str]]]:
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            rows = conn.execute(
+                """
+                SELECT ic.relname::text, array_agg(a.attname::text ORDER BY a.attname)
+                FROM pg_index i
+                JOIN pg_class c ON c.oid = i.indrelid
+                JOIN pg_class ic ON ic.oid = i.indexrelid
+                JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY (i.indkey)
+                WHERE i.indisunique AND c.relname = %s
+                GROUP BY ic.relname
+                """,
+                (table,),
+            ).fetchall()
+        return [(name, cols) for name, cols in rows]
+
+    async def test_the_merge_target_is_created_with_its_primary_key(self, dsn, table_name) -> None:
+        # Declared at creation by acreate_table rather than added as a separate index, so the
+        # table carries exactly one unique constraint over the merge keys.
+        ctx = _ctx(table_name, "incremental", primary_keys=("id",))
+        writer = LocalPostgresWriter(ctx, dsn)
+        try:
+            await writer.write_batch(
+                _batches(_rows(["a"], [1])),
+                DestinationBatchContext(run=ctx, batch_index=0, is_final_batch=True),
+            )
+
+            indexes = self._unique_indexes(dsn, table_name)
+            assert [cols for _, cols in indexes] == [["id"]], indexes
+        finally:
+            _drop(dsn, table_name)
+
+    async def test_a_table_the_customer_already_had_gains_one(self, dsn, table_name) -> None:
+        # Nothing declared a key on this table, so the writer has to add one before it can
+        # merge into it.
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            conn.execute(f'CREATE TABLE "{table_name}" (id BIGINT, name TEXT)')
+
+        ctx = _ctx(table_name, "incremental", primary_keys=("id",))
+        writer = LocalPostgresWriter(ctx, dsn)
+        try:
+            await writer.write_batch(
+                _batches(_rows(["a"], [1])),
+                DestinationBatchContext(run=ctx, batch_index=0, is_final_batch=True),
+            )
+
+            assert [cols for _, cols in self._unique_indexes(dsn, table_name)] == [["id"]]
+            assert _read(dsn, table_name) == [(1, "a")]
+        finally:
+            _drop(dsn, table_name)
+
+    async def test_merging_many_batches_does_not_accumulate_indexes(self, dsn, table_name) -> None:
+        # The index step runs per merged batch. It used to CREATE ... IF NOT EXISTS, which
+        # matches on name, so a declared primary key would sit beside a duplicate of itself.
+        ctx = _ctx(table_name, "incremental", primary_keys=("id",))
+        writer = LocalPostgresWriter(ctx, dsn)
+        try:
+            for index in range(3):
+                await writer.write_batch(
+                    _batches(_rows(["a"], [index])),
+                    DestinationBatchContext(run=ctx, batch_index=index, is_final_batch=index == 2),
+                )
+
+            assert len(self._unique_indexes(dsn, table_name)) == 1
+        finally:
+            _drop(dsn, table_name)
