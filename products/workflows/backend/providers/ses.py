@@ -34,6 +34,28 @@ ISP_METRICS: tuple[str, ...] = ("SEND", "DELIVERY", "PERMANENT_BOUNCE", "COMPLAI
 METRIC_QUERY_BATCH_SIZE = 10
 
 
+def _bucket_date(timestamp: Any) -> str:
+    """
+    An ISO date key for one series bucket. boto3 hands back datetimes, but the key has to be
+    stable across sending domains so their series line up when summed, and JSON-safe on the way
+    out; anything unrecognized falls through as its own string rather than collapsing buckets
+    together.
+    """
+    if isinstance(timestamp, datetime):
+        return timestamp.date().isoformat()
+    return str(timestamp)
+
+
+@frozen
+class IspDailyPoint:
+    """One bucket of a provider's series, so a drop can be dated rather than just averaged away."""
+
+    date: str
+    emails_sent: int
+    delivery_rate: float
+    bounce_rate: float
+
+
 @frozen
 class IspSendingMetrics:
     """How one mailbox provider treated a project's mail over the requested window."""
@@ -44,6 +66,8 @@ class IspSendingMetrics:
     bounce_rate: float
     # None when the provider runs no feedback loop, so complaints are unmeasurable rather than zero.
     complaint_rate: float | None
+    # Oldest bucket first. Buckets SES returned nothing for are absent rather than zero-filled.
+    daily: tuple[IspDailyPoint, ...]
 
 
 class SESProvider:
@@ -544,14 +568,21 @@ class SESProvider:
                         }
                     )
 
-        totals: dict[tuple[str, str], int] = defaultdict(int)
+        # Kept per bucket rather than collapsed on arrival: the series is what lets a customer
+        # date a drop, and the window totals fall out of it by summing.
+        series: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: defaultdict(int))
         # strict=False: the final batch is short whenever the query count isn't a multiple of ten.
         for batch in batched(queries, METRIC_QUERY_BATCH_SIZE, strict=False):
             response = self.ses_v2_client.batch_get_metric_data(Queries=list(batch))  # type: ignore[arg-type]
             for result in response.get("Results", []):
                 isp, metric = query_subjects[result["Id"]]
-                # Values are cumulative per timestamp bucket, so the window total is their sum.
-                totals[(isp, metric)] += sum(result.get("Values", []))
+                buckets = series[(isp, metric)]
+                # AWS documents Values as "cumulative / sum" without saying which, so this reads
+                # them as per-bucket counts. If they turn out to be running totals the symptom is
+                # loud rather than subtle: summed deliveries would overshoot sends and every
+                # provider would pin to a 100% delivery rate against the clamp below.
+                for timestamp, value in zip(result.get("Timestamps", []), result.get("Values", []), strict=False):
+                    buckets[_bucket_date(timestamp)] += value
             for error in response.get("Errors", []):
                 # A failed query leaves its metric at zero, which understates a rate rather than
                 # breaking the panel. Log it so a systematic failure (ACCESS_DENIED on a fresh
@@ -567,19 +598,36 @@ class SESProvider:
 
         rows: list[IspSendingMetrics] = []
         for isp in isps:
-            emails_sent = totals[(isp, "SEND")]
+            sent_by_date = series[(isp, "SEND")]
+            emails_sent = sum(sent_by_date.values())
             if emails_sent == 0:
                 continue
-            complaint_base = totals[(isp, "DELIVERY_COMPLAINT")]
+            delivered_by_date = series[(isp, "DELIVERY")]
+            bounced_by_date = series[(isp, "PERMANENT_BOUNCE")]
+            complaint_base = sum(series[(isp, "DELIVERY_COMPLAINT")].values())
             rows.append(
                 IspSendingMetrics(
                     isp=isp,
                     emails_sent=emails_sent,
                     # Feedback for a send can arrive after the window closes, so a rate can exceed
                     # its denominator at the boundary. Clamp, as the project-wide rates do.
-                    delivery_rate=min(1.0, totals[(isp, "DELIVERY")] / emails_sent),
-                    bounce_rate=min(1.0, totals[(isp, "PERMANENT_BOUNCE")] / emails_sent),
-                    complaint_rate=(min(1.0, totals[(isp, "COMPLAINT")] / complaint_base) if complaint_base else None),
+                    delivery_rate=min(1.0, sum(delivered_by_date.values()) / emails_sent),
+                    bounce_rate=min(1.0, sum(bounced_by_date.values()) / emails_sent),
+                    complaint_rate=(
+                        min(1.0, sum(series[(isp, "COMPLAINT")].values()) / complaint_base) if complaint_base else None
+                    ),
+                    daily=tuple(
+                        IspDailyPoint(
+                            date=date,
+                            emails_sent=sent,
+                            delivery_rate=min(1.0, delivered_by_date.get(date, 0) / sent),
+                            bounce_rate=min(1.0, bounced_by_date.get(date, 0) / sent),
+                        )
+                        # Only buckets that sent something: a rate over zero sends is undefined,
+                        # and a zero-filled gap would draw as a cliff in the trend.
+                        for date, sent in sorted(sent_by_date.items())
+                        if sent > 0
+                    ),
                 )
             )
 

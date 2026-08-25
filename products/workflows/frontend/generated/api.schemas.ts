@@ -1306,6 +1306,20 @@ export interface WorkflowEmailSendingRatesApi {
 }
 
 /**
+ * One bucket of a provider's sending history.
+ */
+export interface IspDailyPointApi {
+    /** Bucket date, as an ISO 8601 calendar date. */
+    readonly date: string
+    /** Emails sent to this provider on this date. */
+    readonly emails_sent: number
+    /** Emails this provider accepted on this date, divided by emails sent to it (0-1). */
+    readonly delivery_rate: number
+    /** Hard bounces at this provider on this date, divided by emails sent to it (0-1). */
+    readonly bounce_rate: number
+}
+
+/**
  * How one mailbox provider treated this project's email, from AWS SES's own delivery data.
  */
 export interface IspSendingHealthApi {
@@ -1322,6 +1336,8 @@ export interface IspSendingHealthApi {
      * @nullable
      */
     readonly complaint_rate: number | null
+    /** Sending history for this provider, oldest first, so a drop can be dated rather than averaged into the window. Dates this provider received nothing are omitted. */
+    readonly daily: readonly IspDailyPointApi[]
 }
 
 export interface TeamEmailReputationResponseApi {

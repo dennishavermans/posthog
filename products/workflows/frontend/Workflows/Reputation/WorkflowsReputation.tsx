@@ -2,6 +2,7 @@ import { useActions, useValues } from 'kea'
 
 import { LemonBanner, LemonInput, LemonTable, LemonTag, LemonTagType, Link, Tooltip } from '@posthog/lemon-ui'
 
+import { Sparkline } from 'lib/components/Sparkline'
 import { humanFriendlyNumber, percentage } from 'lib/utils/numbers'
 import { urls } from 'scenes/urls'
 
@@ -135,6 +136,26 @@ function AwsFindings({ aws }: { aws: AwsTenantReputationApi }): JSX.Element | nu
     )
 }
 
+// A single point is a reading, not a trend, so the column stays empty until there are two.
+const MIN_TREND_POINTS = 2
+
+function DeliveryTrend({ isp }: { isp: IspSendingHealthApi }): JSX.Element | null {
+    if (isp.daily.length < MIN_TREND_POINTS) {
+        return null
+    }
+    return (
+        <div className="w-24">
+            <Sparkline
+                data={isp.daily.map((point) => point.delivery_rate * 100)}
+                labels={isp.daily.map((point) => point.date)}
+                name={`${isp.isp} delivery rate (%)`}
+                type="line"
+                maximumIndicator={false}
+            />
+        </div>
+    )
+}
+
 function IspBreakdown({ isps }: { isps: readonly IspSendingHealthApi[] }): JSX.Element | null {
     if (isps.length === 0) {
         return null
@@ -163,6 +184,11 @@ function IspBreakdown({ isps }: { isps: readonly IspSendingHealthApi[] }): JSX.E
                                 <span className="tabular-nums cursor-default">{formatRate(row.delivery_rate)}</span>
                             </Tooltip>
                         ),
+                    },
+                    {
+                        title: 'Delivery trend',
+                        key: 'delivery_trend',
+                        render: (_, row: IspSendingHealthApi) => <DeliveryTrend isp={row} />,
                     },
                     {
                         title: 'Bounce rate',

@@ -16,7 +16,7 @@ from posthog.models.user import User
 
 from products.workflows.backend.models import HogFlow, HogFlowBatchJob
 from products.workflows.backend.models.team_workflows_config import TeamWorkflowsConfig
-from products.workflows.backend.providers.ses import IspSendingMetrics
+from products.workflows.backend.providers.ses import IspDailyPoint, IspSendingMetrics
 
 try:
     from ee.models.rbac.access_control import AccessControl
@@ -272,10 +272,20 @@ class TestEmailReputationAPI(APIBaseTest):
             {},
             isp_metrics=[
                 IspSendingMetrics(
-                    isp="Gmail", emails_sent=900, delivery_rate=0.97, bounce_rate=0.01, complaint_rate=None
+                    isp="Gmail",
+                    emails_sent=900,
+                    delivery_rate=0.97,
+                    bounce_rate=0.01,
+                    complaint_rate=None,
+                    daily=(IspDailyPoint(date="2026-08-01", emails_sent=900, delivery_rate=0.97, bounce_rate=0.01),),
                 ),
                 IspSendingMetrics(
-                    isp="Yahoo", emails_sent=100, delivery_rate=0.99, bounce_rate=0.0, complaint_rate=0.002
+                    isp="Yahoo",
+                    emails_sent=100,
+                    delivery_rate=0.99,
+                    bounce_rate=0.0,
+                    complaint_rate=0.002,
+                    daily=(),
                 ),
             ],
         )
@@ -289,6 +299,14 @@ class TestEmailReputationAPI(APIBaseTest):
                 # Null rather than 0 — Gmail runs no feedback loop, so a complaint rate would be
                 # a number we can't actually measure.
                 "complaint_rate": None,
+                "daily": [
+                    {
+                        "date": "2026-08-01",
+                        "emails_sent": 900,
+                        "delivery_rate": 0.97,
+                        "bounce_rate": 0.01,
+                    }
+                ],
             },
             {
                 "isp": "Yahoo",
@@ -296,6 +314,7 @@ class TestEmailReputationAPI(APIBaseTest):
                 "delivery_rate": 0.99,
                 "bounce_rate": 0.0,
                 "complaint_rate": 0.002,
+                "daily": [],
             },
         ]
 

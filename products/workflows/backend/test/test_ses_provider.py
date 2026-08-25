@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 import pytest
@@ -610,6 +611,58 @@ class TestGetIdentityIspMetrics(TestCase):
             }
 
         self.mock_client.batch_get_metric_data.side_effect = lambda Queries: respond(Queries)
+
+    def _serve_series(self, values_by_subject: dict[tuple[str, str], dict[str, int]]) -> None:
+        """Answer from a {(isp, metric): {date: value}} table, so a query spans several buckets."""
+
+        def respond(Queries):
+            results = []
+            for query in Queries:
+                buckets = values_by_subject.get((query["Dimensions"]["ISP"], query["Metric"]), {})
+                results.append(
+                    {
+                        "Id": query["Id"],
+                        "Timestamps": [datetime.fromisoformat(date) for date in sorted(buckets)],
+                        "Values": [buckets[date] for date in sorted(buckets)],
+                    }
+                )
+            return {"Results": results}
+
+        self.mock_client.batch_get_metric_data.side_effect = lambda Queries: respond(Queries)
+
+    def test_daily_series_is_ordered_and_merged_across_domains(self):
+        # Two domains reporting the same days have to land in one bucket per day, or the trend
+        # draws each domain as its own point and every rate is computed against half the sends.
+        self._serve_series(
+            {
+                ("Gmail", "SEND"): {"2026-08-02": 50, "2026-08-01": 100},
+                ("Gmail", "DELIVERY"): {"2026-08-02": 10, "2026-08-01": 95},
+            }
+        )
+
+        rows = self.provider.get_identity_isp_metrics(
+            [TEST_DOMAIN, "other.posthog.com"], window_days=30, isps=["Gmail"]
+        )
+
+        assert [(point.date, point.emails_sent, point.delivery_rate) for point in rows[0].daily] == [
+            ("2026-08-01", 200, 0.95),
+            # The drop the whole feature exists to make visible; the 30-day average hides it.
+            ("2026-08-02", 100, 0.2),
+        ]
+
+    def test_daily_series_skips_buckets_with_no_sends(self):
+        # A rate over zero sends is undefined, and zero-filling would draw a cliff that never
+        # happened.
+        self._serve_series(
+            {
+                ("Gmail", "SEND"): {"2026-08-01": 10, "2026-08-02": 0},
+                ("Gmail", "DELIVERY"): {"2026-08-01": 9, "2026-08-02": 0},
+            }
+        )
+
+        rows = self.provider.get_identity_isp_metrics([TEST_DOMAIN], window_days=30, isps=["Gmail"])
+
+        assert [point.date for point in rows[0].daily] == ["2026-08-01"]
 
     @parameterized.expand(
         [
