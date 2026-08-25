@@ -400,8 +400,13 @@ _task_queue_specs = [
         # cut over and any in-flight runs have drained, drop them from
         # AI_WORKFLOWS / AI_ACTIVITIES and flip the start_workflow callers in
         # products/slack_app to settings.TASKS_TASK_QUEUE.
-        TASKS_WORKFLOWS + POSTHOG_CODE_SLACK_WORKFLOWS + WIZARD_WORKFLOWS,
-        TASKS_ACTIVITIES + POSTHOG_CODE_SLACK_ACTIVITIES + WIZARD_ACTIVITIES,
+        TASKS_WORKFLOWS + POSTHOG_CODE_SLACK_WORKFLOWS,
+        TASKS_ACTIVITIES + POSTHOG_CODE_SLACK_ACTIVITIES,
+    ),
+    (
+        settings.WIZARD_TASK_QUEUE,
+        WIZARD_WORKFLOWS,
+        WIZARD_ACTIVITIES,
     ),
     (
         settings.MAX_AI_TASK_QUEUE,

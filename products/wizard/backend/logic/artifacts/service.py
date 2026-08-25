@@ -1,6 +1,8 @@
 from hashlib import sha256
 from uuid import UUID
 
+from django.conf import settings
+
 from posthog.storage import object_storage
 
 from products.wizard.backend.facade.contracts import (
@@ -27,7 +29,12 @@ def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> Wiza
 
     storage_path = _git_diff_storage_path(team_id, run_id)
 
-    object_storage.write(storage_path, content, extras={"ContentType": GIT_DIFF_CONTENT_TYPE})
+    object_storage.write(
+        storage_path,
+        content,
+        extras={"ContentType": GIT_DIFF_CONTENT_TYPE},
+        bucket=settings.WIZARD_RUN_ARTIFACTS_S3_BUCKET,
+    )
 
     artifact = store.upsert_git_diff(
         team_id=team_id,
@@ -65,4 +72,4 @@ def list_run_artifacts(team_id: int, run_id: UUID) -> list[WizardRunArtifactDTO]
 
 
 def _git_diff_storage_path(team_id: int, run_id: UUID) -> str:
-    return f"wizard/runs/team_{team_id}/run_{run_id}/artifacts/git.diff"
+    return f"projects/{team_id}/wizard-runs/{run_id}/artifacts/git-diff.patch"

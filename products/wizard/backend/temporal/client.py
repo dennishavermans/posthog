@@ -25,7 +25,7 @@ async def start_wizard_run_workflow(input: WizardRunActivityInput) -> None:
             input,
             id=wizard_run_workflow_id(input.run_id),
             id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
-            task_queue=settings.TASKS_TASK_QUEUE,
+            task_queue=settings.WIZARD_TASK_QUEUE,
             retry_policy=WORKFLOW_RETRY_POLICY,
         )
     except WorkflowAlreadyStartedError:
