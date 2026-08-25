@@ -42,6 +42,7 @@ from products.batch_exports.backend.temporal.destinations.postgres_batch_export 
     Fields,
     PostgreSQLClient,
     PostgreSQLIntegrationNotFoundError,
+    run_in_retryable_transaction,
 )
 from products.batch_exports.backend.temporal.pipeline.transformer import CSVStreamTransformer
 from products.warehouse_sources.backend.temporal.data_imports.destinations.contracts import (
@@ -173,16 +174,29 @@ class PostgresDestinationWriter:
     # --- schema -----------------------------------------------------------------------
 
     async def _ensure_table(
-        self, client: PostgreSQLClient, table: str, schema: pa.Schema, *, with_batch_index: bool
+        self,
+        client: PostgreSQLClient,
+        table: str,
+        schema: pa.Schema,
+        *,
+        with_batch_index: bool,
+        primary_keys: list[str] | None = None,
     ) -> None:
         async with self._write_cursor(client) as cursor:
             await cursor.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(self._schema)))
 
+        fields = self._fields_for(schema, with_batch_index=with_batch_index)
+        # Declared at creation rather than added later, so the merge target carries its own
+        # constraint. `_ensure_unique_index` still covers a table the customer already had,
+        # which this never touches.
+        key = [(name, type_name) for name, type_name in fields if name in set(primary_keys or ())]
+
         await client.acreate_table(
             self._schema,
             table,
-            self._fields_for(schema, with_batch_index=with_batch_index),
+            fields,
             exists_ok=True,
+            primary_key=key or None,  # ty: ignore[invalid-argument-type]
         )
 
     async def _evolve_table(self, client: PostgreSQLClient, table: str, schema: pa.Schema) -> None:
@@ -221,7 +235,13 @@ class PostgresDestinationWriter:
             first = True
             async for batch in batches:
                 if first:
-                    await self._ensure_table(client, target, batch.schema, with_batch_index=full_refresh)
+                    await self._ensure_table(
+                        client,
+                        target,
+                        batch.schema,
+                        with_batch_index=full_refresh,
+                        primary_keys=list(run.primary_keys) if run.is_incremental and not full_refresh else None,
+                    )
                     await self._evolve_table(client, target, batch.schema)
                     if full_refresh:
                         # This batch may be a re-apply after a crash, so clear whatever its
@@ -348,21 +368,55 @@ class PostgresDestinationWriter:
             conflict=conflict,
             action=sql.SQL("UPDATE SET {}").format(set_clause) if updates else sql.SQL("NOTHING"),
         )
-        async with self._write_cursor(client) as cursor:
-            await cursor.execute(statement)
+
+        async def upsert() -> None:
+            async with client.connection.cursor() as cursor:
+                await cursor.execute("SET TRANSACTION READ WRITE")
+                await cursor.execute(statement)
+
+        # A concurrent `INSERT ... ON CONFLICT` is the shape that raises SerializationFailure,
+        # and this is the one statement here that two runs of different schemas can contend on.
+        await run_in_retryable_transaction(client.connection, upsert)
 
     async def _ensure_unique_index(self, client: PostgreSQLClient, target: str, primary_keys: list[str]) -> None:
-        """ON CONFLICT needs a unique constraint on the merge keys."""
-        index_name = f"{target}__ph_pk"
+        """`ON CONFLICT` needs a unique constraint on the merge keys.
+
+        A table this writer created already carries one, declared as its primary key. This
+        covers the other case: a table the customer already had. `IF NOT EXISTS` matches on
+        the index name, not on the columns, so without the check below a table with a primary
+        key would carry a second unique index over the same columns and pay for it on every
+        write.
+        """
+        if await self._has_unique_index_on(client, target, primary_keys):
+            return
+
         async with self._write_cursor(client) as cursor:
             await cursor.execute(
                 sql.SQL("CREATE UNIQUE INDEX IF NOT EXISTS {} ON {}.{} ({})").format(
-                    sql.Identifier(index_name),
+                    sql.Identifier(f"{target}__ph_pk"),
                     sql.Identifier(self._schema),
                     sql.Identifier(target),
                     sql.SQL(", ").join(sql.Identifier(c) for c in primary_keys),
                 )
             )
+
+    async def _has_unique_index_on(self, client: PostgreSQLClient, target: str, columns: list[str]) -> bool:
+        """Whether some unique index already covers exactly these columns, in any order."""
+        async with client.connection.cursor() as cursor:
+            await cursor.execute(
+                """
+                SELECT array_agg(a.attname::text ORDER BY a.attname)
+                FROM pg_index i
+                JOIN pg_class c ON c.oid = i.indrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY (i.indkey)
+                WHERE i.indisunique AND c.relname = %(table)s AND n.nspname = %(schema)s
+                GROUP BY i.indexrelid
+                """,
+                {"table": target, "schema": self._schema},
+            )
+            wanted = sorted(columns)
+            return any(sorted(row[0] or []) == wanted for row in await cursor.fetchall())
 
     async def finalize_run(self, ctx: DestinationRunContext) -> None:
         """Publish a full refresh by swapping the staging table into place."""
