@@ -46,6 +46,7 @@ import { getDefaultReviewMode } from "@posthog/ui/features/code-review/getDefaul
 import { useReviewNavigationStore } from "@posthog/ui/features/code-review/reviewNavigationStore";
 import { CommandKeyHints } from "@posthog/ui/features/command/CommandKeyHints";
 import {
+  addRecentCommand,
   matchesCommandSearch,
   prioritizeExactCommandMatches,
 } from "@posthog/ui/features/command/commandSearch";
@@ -68,6 +69,7 @@ import {
   useSearchSections,
 } from "@posthog/ui/features/command/useSearchSections";
 import { useTaskSearch } from "@posthog/ui/features/command/useTaskSearch";
+import { useChannelReportsEnabled } from "@posthog/ui/features/feature-flags/useChannelReportsEnabled";
 import { useFeatureFlag } from "@posthog/ui/features/feature-flags/useFeatureFlag";
 import { useFolders } from "@posthog/ui/features/folders/useFolders";
 import { useProvisioningStore } from "@posthog/ui/features/provisioning/store";
@@ -216,6 +218,8 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     import.meta.env.DEV,
   );
   const loopsEnabled = useFeatureFlag(LOOPS_FLAG, import.meta.env.DEV);
+  // With channel reports on, spaces own reports and the inbox entry goes away.
+  const channelReportsEnabled = useChannelReportsEnabled();
   const { channels } = useChannels({ enabled: bluebirdEnabled });
   const { theme, setTheme } = useThemeStore();
   const toggleLeftSidebar = useSidebarStore((state) => state.toggle);
@@ -233,6 +237,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     (state) => state.activeTasks,
   );
   const [query, setQuery] = useState("");
+  const [recentCommands, setRecentCommands] = useState<Command[]>([]);
   const [remoteQuery, setRemoteQuery] = useState("");
   // The legacy title search only ever surfaces while the palette is browsing
   // (see `showRemoteSearch` below). The feed-query `mode` that decides that is
@@ -350,18 +355,22 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
         shortcut: SHORTCUTS.SETTINGS,
         onRun: () => openSettingsDialog(),
       },
-      {
-        id: "inbox",
-        label: "Inbox",
-        keywords: "reports pull requests agents notifications",
-        icon: <EnvelopeSimple size={12} className="text-gray-11" />,
-        action: "open-inbox",
-        shortcut: SHORTCUTS.INBOX,
-        onRun: () => {
-          closeSettingsDialog();
-          navigateToInbox();
-        },
-      },
+      ...(channelReportsEnabled
+        ? []
+        : [
+            {
+              id: "inbox",
+              label: "Self-driving",
+              keywords: "reports pull requests agents notifications",
+              icon: <EnvelopeSimple size={12} className="text-gray-11" />,
+              action: "open-inbox",
+              shortcut: SHORTCUTS.INBOX,
+              onRun: () => {
+                closeSettingsDialog();
+                navigateToInbox();
+              },
+            } satisfies Command,
+          ]),
       {
         id: "archived",
         label: "Archived",
@@ -570,6 +579,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     canSearchFiles,
     openFilePicker,
     loopsEnabled,
+    channelReportsEnabled,
   ]);
 
   const taskSections = useMemo<CommandSection[]>(() => {
@@ -726,7 +736,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     remoteSearchAllowedRef.current = browsing && !scope;
   }, [mode, scope]);
 
-  const sections = useMemo(() => {
+  const baseSections = useMemo(() => {
     const browsing = mode === "browsing" || mode === "completingKey";
     const showCommands = browsing && (!scope || scope === "command");
     const showChannels = browsing && (!scope || scope === "space");
@@ -753,6 +763,28 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     searchText,
   ]);
 
+  const sections = useMemo(() => {
+    if (query.trim() || recentCommands.length === 0) return baseSections;
+    const currentCommands = new Map(
+      baseSections.flatMap((section) =>
+        section.items.map((command) => [command.id, command] as const),
+      ),
+    );
+    const recentItems = recentCommands.map(
+      (command) => currentCommands.get(command.id) ?? command,
+    );
+    const recentIds = new Set(recentItems.map((command) => command.id));
+    return [
+      { label: "Recent", items: recentItems },
+      ...baseSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((command) => !recentIds.has(command.id)),
+        }))
+        .filter((section) => section.items.length > 0),
+    ];
+  }, [baseSections, query, recentCommands]);
+
   const paletteFilter = useCallback(
     (command: { label: string; keywords?: string }) =>
       matchesCommandSearch(command, searchText),
@@ -775,6 +807,9 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       action_type: cmd.action,
       channel_id: cmd.channelId,
     });
+    if (!cmd.keepOpen) {
+      setRecentCommands((recent) => addRecentCommand(recent, cmd));
+    }
     cmd.onRun();
     if (cmd.keepOpen) return;
     onOpenChange(false);
