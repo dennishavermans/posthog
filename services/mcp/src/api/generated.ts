@@ -57422,7 +57422,7 @@ export namespace Schemas {
     } as const;
 
     /**
-     * Only the content fields the proposal changes. Valid keys are the workflow's content fields: actions, edges, trigger, trigger_masking, conversion, exit_condition, abort_action, variables. Each value has the same shape as on the workflow itself.
+     * Only the content fields the proposal changes. Valid keys are the workflow's content fields: actions, edges, trigger, trigger_masking, conversion, exit_condition, email_sending_rate_limit, abort_action, variables. Each value has the same shape as on the workflow itself.
      */
     export type WorkflowProposalContent = { [key: string]: unknown };
 
@@ -57437,7 +57437,7 @@ export namespace Schemas {
       readonly title: string;
       /** Why the producer thinks this change is worth making. */
       readonly rationale: string;
-      /** Only the content fields the proposal changes. Valid keys are the workflow's content fields: actions, edges, trigger, trigger_masking, conversion, exit_condition, abort_action, variables. Each value has the same shape as on the workflow itself. */
+      /** Only the content fields the proposal changes. Valid keys are the workflow's content fields: actions, edges, trigger, trigger_masking, conversion, exit_condition, email_sending_rate_limit, abort_action, variables. Each value has the same shape as on the workflow itself. */
       readonly content: WorkflowProposalContent;
       /** The numbers behind the proposal. Conventional keys: metric, current_value, target_value, window, query, app_source_id. Two are required whenever a rate is claimed: `n`, the denominator that rate was computed over, and `guardrails`, a list of {metric, value, n} counter-metrics read over the same window. A rate with no denominator lets a reviewer mistake noise for a result, and a target with no counter-metrics hides a change that lifts one number by harming another. */
       readonly evidence: WorkflowProposalEvidence;
