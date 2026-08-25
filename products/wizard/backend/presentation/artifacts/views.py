@@ -17,10 +17,12 @@ from products.wizard.backend.presentation.artifacts.serializers import (
     WizardRunArtifactSerializer,
     serialize_wizard_run_artifact,
 )
+from products.wizard.backend.presentation.permissions import WizardRunSessionAuthenticationRequired
 from products.wizard.backend.presentation.runs.serializers import WizardRunErrorSerializer
 
 
 class WizardRunArtifactViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
+    permission_classes = [WizardRunSessionAuthenticationRequired]
     scope_object = "wizard_session"
     scope_object_read_actions = ["list"]
     http_method_names = ["get", "head", "options"]

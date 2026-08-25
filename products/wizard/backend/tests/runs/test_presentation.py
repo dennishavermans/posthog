@@ -284,30 +284,41 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
 
-    @patch(
-        "products.wizard.backend.logic.runs.repository_access.repo_selection.repository_accessible_via_integration",
-        return_value=True,
-    )
-    @patch(
-        "products.wizard.backend.logic.runs.repository_access.repo_selection.resolve_team_github_integration_id",
-        return_value=123,
-    )
-    def test_cloud_run_rejects_automated_token(self, _resolve_integration, _repository_accessible) -> None:
-        self._authenticate_personal_api_key(["wizard_session:write"])
+    def test_personal_api_key_cannot_access_wizard_runs(self) -> None:
+        run = wizard_facade.create_run(
+            CreateWizardRunInput(
+                team_id=self.team.id,
+                created_by_id=self.user.id,
+                program_id="posthog-integration",
+                environment=WizardRunEnvironment.LOCAL,
+                workspace=LocalFolderWorkspace(project_name="example-project"),
+            )
+        )
+
+        self._authenticate_personal_api_key(["wizard_session:read", "wizard_session:write"])
+
+        for url in (
+            self._url(),
+            self._url(str(run.id)),
+            self._url(f"{run.id}/artifacts/"),
+        ):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
         response = self.client.post(
             self._url(),
             {
                 "program_id": "posthog-integration",
-                "environment": "cloud",
-                "idempotency_key": "automated-token",
-                "workspace": {"type": "git_repository", "repository": "posthog/posthog"},
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "another-project"},
             },
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertFalse(WizardRun.objects.for_team(self.team.id).exists())
+        self.assertEqual(WizardRun.objects.for_team(self.team.id).count(), 1)
 
     @patch(
         "products.wizard.backend.logic.runs.repository_access.repo_selection.repository_accessible_via_integration",

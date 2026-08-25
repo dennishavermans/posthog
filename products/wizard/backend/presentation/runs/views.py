@@ -17,6 +17,7 @@ from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import WizardRunDTO
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
 from products.wizard.backend.facade.errors import IllegalStatusTransitionError, WizardRunNotFoundError
+from products.wizard.backend.presentation.permissions import WizardRunSessionAuthenticationRequired
 from products.wizard.backend.presentation.runs.errors import (
     WIZARD_RUN_CREATION_ERRORS,
     WizardRunCreationError,
@@ -32,6 +33,7 @@ from products.wizard.backend.presentation.runs.serializers import (
 
 
 class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
+    permission_classes = [WizardRunSessionAuthenticationRequired]
     scope_object = "wizard_session"
     scope_object_read_actions = ["list", "retrieve"]
     scope_object_write_actions = ["create", "partial_update"]

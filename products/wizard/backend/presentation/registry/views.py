@@ -9,11 +9,13 @@ from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.models import User
 
 from products.wizard.backend.facade import api as wizard_facade
+from products.wizard.backend.presentation.permissions import WizardRunSessionAuthenticationRequired
 from products.wizard.backend.presentation.registry.pagination import WizardRegistryPagination
 from products.wizard.backend.presentation.registry.serializers import WizardProgramSerializer
 
 
 class WizardRegistryViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
+    permission_classes = [WizardRunSessionAuthenticationRequired]
     scope_object = "wizard_session"
     scope_object_read_actions = ["list"]
     http_method_names = ["get", "head", "options"]

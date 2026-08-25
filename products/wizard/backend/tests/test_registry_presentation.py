@@ -3,7 +3,8 @@ from unittest.mock import patch
 
 from rest_framework import status
 
-from posthog.models import Organization
+from posthog.models import Organization, PersonalAPIKey
+from posthog.models.utils import generate_random_token_personal, hash_key_value
 
 
 class TestWizardRegistryViewSet(APIBaseTest):
@@ -63,6 +64,21 @@ class TestWizardRegistryViewSet(APIBaseTest):
         response = self.client.get(self._url())
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_list_rejects_personal_api_key(self) -> None:
+        token = generate_random_token_personal()
+        PersonalAPIKey.objects.create(
+            label="Wizard registry test key",
+            user=self.user,
+            secure_value=hash_key_value(token),
+            scopes=["wizard_session:read"],
+        )
+        self.client.logout()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        response = self.client.get(self._url())
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_list_rejects_another_organizations_project(self) -> None:
         organization = Organization.objects.create(name="Other organization")
