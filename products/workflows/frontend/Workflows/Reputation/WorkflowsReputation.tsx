@@ -144,15 +144,19 @@ function DeliveryTrend({ isp }: { isp: IspSendingHealthApi }): JSX.Element | nul
         return null
     }
     return (
-        <div className="w-24">
-            <Sparkline
-                data={isp.daily.map((point) => point.delivery_rate * 100)}
-                labels={isp.daily.map((point) => point.date)}
-                name={`${isp.isp} delivery rate (%)`}
-                type="line"
-                maximumIndicator={false}
-            />
-        </div>
+        <Sparkline
+            data={isp.daily.map((point) => point.delivery_rate * 100)}
+            labels={isp.daily.map((point) => point.date)}
+            name={`${isp.isp} delivery rate (%)`}
+            type="line"
+            maximumIndicator={false}
+            // Fixed 0-100 rather than auto-scaled per row: these are read against each other, and
+            // an auto-scaled axis draws a steady 40% provider identically to a steady 98% one.
+            withYScale={(y) => ({ ...y, min: 0, max: 100 })}
+            // Sizes Sparkline's own container: without a height it grows to fill the table cell
+            // and the canvas bleeds across rows.
+            className="h-8 w-28"
+        />
     )
 }
 
