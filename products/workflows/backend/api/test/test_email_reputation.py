@@ -374,7 +374,14 @@ class TestEmailReputationAccessControl(APIBaseTest):
             "findings": [],
         }
         provider.get_identity_isp_metrics.return_value = [
-            IspSendingMetrics(isp="Gmail", emails_sent=100, delivery_rate=0.9, bounce_rate=0.05, complaint_rate=None)
+            IspSendingMetrics(
+                isp="Gmail",
+                emails_sent=100,
+                delivery_rate=0.9,
+                bounce_rate=0.05,
+                complaint_rate=None,
+                daily=(),
+            )
         ]
         with (
             patch(
