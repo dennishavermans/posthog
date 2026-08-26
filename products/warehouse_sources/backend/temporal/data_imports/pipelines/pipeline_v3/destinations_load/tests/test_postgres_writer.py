@@ -18,6 +18,7 @@ from products.warehouse_sources.backend.temporal.data_imports.pipelines.pipeline
     PostgresDestinationWriter,
     UnrelatedTableExistsError,
     _owned_marker,
+    _scoped_identifier,
     staging_table_name,
 )
 
@@ -131,6 +132,42 @@ class TestStagingTableNameTruncation:
         name = staging_table_name(ctx)
 
         assert len(name.encode()) <= 63
+
+
+class TestScopedIdentifierTruncation:
+    """`_scoped_identifier` is what `staging_table_name` above is built on, and also what an
+    incremental merge's per-batch stage table and unique index names are built on. Unlike a
+    full refresh's staging name, an incremental `target` is never itself truncated by this
+    writer, so it can already sit at Postgres's 63-byte limit before a suffix is even added.
+    """
+
+    def test_a_short_base_is_untouched(self) -> None:
+        name = _scoped_identifier("orders", "__ph_merge_abcd1234")
+
+        assert name == "orders__ph_merge_abcd1234"
+
+    def test_a_63_byte_base_still_gets_a_distinct_suffixed_name(self) -> None:
+        # The exact shape of the bug: `target` is already at the limit a merge stage or index
+        # name would otherwise collapse onto if its suffix were left for Postgres to truncate.
+        base = "t" * 63
+        stage = _scoped_identifier(base, "__ph_merge_abcd1234")
+        index = _scoped_identifier(base, "__ph_pk")
+
+        assert stage != base
+        assert index != base
+        assert stage != index
+        assert len(stage.encode()) <= 63
+        assert len(index.encode()) <= 63
+        assert stage.endswith("__ph_merge_abcd1234")
+        assert index.endswith("__ph_pk")
+
+    def test_a_far_longer_base_still_yields_a_distinct_suffixed_name(self) -> None:
+        base = "t" * 200
+        stage = _scoped_identifier(base, "__ph_merge_abcd1234")
+
+        assert stage != base.encode()[:63].decode()
+        assert stage.endswith("__ph_merge_abcd1234")
+        assert len(stage.encode()) <= 63
 
 
 class TestFullRefresh:
@@ -371,6 +408,31 @@ class TestIncremental:
             assert rows == [(1, None), (2, "kept")]
         finally:
             _drop(dsn, table_name)
+
+    async def test_a_table_name_already_at_the_identifier_limit_still_merges_correctly(self, dsn) -> None:
+        """Regression test for the merge-stage aliasing bug: an incremental run's live table
+        name is never truncated by this writer (unlike a full refresh's staging name), so it
+        can already sit at Postgres's 63-byte limit on its own. Each batch's merge stage must
+        still get a name distinct from it, or `_merge_stage`'s `delete=True` drops the live
+        table out from under the run instead of just its own short-lived stage.
+        """
+        long_name = "t" * 70
+        actual_table = long_name.encode()[:63].decode()
+        ctx = _ctx(long_name, "incremental", primary_keys=("id",))
+        writer = LocalPostgresWriter(ctx, dsn)
+        try:
+            await writer.write_batch(
+                _batches(_rows(["first", "second"], [1, 2])),
+                DestinationBatchContext(run=ctx, batch_index=0, is_final_batch=False),
+            )
+            await writer.write_batch(
+                _batches(_rows(["updated"], [1])),
+                DestinationBatchContext(run=ctx, batch_index=1, is_final_batch=True),
+            )
+
+            assert _read(dsn, actual_table) == [(1, "updated"), (2, "second")]
+        finally:
+            _drop(dsn, actual_table)
 
 
 class TestIncrementalTableOwnership:
