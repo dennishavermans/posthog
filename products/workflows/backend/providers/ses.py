@@ -541,10 +541,16 @@ class SESProvider:
         shown as a row of zeros.
         """
         isps = list(isps) if isps is not None else list(settings.SES_ISP_DIMENSIONS)
+        # A project can verify several senders on one domain, and each duplicate would query the
+        # same VDM series again and sum it in twice, inflating volume while leaving rates intact.
+        domains = list(dict.fromkeys(domains))
         if not domains or not isps:
             return []
 
-        end = datetime.now(tz=UTC)
+        # VDM aggregates daily and rejects the whole batch if either bound is a partial day
+        # ("you must not specify partial-day timestamps"), so the window is whole UTC days ending
+        # at the last midnight. Today's partial day is therefore excluded.
+        end = datetime.now(tz=UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         start = end - timedelta(days=window_days)
 
         # Dimensions filter rather than group, and the response echoes only the query id — so a

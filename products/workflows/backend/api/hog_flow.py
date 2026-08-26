@@ -1595,13 +1595,17 @@ def _fetch_isp_metrics(team_id: int, window_days: int) -> list[dict[str, Any]]:
     if cached is not None:
         return cached["value"]
 
-    domains = [
-        domain
-        for domain in Integration.objects.filter(team_id=team_id, kind="email", config__verified=True)
-        .order_by("id")
-        .values_list("config__domain", flat=True)[:ISP_METRICS_MAX_DOMAINS]
-        if domain
-    ]
+    # Dedupe before the cap: several senders commonly share one domain, and letting duplicates
+    # consume the budget would drop real domains from the breakdown.
+    domains = list(
+        dict.fromkeys(
+            domain
+            for domain in Integration.objects.filter(team_id=team_id, kind="email", config__verified=True)
+            .order_by("id")
+            .values_list("config__domain", flat=True)
+            if domain
+        )
+    )[:ISP_METRICS_MAX_DOMAINS]
     if not domains:
         cache.set(cache_key, {"value": []}, ISP_METRICS_CACHE_SECONDS)
         return []
