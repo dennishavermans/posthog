@@ -149,12 +149,9 @@ function DeliveryTrend({ isp }: { isp: IspSendingHealthApi }): JSX.Element | nul
             labels={isp.daily.map((point) => point.date)}
             name={`${isp.isp} delivery rate (%)`}
             type="line"
-            maximumIndicator={false}
-            // Fixed 0-100 rather than auto-scaled per row: these are read against each other, and
-            // an auto-scaled axis draws a steady 40% provider identically to a steady 98% one.
-            withYScale={(y) => ({ ...y, min: 0, max: 100 })}
+            renderTooltipValue={(value) => `${value.toFixed(1)}%`}
             // Sizes Sparkline's own container: without a height it grows to fill the table cell
-            // and the canvas bleeds across rows.
+            // and the chart bleeds across rows.
             className="h-8 w-28"
         />
     )
@@ -192,6 +189,8 @@ function IspBreakdown({ isps }: { isps: readonly IspSendingHealthApi[] }): JSX.E
                     {
                         title: 'Delivery trend',
                         key: 'delivery_trend',
+                        tooltip:
+                            'Each provider is drawn against its own range, so read the shape rather than the height. The delivery rate beside it gives the level.',
                         render: (_, row: IspSendingHealthApi) => <DeliveryTrend isp={row} />,
                     },
                     {
