@@ -1,6 +1,6 @@
 ---
 name: adding-inbox-sources
-description: Add a new warehouse-backed source to the PostHog Code Self-driving Inbox (the feature that ships GitHub, Linear, Zendesk, pganalyze, Jira). A source syncs one warehouse table (issues/tickets/conversations) and a cloud "signals scout" watches it and emits findings. Use when asked to "add a new inbox/self-driving source", "wire up <Jira/GitLab/Sentry/Intercom/Freshdesk/Front/Gorgias/etc> as a signal source", or to extend the source-toggle grid. Covers all three surfaces (posthog/posthog scout emitter + posthog/code UI wiring + the context-mill self-driving wizard skill that offers the source in `npx @posthog/wizard self-driving`), the deploy ordering between them, and created_via attribution.
+description: Add a new warehouse-backed source to the PostHog Desktop Self-driving Inbox (the feature that ships GitHub, Linear, Zendesk, pganalyze, Jira). A source syncs one warehouse table (issues/tickets/conversations) and a cloud "signals scout" watches it and emits findings. Use when asked to "add a new inbox/self-driving source", "wire up <Jira/GitLab/Sentry/Intercom/Freshdesk/Front/Gorgias/etc> as a signal source", or to extend the source-toggle grid. Covers all three surfaces (posthog/posthog scout emitter + posthog/code UI wiring + the context-mill self-driving wizard skill that offers the source in `npx @posthog/wizard self-driving`), the deploy ordering between them, and created_via attribution.
 ---
 
 # Adding a Self-driving Inbox source
@@ -69,7 +69,7 @@ Only two field types still lack a generic renderer (disable submit): `ssh-tunnel
 `DynamicSourceSetup` opportunistically; don't add new ones.
 
 Supported OAuth `kind` values (posthog `OauthIntegration.supported_kinds`,
-`posthog/models/integration.py`): `slack, salesforce, hubspot, google-ads,
+`posthog/models/integration/oauth.py`): `slack, salesforce, hubspot, google-ads,
 google-analytics, google-search-console, google-sheets, snapchat, linkedin-ads,
 reddit-ads, tiktok-ads, bing-ads, meta-ads, intercom, linear, clickup, jira,
 pinterest-ads, stripe` (+ `github` via App install). **A source not in this list
@@ -211,7 +211,7 @@ value `mcp` is upgraded based on the caller:
 
 | Caller                                       | Transport                  | `created_via`  |
 | -------------------------------------------- | -------------------------- | -------------- |
-| PostHog Code app inbox (`posthog/code`)      | `EventSource.POSTHOG_CODE` | `self_driving` |
+| PostHog Desktop app inbox (`posthog/code`)   | `EventSource.POSTHOG_CODE` | `self_driving` |
 | `npx @posthog/wizard` (self-driving program) | `EventSource.WIZARD`       | `self_driving` |
 | Other MCP clients                            | `EventSource.MCP`          | `mcp`          |
 

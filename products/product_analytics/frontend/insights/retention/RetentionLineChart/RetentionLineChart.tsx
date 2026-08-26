@@ -64,8 +64,10 @@ export function RetentionLineChart({ inSharedMode = false }: RetentionLineChartP
         shouldShowMeanPerBreakdown,
         showTrendLines,
         xAxisLabels,
+        getRetentionColor,
     } = useValues(retentionGraphLogic(insightProps))
     const { openModal } = useActions(retentionModalLogic(insightProps))
+    const { canOpenPersonModal } = useValues(retentionModalLogic(insightProps))
     const { aggregationLabel } = useValues(groupsModel)
 
     const selectedInterval = retentionFilter?.selectedInterval ?? null
@@ -73,15 +75,16 @@ export function RetentionLineChart({ inSharedMode = false }: RetentionLineChartP
     const isPercentage = !retentionFilter?.aggregationType || retentionFilter.aggregationType === 'count'
     const isIntervalView = selectedInterval !== null
     // Shared (public) views don't have the persons modal mounted — disable click-to-open there.
-    const canClick = !shouldShowMeanPerBreakdown && !inSharedMode
+    const canClick = !shouldShowMeanPerBreakdown && !inSharedMode && canOpenPersonModal
 
     const series = useMemo(
         () =>
             buildRetentionSeries(filteredTrendSeries as RetentionTrendSeriesEntry[], {
                 incompletenessOffsetFromEnd,
                 isIntervalView,
+                getColor: (entry, index) => getRetentionColor(entry.rawBreakdownValue, index),
             }),
-        [filteredTrendSeries, incompletenessOffsetFromEnd, isIntervalView]
+        [filteredTrendSeries, incompletenessOffsetFromEnd, isIntervalView, getRetentionColor]
     )
 
     const groupTypeLabel = resolveGroupTypeLabel(labelGroupType, aggregationLabel)

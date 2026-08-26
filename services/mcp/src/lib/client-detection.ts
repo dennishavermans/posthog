@@ -23,7 +23,7 @@
  *   so it does not need the formatted-results workaround.
  *
  * - `isPostHogCodeConsumer()` matches the `x-posthog-mcp-consumer` header
- *   sent by the PostHog Code Tasks wrapper.
+ *   sent by the PostHog Desktop Tasks wrapper.
  *
  * - `isClaudeUiHost()` matches Claude web/desktop and Cowork — MCP Apps hosts
  *   that render interactive UI (iframes). Used to advertise the `render-ui`
@@ -103,6 +103,11 @@ export const CODING_AGENT_CLIENT_NAME_FRAGMENTS = [
     'ando-mcp-gateway',
 ] as const
 
+// Clients that wedge after a stateless `server/discover` but complete the legacy
+// handshake, so discover answers method-not-found to push them back to `initialize`.
+// Remove an entry once the client completes the stateless dialect.
+export const LEGACY_DIALECT_ONLY_CLIENT_NAME_FRAGMENTS = ['antigravity'] as const
+
 // Clients that keep the full per-tool roster ("tools" mode) instead of the
 // single-exec CLI default.
 // - Cursor self-reports `clientInfo.name` (`cursor-vscode`, `Cursor`); it sends
@@ -161,10 +166,10 @@ export function resolveEffectiveClientName(
     return VENDOR_CLIENT_TO_CLIENT_NAME[normalizeClientName(vendorClient)] ?? vendorClient
 }
 
-// Value sent in `x-posthog-mcp-consumer` by PostHog Code (the Tasks sandbox
+// Value sent in `x-posthog-mcp-consumer` by PostHog Desktop (the Tasks sandbox
 // wrapper around the Claude Agent SDK) when the task was launched from the
-// PostHog Code UI. Slack-launched runs send `"slack"` and posthog_ai (Max) runs
-// send `"posthog_ai"`; only PostHog Code renders MCP UI apps, so this is the
+// PostHog Desktop UI. Slack-launched runs send `"slack"` and posthog_ai (Max) runs
+// send `"posthog_ai"`; only PostHog Desktop renders MCP UI apps, so this is the
 // sole consumer that gates UI-apps payload emission in single-exec mode.
 export const POSTHOG_CODE_CONSUMER = 'posthog-code'
 
@@ -189,7 +194,7 @@ export const ANTHROPIC_CHAT_HOST_VENDOR_FRAGMENTS = ['claudeai'] as const
 // Anthropic coding-agent surfaces that render MCP UI apps inline through the
 // single-exec `exec` tool. `ClaudeCode` and `Cowork` render UI apps on the exec
 // response itself (`ClaudeAI` uses the separate `render-ui` tool instead;
-// `Cowork` supports both), so they get the same treatment as the PostHog Code
+// `Cowork` supports both), so they get the same treatment as the PostHog Desktop
 // consumer.
 export const INLINE_EXEC_UI_APP_VENDOR_FRAGMENTS = ['claudecode', 'cowork'] as const
 
@@ -301,6 +306,10 @@ export class MCPClientProfile {
         )
     }
 
+    isLegacyDialectOnly(): boolean {
+        return matchesAnyFragment(this.clientName, LEGACY_DIALECT_ONLY_CLIENT_NAME_FRAGMENTS)
+    }
+
     isPostHogCodeConsumer(): boolean {
         return this.consumer === POSTHOG_CODE_CONSUMER
     }
@@ -325,7 +334,7 @@ export class MCPClientProfile {
         // Anthropic coding-agent surfaces that render MCP UI apps inline through the
         // single-exec `exec` tool (Claude Code, Cowork) — Claude.ai web/desktop
         // renders via the separate `render-ui` tool instead (Cowork supports both).
-        // Like PostHog Code, these hosts surface `structuredContent` to the model, so
+        // Like PostHog Desktop, these hosts surface `structuredContent` to the model, so
         // the exec UI-app branch suppresses it and re-homes the app data onto `_meta`.
         // The per-request vendor header (`ClaudeCode` / `Cowork`) is the reliable signal.
         return matchesAnyFragment(this.vendorClient, INLINE_EXEC_UI_APP_VENDOR_FRAGMENTS)
@@ -366,6 +375,10 @@ export class MCPClientProfile {
 
 export function isCliModeEnabledClient(clientName: string | undefined): boolean {
     return new MCPClientProfile({ clientName }).isCliModeEnabled()
+}
+
+export function isLegacyDialectOnlyClient(clientName: string | undefined): boolean {
+    return new MCPClientProfile({ clientName }).isLegacyDialectOnly()
 }
 
 export function isPostHogCodeConsumer(mcpConsumer: string | undefined): boolean {

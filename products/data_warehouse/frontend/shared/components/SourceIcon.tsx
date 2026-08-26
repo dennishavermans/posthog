@@ -70,6 +70,11 @@ function SourceIconImage({ src, alt, sizePx }: { src: string; alt: string; sizeP
             alt={alt}
             height={sizePx}
             width={sizePx}
+            // The catalog renders every source's icon at once (1000+ tiles). Without lazy loading the
+            // browser eagerly requests all of them on mount, flooding the network and delaying paint —
+            // only the icons scrolled into view need to load.
+            loading="lazy"
+            decoding="async"
             className="object-contain max-w-none rounded"
             onError={(e) => {
                 const img = e.currentTarget
@@ -136,15 +141,22 @@ export function SourceIcon({
         return component ?? null
     }, [availableSources, engine, type])
 
+    const sizePx = sizePxProps ?? SIZE_PX_MAP[size]
+
     if (availableSourcesLoading || !availableSources) {
-        return <LemonSkeleton />
+        // A bare LemonSkeleton defaults to w-full, so it balloons to fill its container while the
+        // source configs load. Constrain it to the icon's footprint so the placeholder matches.
+        return (
+            // eslint-disable-next-line react/forbid-dom-props
+            <div className="shrink-0" style={{ width: sizePx, height: sizePx }}>
+                <LemonSkeleton className="w-full h-full rounded" />
+            </div>
+        )
     }
 
     if (!icon) {
         return null
     }
-
-    const sizePx = sizePxProps ?? SIZE_PX_MAP[size]
 
     if (disableTooltip) {
         return (

@@ -1,13 +1,23 @@
+import { router } from 'kea-router'
 import { expectLogic } from 'kea-test-utils'
 import timekeeper from 'timekeeper'
 
+import { FunnelLayout } from 'lib/constants'
 import { AGGREGATION_LABEL_FOR_CUSTOM_DATA_WAREHOUSE } from 'scenes/insights/filters/aggregationTargetUtils'
 import { teamLogic } from 'scenes/teamLogic'
 
 import { dataNodeLogic } from '~/queries/nodes/DataNode/dataNodeLogic'
 import { DataNode, FunnelsQuery, NodeKind } from '~/queries/schema/schema-general'
 import { initKeaTests } from '~/test/init'
-import { FunnelConversionWindowTimeUnit, FunnelVizType, InsightLogicProps, InsightModel, InsightType } from '~/types'
+import {
+    FunnelConversionWindowTimeUnit,
+    FunnelStep,
+    FunnelVizType,
+    InsightLogicProps,
+    InsightModel,
+    InsightType,
+    StepOrderValue,
+} from '~/types'
 
 import {
     funnelResult,
@@ -77,6 +87,25 @@ describe('funnelDataLogic', () => {
             })
         })
 
+        it('with layout but missing funnel viz type', async () => {
+            const query: FunnelsQuery = {
+                kind: NodeKind.FunnelsQuery,
+                series: [],
+                funnelsFilter: {
+                    layout: FunnelLayout.horizontal,
+                },
+            }
+
+            await expectLogic(logic, () => {
+                logic.actions.updateQuerySource(query)
+            }).toMatchValues({
+                querySource: expect.objectContaining({ kind: NodeKind.FunnelsQuery }),
+                isStepsFunnel: true,
+                isTimeToConvertFunnel: false,
+                isTrendsFunnel: false,
+            })
+        })
+
         it('for steps viz', async () => {
             const query: FunnelsQuery = {
                 kind: NodeKind.FunnelsQuery,
@@ -131,6 +160,34 @@ describe('funnelDataLogic', () => {
                 isStepsFunnel: false,
                 isTimeToConvertFunnel: false,
                 isTrendsFunnel: true,
+            })
+        })
+
+        // Saved funnels can carry a funnelsFilter with no viz type. Without a resolved default the
+        // conversion rate label and the detailed results table disappear.
+        it.each([
+            ['no funnelsFilter', {}, FunnelVizType.Steps],
+            [
+                'a funnelsFilter without a viz type',
+                { funnelsFilter: { funnelWindowInterval: 14 } },
+                FunnelVizType.Steps,
+            ],
+            [
+                'an explicit viz type',
+                { funnelsFilter: { funnelVizType: FunnelVizType.TimeToConvert } },
+                FunnelVizType.TimeToConvert,
+            ],
+        ])('resolves the viz type for %s', async (_name, queryPatch, expected) => {
+            const query: FunnelsQuery = {
+                kind: NodeKind.FunnelsQuery,
+                series: [],
+                ...queryPatch,
+            }
+
+            await expectLogic(logic, () => {
+                logic.actions.updateQuerySource(query)
+            }).toMatchValues({
+                funnelVizType: expected,
             })
         })
     })
@@ -201,6 +258,60 @@ describe('funnelDataLogic', () => {
                     builtDataNodeLogic.actions.loadDataSuccess(insight)
                 }).toMatchValues({
                     results: funnelResult.result,
+                })
+            })
+
+            it('clears a custom name removed from the saved query', async () => {
+                const query: FunnelsQuery = {
+                    kind: NodeKind.FunnelsQuery,
+                    series: [
+                        { kind: NodeKind.EventsNode, event: '$pageview' },
+                        { kind: NodeKind.EventsNode, event: '$pageview' },
+                    ],
+                }
+                const insight: Partial<InsightModel> = {
+                    filters: { insight: InsightType.FUNNELS },
+                    result: (funnelResult.result as FunnelStep[]).map((step) => ({
+                        ...step,
+                        custom_name: 'Removed name',
+                    })),
+                }
+
+                await expectLogic(logic, () => {
+                    logic.actions.updateQuerySource(query)
+                    builtDataNodeLogic.actions.loadDataSuccess(insight)
+                }).toMatchValues({
+                    steps: [
+                        expect.objectContaining({ custom_name: null }),
+                        expect.objectContaining({ custom_name: null }),
+                    ],
+                })
+            })
+
+            it('gives breakdown rows their parent step custom name', async () => {
+                const query: FunnelsQuery = {
+                    kind: NodeKind.FunnelsQuery,
+                    series: [
+                        { kind: NodeKind.EventsNode, event: '$pageview', custom_name: 'Visited pricing' },
+                        { kind: NodeKind.EventsNode, event: '$pageview', custom_name: 'Started checkout' },
+                    ],
+                    breakdownFilter: { breakdown: '$browser', breakdown_type: 'event' },
+                }
+                const insight: Partial<InsightModel> = {
+                    filters: { insight: InsightType.FUNNELS },
+                    result: funnelResultWithBreakdown.result,
+                }
+
+                await expectLogic(logic, () => {
+                    logic.actions.updateQuerySource(query)
+                    builtDataNodeLogic.actions.loadDataSuccess(insight)
+                }).toMatchValues({
+                    steps: ['Visited pricing', 'Started checkout'].map((custom_name) =>
+                        expect.objectContaining({
+                            custom_name,
+                            nested_breakdown: expect.arrayContaining([expect.objectContaining({ custom_name })]),
+                        })
+                    ),
                 })
             })
 
@@ -291,6 +402,33 @@ describe('funnelDataLogic', () => {
                     builtDataNodeLogic.actions.loadDataSuccess(insight)
                 }).toMatchValues({
                     steps: funnelResult.result,
+                })
+            })
+
+            it.each([
+                [StepOrderValue.ORDERED, 'Visited pricing', 'Started checkout'],
+                [StepOrderValue.STRICT, 'Visited pricing', 'Started checkout'],
+                [StepOrderValue.UNORDERED, null, null],
+            ])('takes custom names from the saved query for a %s funnel', async (funnelOrderType, ...expected) => {
+                const query: FunnelsQuery = {
+                    kind: NodeKind.FunnelsQuery,
+                    series: [
+                        { kind: NodeKind.EventsNode, event: '$pageview', custom_name: 'Visited pricing' },
+                        { kind: NodeKind.EventsNode, event: '$pageview', custom_name: 'Started checkout' },
+                    ],
+                    funnelsFilter: { funnelOrderType },
+                }
+                const insight: Partial<InsightModel> = {
+                    filters: { insight: InsightType.FUNNELS },
+                    result: funnelResult.result,
+                }
+
+                await expectLogic(logic, () => {
+                    logic.actions.updateQuerySource(query)
+                    builtDataNodeLogic.actions.loadDataSuccess(insight)
+                }).toMatchValues({
+                    steps: expected.map((custom_name) => expect.objectContaining({ custom_name })),
+                    stepsWithConversionMetrics: expected.map((custom_name) => expect.objectContaining({ custom_name })),
                 })
             })
 
@@ -804,6 +942,26 @@ describe('funnelDataLogic', () => {
 
             const order = getBreakdownOrder(logic.values.flattenedBreakdowns)
             expect(order).toEqual(expectedOrder)
+        })
+
+        it('setBreakdownSorting updates the query without clobbering compareFilter or the URL', async () => {
+            const query: FunnelsQuery = {
+                kind: NodeKind.FunnelsQuery,
+                series: [],
+                funnelsFilter: { funnelVizType: FunnelVizType.Steps },
+                compareFilter: { compare: true },
+            }
+
+            await expectLogic(logic, () => {
+                logic.actions.updateQuerySource(query)
+                logic.actions.setBreakdownSorting('-total_conversion')
+            }).toFinishAllListeners()
+
+            expect(logic.values.querySource).toMatchObject({
+                funnelsFilter: { funnelVizType: FunnelVizType.Steps, breakdownSorting: '-total_conversion' },
+                compareFilter: { compare: true },
+            })
+            expect(router.values.searchParams.order).toBeUndefined()
         })
 
         it('visibleStepsWithConversionMetrics matches flattenedBreakdowns order', async () => {

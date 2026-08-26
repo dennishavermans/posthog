@@ -15,6 +15,8 @@ export type ConfigurationSceneTabType =
     | 'customer-analytics-usage-metrics'
     | 'customer-analytics-dashboard-events'
     | 'customer-analytics-accounts'
+    | 'customer-analytics-track-rules'
+    | 'customer-analytics-event-stream'
 
 export interface CustomerAnalyticsConfigurationSceneLogicProps {
     initialTab?: ConfigurationSceneTabType
@@ -85,7 +87,7 @@ export const customerAnalyticsConfigurationSceneLogic = kea<customerAnalyticsCon
                 {
                     key: Scene.CustomerAnalytics,
                     path:
-                        tab === 'customer-analytics-accounts'
+                        tab === 'customer-analytics-accounts' || tab === 'customer-analytics-track-rules'
                             ? urls.customerAnalyticsAccounts()
                             : urls.customerAnalytics(),
                     name: 'Customer analytics',

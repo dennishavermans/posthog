@@ -1,7 +1,17 @@
 import { useActions, useMountedLogic, useValues } from 'kea'
 import posthog from 'posthog-js'
 
-import { IconCloud, IconGraph, IconPencil, IconPeople, IconPiggyBank, IconReceipt } from '@posthog/icons'
+import {
+    IconCloud,
+    IconCopy,
+    IconDatabase,
+    IconGlobe,
+    IconGraph,
+    IconPencil,
+    IconPeople,
+    IconPiggyBank,
+    IconReceipt,
+} from '@posthog/icons'
 import {
     LemonButton,
     LemonInput,
@@ -15,16 +25,26 @@ import {
 } from '@posthog/lemon-ui'
 
 import { TZLabel } from 'lib/components/TZLabel'
+import { FEATURE_FLAGS } from 'lib/constants'
 import { IconSlack } from 'lib/lemon-ui/icons'
+import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
+import { copyToClipboard } from 'lib/utils/copyToClipboard'
 import { fullName } from 'lib/utils/strings'
 import { notebookPanelLogic } from 'scenes/notebooks/NotebookPanel/notebookPanelLogic'
 import { urls } from 'scenes/urls'
 
 import type { AccountNotebookApi } from 'products/customer_analytics/frontend/generated/api.schemas'
 
+import { AccountEventStreamToggle } from '../EventStream/AccountEventStreamToggle'
 import { AccountBillingExpansion } from './AccountBillingExpansion'
 import { accountBillingLogic } from './accountBillingLogic'
+import { AccountConversationsExpansion } from './AccountConversationsExpansion'
+import { accountConversationsLogic } from './accountConversationsLogic'
+import { accountEmailThreadsLogic } from './accountEmailThreadsLogic'
+import { AccountFeatureRequestsExpansion } from './AccountFeatureRequestsExpansion'
 import { accountLinksLogic } from './accountLinksLogic'
+import { AccountMeetingsExpansion } from './AccountMeetingsExpansion'
+import { accountMeetingsLogic } from './accountMeetingsLogic'
 import { accountNotebooksLogic } from './accountNotebooksLogic'
 import { AccountOpportunitiesExpansion } from './AccountOpportunitiesExpansion'
 import { accountOpportunitiesLogic } from './accountOpportunitiesLogic'
@@ -33,6 +53,7 @@ import { accountRelatedUsersLogic } from './accountRelatedUsersLogic'
 import { AccountRelationshipsExpansion } from './AccountRelationshipsExpansion'
 import { accountRelationshipsLogic } from './accountRelationshipsLogic'
 import { accountsExpansionLogic } from './accountsExpansionLogic'
+import { accountSummariesLogic } from './accountSummariesLogic'
 import { AccountsEvents } from './constants'
 import { EditAccountLinksButton } from './EditAccountLinksButton'
 
@@ -48,9 +69,11 @@ function getPreview(notebook: AccountNotebookApi): string {
 }
 
 const LINK_ICONS: Record<string, JSX.Element> = {
+    website: <IconGlobe />,
     organization: <IconPeople />,
     revenue: <IconPiggyBank />,
     'usage-dashboard': <IconGraph />,
+    metabase: <IconDatabase />,
     slack: <IconSlack />,
     'billing-admin': <IconReceipt />,
     salesforce: <IconCloud />,
@@ -119,6 +142,24 @@ function UsefulLinks({ accountId }: { accountId: string }): JSX.Element {
                     </LemonButton>
                 ))
             )}
+            <LemonButton
+                type="tertiary"
+                size="small"
+                fullWidth
+                icon={<IconCopy />}
+                onClick={() => {
+                    void copyToClipboard(
+                        urls.absolute(urls.currentProject(urls.customerAnalyticsAccount(accountId))),
+                        'link to this account'
+                    )
+                    posthog.capture(AccountsEvents.LinkClicked, {
+                        link_key: 'copy-account-link',
+                        has_destination: true,
+                    })
+                }}
+            >
+                Copy link to account
+            </LemonButton>
         </div>
     )
 }
@@ -140,7 +181,12 @@ export function AccountNotebooksExpansion({
     useMountedLogic(accountBillingLogic({ accountId, externalId, kind: 'usage' }))
     useMountedLogic(accountBillingLogic({ accountId, externalId, kind: 'spend' }))
     useMountedLogic(accountOpportunitiesLogic({ accountId }))
+    useMountedLogic(accountSummariesLogic({ accountId }))
+    useMountedLogic(accountConversationsLogic({ accountId }))
+    useMountedLogic(accountEmailThreadsLogic({ accountId }))
+    useMountedLogic(accountMeetingsLogic({ accountId }))
     const { setSearchTerm, setSorting, createNote } = useActions(logic)
+    const { featureFlags } = useValues(featureFlagLogic)
     const { activeTabFor } = useValues(accountsExpansionLogic)
     const { setActiveTab } = useActions(accountsExpansionLogic)
     const { selectNotebook } = useActions(notebookPanelLogic)
@@ -278,6 +324,11 @@ export function AccountNotebooksExpansion({
                                 label: 'Relationships',
                                 content: <AccountRelationshipsExpansion accountId={accountId} />,
                             },
+                            !!featureFlags[FEATURE_FLAGS.CUSTOMER_ANALYTICS_FEATURE_REQUESTS] && {
+                                key: 'feature_requests' as const,
+                                label: 'Feature requests',
+                                content: <AccountFeatureRequestsExpansion accountId={accountId} />,
+                            },
                             {
                                 key: 'usage',
                                 label: 'Usage',
@@ -304,6 +355,22 @@ export function AccountNotebooksExpansion({
                                 key: 'opportunities',
                                 label: 'Opportunities',
                                 content: <AccountOpportunitiesExpansion accountId={accountId} />,
+                            },
+                            {
+                                key: 'conversations',
+                                label: 'Conversations',
+                                content: <AccountConversationsExpansion accountId={accountId} />,
+                            },
+                            // Flag-gated here (not just inside the component) so the tab label hides too.
+                            !!featureFlags[FEATURE_FLAGS.CUSTOMER_ANALYTICS_CSP] && {
+                                key: 'meetings' as const,
+                                label: 'Meetings',
+                                content: <AccountMeetingsExpansion accountId={accountId} />,
+                            },
+                            !!featureFlags[FEATURE_FLAGS.CUSTOMER_ANALYTICS_CSP] && {
+                                key: 'event_stream' as const,
+                                label: 'Event stream',
+                                content: <AccountEventStreamToggle accountId={accountId} externalId={externalId} />,
                             },
                         ]}
                     />

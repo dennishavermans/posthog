@@ -45,7 +45,7 @@ const skillArchive = (): ToolBase<typeof SkillArchiveSchema, unknown> => ({
 
 const SkillCreateSchema = LlmSkillsCreateBody
 
-const skillCreate = (): ToolBase<typeof SkillCreateSchema, Schemas.LLMSkillCreate> => ({
+const skillCreate = (): ToolBase<typeof SkillCreateSchema, Schemas.LLMSkill> => ({
     name: 'skill-create',
     schema: SkillCreateSchema,
     handler: async (context: Context, params: z.infer<typeof SkillCreateSchema>) => {
@@ -72,10 +72,13 @@ const skillCreate = (): ToolBase<typeof SkillCreateSchema, Schemas.LLMSkillCreat
         if (params.metadata !== undefined) {
             body['metadata'] = params.metadata
         }
+        if (params.owners !== undefined) {
+            body['owners'] = params.owners
+        }
         if (params.files !== undefined) {
             body['files'] = params.files
         }
-        const result = await context.api.request<Schemas.LLMSkillCreate>({
+        const result = await context.api.request<Schemas.LLMSkill>({
             method: 'POST',
             path: `/api/projects/${encodeURIComponent(String(projectId))}/llm_skills/`,
             body,
@@ -242,6 +245,7 @@ const skillList = (): ToolBase<typeof SkillListSchema, Schemas.PaginatedLLMSkill
                 created_by_id: params.created_by_id,
                 limit: params.limit,
                 offset: params.offset,
+                owner_id: params.owner_id,
                 search: params.search,
             },
         })
@@ -313,8 +317,14 @@ const skillUpdate = (): ToolBase<typeof SkillUpdateSchema, Schemas.LLMSkill> => 
         if (params.file_edits !== undefined) {
             body['file_edits'] = params.file_edits
         }
+        if (params.owners !== undefined) {
+            body['owners'] = params.owners
+        }
         if (params.base_version !== undefined) {
             body['base_version'] = params.base_version
+        }
+        if (params.version_description !== undefined) {
+            body['version_description'] = params.version_description
         }
         const result = await context.api.request<Schemas.LLMSkill>({
             method: 'PATCH',

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import time
 import hashlib
-from typing import cast
+from typing import NoReturn, cast
 
 from django.conf import settings
 from django.core.cache import cache
@@ -54,9 +55,15 @@ ERROR_PROJECT_NOT_FOUND = "This project does not exist."
 
 OPENAI_SUPPORTED_MODELS = {"o4-mini", "gpt-5-mini", "gpt-5-nano", "gpt-5"}
 
+# Absolute ceiling on sandbox boots per user per day, reserved atomically right before run
+# creation. The DB-counted throttles above the view are read-then-create and can be raced by
+# parallel requests; this cache.incr cannot, so it is the hard bound a start-cancel or crash
+# loop lands on. Only requests that reach creation consume it.
+WIZARD_CLOUD_RUN_DAILY_ATTEMPT_CAP = 15
+
 WIZARD_CLOUD_RUN_REQUESTS_TOTAL = Counter(
     "posthog_wizard_cloud_run_requests_total",
-    "Cloud-run wizard kickoff requests, by outcome (created/unavailable/invalid/permission_denied)",
+    "Cloud-run wizard kickoff requests, by outcome (created/unavailable/invalid/permission_denied/throttled)",
     labelnames=["outcome"],
 )
 
@@ -151,6 +158,13 @@ class SetupWizardViewSet(viewsets.ViewSet):
 
         return []
 
+    def throttled(self, request: Request, wait: float) -> NoReturn:
+        # 429s never reach the action body, so without this the kickoff counter is blind to
+        # rate-limited users and throttle pressure is invisible in dashboards.
+        if self.action == "cloud_run":
+            WIZARD_CLOUD_RUN_REQUESTS_TOTAL.labels(outcome="throttled").inc()
+        super().throttled(request, wait)
+
     @action(methods=["POST"], detail=False, url_path="initialize")
     def initialize(self, request: Request) -> Response:
         """
@@ -217,6 +231,7 @@ class SetupWizardViewSet(viewsets.ViewSet):
                     "project_api_key": "mock-project-api-key",
                     "host": "http://localhost:8010",
                     "user_distinct_id": "mock-user-id",
+                    "team_id": 1,
                 }
                 cache.set(key, wizard_data, SETUP_WIZARD_CACHE_TIMEOUT)
 
@@ -227,11 +242,13 @@ class SetupWizardViewSet(viewsets.ViewSet):
                 raise AuthenticationFailed("Setup wizard not authenticated. Please login first")
 
             distinct_id = wizard_data.get("user_distinct_id")
+            team_id = wizard_data.get("team_id")
 
             trace_id = trace_id or hashlib.sha256(hash.encode()).hexdigest()
 
         else:
-            result = OAuthAccessTokenAuthentication().authenticate(request)
+            authenticator = OAuthAccessTokenAuthentication()
+            result = authenticator.authenticate(request)
 
             if not result:
                 raise AuthenticationFailed("Invalid access token.")
@@ -242,6 +259,8 @@ class SetupWizardViewSet(viewsets.ViewSet):
                 raise AuthenticationFailed("Invalid access token.")
 
             distinct_id = user.distinct_id
+            scoped_team_ids = authenticator.access_token.scoped_teams or []
+            team_id = scoped_team_ids[0] if len(scoped_team_ids) == 1 else None
 
             trace_id = request.headers.get("X-PostHog-Trace-Id") or hashlib.sha256(distinct_id.encode()).hexdigest()
 
@@ -290,6 +309,7 @@ class SetupWizardViewSet(viewsets.ViewSet):
                 posthog_properties={
                     "ai_product": "wizard",
                     "ai_feature": "query",
+                    "team_id": team_id,
                 },
             )
 
@@ -324,12 +344,13 @@ class SetupWizardViewSet(viewsets.ViewSet):
                 model=model,
                 seed=MODEL_SEED,
                 messages=messages,
-                response_format={"type": "json_schema", "json_schema": json_schema},  # type: ignore
+                response_format={"type": "json_schema", "json_schema": json_schema},
                 posthog_distinct_id=distinct_id,
                 posthog_trace_id=trace_id,
                 posthog_properties={
                     "ai_product": "wizard",
                     "ai_feature": "query",
+                    "team_id": team_id,
                 },
                 temperature=1.0,
             )
@@ -398,6 +419,7 @@ class SetupWizardViewSet(viewsets.ViewSet):
                 )
 
             project_api_token = project.passthrough_team.api_token
+            team_id = project.passthrough_team.id
         except Project.DoesNotExist as e:
             capture_exception(
                 e,
@@ -414,6 +436,7 @@ class SetupWizardViewSet(viewsets.ViewSet):
             "project_api_key": project_api_token,
             "host": get_api_host(),
             "user_distinct_id": request.user.distinct_id,
+            "team_id": team_id,
         }
 
         cache.set(cache_key, wizard_data, SETUP_WIZARD_CACHE_TIMEOUT)
@@ -430,7 +453,10 @@ class SetupWizardViewSet(viewsets.ViewSet):
         url_path="cloud_run",
         authentication_classes=[SessionAuthentication],
         permission_classes=[IsAuthenticated],
-        throttle_classes=[SetupWizardCloudRunBurstRateThrottle, SetupWizardCloudRunSustainedRateThrottle],
+        throttle_classes=[
+            SetupWizardCloudRunBurstRateThrottle,
+            SetupWizardCloudRunSustainedRateThrottle,
+        ],
     )
     def cloud_run(self, request: Request) -> Response:
         """Run the PostHog setup wizard in the cloud against the user's GitHub repository.
@@ -452,8 +478,32 @@ class SetupWizardViewSet(viewsets.ViewSet):
         except exceptions.ValidationError:
             WIZARD_CLOUD_RUN_REQUESTS_TOTAL.labels(outcome="invalid").inc()
             raise
+        except exceptions.Throttled:
+            # The atomic attempt reservation inside _cloud_run raises after check_throttles
+            # ran, so the throttled() hook below never sees it.
+            WIZARD_CLOUD_RUN_REQUESTS_TOTAL.labels(outcome="throttled").inc()
+            raise
         WIZARD_CLOUD_RUN_REQUESTS_TOTAL.labels(outcome="created").inc()
         return response
+
+    @staticmethod
+    def _reserve_cloud_run_attempt(user_id: int) -> None:
+        """Atomically consume one of the user's daily cloud-run attempts or raise Throttled.
+
+        Runs after validation and project access checks, immediately before run creation, so
+        rejected requests never consume the budget — while parallel requests cannot all slip
+        under the ceiling the way they can with the read-then-create DB throttles.
+        """
+        window = int(time.time()) // 86400
+        key = f"wizard_cloud_run_attempts:{user_id}:{window}"
+        cache.add(key, 0, timeout=86400)
+        try:
+            count = cache.incr(key)
+        except ValueError:
+            # The key expired between add and incr; this request is the window's first.
+            count = 1
+        if count > WIZARD_CLOUD_RUN_DAILY_ATTEMPT_CAP:
+            raise exceptions.Throttled(detail="You've reached today's limit for cloud setup runs. Try again tomorrow.")
 
     def _cloud_run(self, request: Request) -> Response:
         if not bool(settings.WIZARD_CLOUD_RUN_OAUTH_CLIENT_ID):
@@ -473,6 +523,8 @@ class SetupWizardViewSet(viewsets.ViewSet):
             raise serializers.ValidationError({"project_id": [ERROR_PROJECT_NOT_FOUND]}, code="not_found")
         if project.id not in visible_project_ids:
             raise exceptions.PermissionDenied("You don't have access to this project.")
+
+        self._reserve_cloud_run_attempt(cast(User, request.user).id)
 
         try:
             result = tasks_facade.create_wizard_cloud_run(

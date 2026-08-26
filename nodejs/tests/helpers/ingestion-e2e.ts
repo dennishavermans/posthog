@@ -67,6 +67,7 @@ export const DEFAULT_TEAM: Team = {
     heatmaps_opt_in: null,
     ingested_event: true,
     person_display_name_properties: null,
+    minimal_flag_called_events: false,
     test_account_filters: null,
     cookieless_server_hash_mode: null,
     timezone: 'UTC',
@@ -314,6 +315,21 @@ export async function fetchEvents(clickhouse: Clickhouse, teamId: number) {
     return queryResult.map(parseRawClickHouseEvent)
 }
 
+export async function fetchFlagEvaluations(clickhouse: Clickhouse, teamId: number) {
+    return (await retryClickHouseOperation(
+        () =>
+            clickhouse.query(`
+                SELECT *
+                FROM flag_evaluations
+                WHERE team_id = ${teamId}
+                ORDER BY timestamp ASC
+            `),
+        'fetchFlagEvaluations query',
+        3,
+        true
+    )) as any[]
+}
+
 export async function fetchIngestionWarnings(clickhouse: Clickhouse, teamId: number) {
     const queryResult = (await retryClickHouseOperation(
         () =>
@@ -424,6 +440,7 @@ export async function createIngestionTestInfra(
     const postgresGroupRepository = new PostgresGroupRepository(postgres)
     const postgresPersonRepository = new PostgresPersonRepository(postgres, {
         calculatePropertiesSize: serverConfig.PERSON_UPDATE_CALCULATE_PROPERTIES_SIZE,
+        personMergeTombstoneTeamAllowlist: serverConfig.PERSON_MERGE_TOMBSTONE_TEAM_ALLOWLIST,
     })
     const personRepository = buildPersonRepository(
         personhogClient,

@@ -22,10 +22,6 @@
   dockerfile: ./rust/Dockerfile.sqlx-migrate
   project: jmsz6gms8g
 
-- image: cyclotron-janitor
-  dockerfile: ./rust/Dockerfile
-  project: r4zm8vtlbw
-
 - image: property-defs-rs
   dockerfile: ./rust/Dockerfile
   project: vznmbshh6q
@@ -102,6 +98,10 @@
   dockerfile: ./rust/Dockerfile
   project: vznmbshh6q
 
+- image: personhog-identity
+  dockerfile: ./rust/Dockerfile
+  project: jfz76fgvqd
+
 - image: personhog-leader
   dockerfile: ./rust/Dockerfile
   project: g0kjbvxgqx
@@ -118,6 +118,10 @@
   dockerfile: ./rust/Dockerfile
   project: hj9nd3cg9w
 
+- image: personhog-test-harness
+  dockerfile: ./rust/Dockerfile
+  project: 6tl5lmb8l8
+
 - image: kafka-assigner
   dockerfile: ./rust/Dockerfile
   project: 6kjc85bwm7
@@ -125,3 +129,7 @@
 - image: hypercache-server
   dockerfile: ./rust/Dockerfile
   project: plc74nsj8z
+
+- image: usage-ingestion
+  dockerfile: ./rust/Dockerfile
+  project: g9w71772m7

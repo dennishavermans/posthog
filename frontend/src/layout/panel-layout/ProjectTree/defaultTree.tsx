@@ -154,11 +154,11 @@ const iconTypes: Record<FileSystemIconType, { icon: JSX.Element; iconColor?: Fil
     },
     product_tour: {
         icon: <IconSpotlight />,
-        iconColor: ['var(--color-product-surveys-light)'],
+        iconColor: ['var(--color-product-product-tours-light)', 'var(--color-product-product-tours-dark)'],
     },
     user_interview: {
         icon: <IconApp />,
-        iconColor: ['var(--color-product-user-interviews-light)'],
+        iconColor: ['var(--color-product-user-interviews-light)', 'var(--color-product-user-interviews-dark)'],
     },
     home: {
         icon: <IconHome />,
@@ -172,7 +172,7 @@ const iconTypes: Record<FileSystemIconType, { icon: JSX.Element; iconColor?: Fil
     },
     tracing: {
         icon: <IconListTree />,
-        iconColor: ['var(--color-product-tracing-light)'],
+        iconColor: ['var(--color-product-tracing-light)', 'var(--color-product-tracing-dark)'],
     },
     metrics: {
         icon: <IconGraph />,
@@ -199,7 +199,7 @@ const iconTypes: Record<FileSystemIconType, { icon: JSX.Element; iconColor?: Fil
     },
     data_pipeline: {
         icon: <IconPlug />,
-        iconColor: ['var(--color-product-data-pipeline-light)'],
+        iconColor: ['var(--color-product-data-pipeline-light)', 'var(--color-product-data-pipeline-dark)'],
     },
     data_pipeline_metadata: {
         icon: <IconPlug />,
@@ -214,7 +214,7 @@ const iconTypes: Record<FileSystemIconType, { icon: JSX.Element; iconColor?: Fil
     },
     workflows: {
         icon: <IconDecisionTree />,
-        iconColor: ['var(--color-product-workflows-light)', 'var(--color-product-workflows-dark)'],
+        iconColor: ['var(--color-product-workflows-light)'],
     },
     notebook: {
         icon: <IconNotebook />,
@@ -258,33 +258,28 @@ const iconTypes: Record<FileSystemIconType, { icon: JSX.Element; iconColor?: Fil
     group: {
         icon: <IconPeople />,
     },
+    // The IconInsight* glyphs carry their own multi-color palette (--insight-icon-*);
+    // structural parts follow currentColor, so no iconColor override here.
     'insight/funnels': {
         icon: <IconInsightFunnels />,
-        iconColor: ['var(--color-insight-funnel-light)'],
     },
     'insight/trends': {
         icon: <IconInsightTrends />,
-        iconColor: ['var(--color-insight-trends-light)'],
     },
     'insight/retention': {
         icon: <IconInsightRetention />,
-        iconColor: ['var(--color-insight-retention-light)'],
     },
     'insight/paths': {
         icon: <IconInsightUserPaths />,
-        iconColor: ['var(--color-insight-user-paths-light)', 'var(--color-user-paths-dark)'],
     },
     'insight/lifecycle': {
         icon: <IconInsightLifecycle />,
-        iconColor: ['var(--color-insight-lifecycle-light)'],
     },
     'insight/stickiness': {
         icon: <IconInsightStickiness />,
-        iconColor: ['var(--color-insight-stickiness-light)'],
     },
     'insight/hog': {
         icon: <IconBracketsChart />,
-        iconColor: ['var(--color-insight-sql-light)'],
     },
     team_activity: {
         icon: <IconNotification />,
@@ -344,7 +339,7 @@ const iconTypes: Record<FileSystemIconType, { icon: JSX.Element; iconColor?: Fil
     },
     llm_prompts: {
         icon: <IconLlmPromptManagement />,
-        iconColor: ['var(--color-product-llm-prompts-light)'],
+        iconColor: ['var(--color-product-llm-analytics-light)'],
     },
     llm_clusters: {
         icon: <IconScatter />,
@@ -360,6 +355,7 @@ const iconTypes: Record<FileSystemIconType, { icon: JSX.Element; iconColor?: Fil
     },
     visual_review: {
         icon: <IconApp />,
+        iconColor: ['var(--color-product-visual-review-light)', 'var(--color-product-visual-review-dark)'],
     },
     code_review: {
         icon: <IconPullRequest />,

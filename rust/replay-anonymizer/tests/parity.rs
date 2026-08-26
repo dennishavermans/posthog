@@ -4,10 +4,16 @@
 use std::path::Path;
 use std::time::Instant;
 
+use base64::Engine;
 use posthog_replay_anonymizer::allow_lists::AllowLists;
 use posthog_replay_anonymizer::{
-    anonymize_event_str, anonymize_message, context::Ctx, text::scrub_text, url::scrub_url,
+    anonymize_event_str, anonymize_message,
+    collect::{hash_image_bytes, url_ref},
+    context::Ctx,
+    text::scrub_text,
+    url::scrub_url,
     url::URL_SCHEME_ALLOWLIST,
+    url_collect::hash_url,
 };
 use serde_json::Value;
 
@@ -32,6 +38,46 @@ fn allow_of(case: &Value) -> AllowLists {
             .unwrap_or_default()
     };
     AllowLists::new(strings("text"), strings("url"))
+}
+
+#[test]
+fn image_hash_fixtures() {
+    // Pins the keyed content hash against Node `createHmac('sha256', key)` reference vectors —
+    // the consumer trusts the producer, so this fixture is the only cross-implementation check
+    // on the construction (and what the training-side joins implicitly rely on).
+    for case in fixtures("image-hash.json") {
+        let key = case["keyAscii"].as_str().unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(case["bytesBase64"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(
+            hash_image_bytes(key.as_bytes(), &bytes),
+            case["hash"].as_str().unwrap(),
+            "image hash case: {}",
+            case["name"]
+        );
+    }
+}
+
+#[test]
+fn image_url_ref_fixtures() {
+    for case in fixtures("image-url-ref.json") {
+        let global_url_key = case["globalUrlKey"].as_str().unwrap();
+        let canonical_url = case["canonicalUrl"].as_str().unwrap();
+        let hash = hash_url(global_url_key.as_bytes(), canonical_url);
+        assert_eq!(
+            hash,
+            case["hash"].as_str().unwrap(),
+            "case: {}",
+            case["name"]
+        );
+        assert_eq!(
+            url_ref(&hash),
+            case["ref"].as_str().unwrap(),
+            "case: {}",
+            case["name"]
+        );
+    }
 }
 
 #[test]

@@ -85,7 +85,6 @@ import {
     isHogQLQuery,
     isInsightActorsQuery,
     isMarketingAnalyticsTableQuery,
-    isRevenueExampleEventsQuery,
     isSessionsQuery,
     taxonomicEventFilterToHogQL,
     taxonomicGroupFilterToHogQL,
@@ -182,6 +181,8 @@ export function DataTable({
         response,
         responseLoading,
         responseError,
+        responseErrorObject,
+        queryId,
         queryCancelled,
         nextDataLoading,
         newDataLoading,
@@ -746,10 +747,7 @@ export function DataTable({
                         onRowExpand: (_: DataTableRow, rowIndex: number) => toggleRowExpanded(rowIndex),
                         onRowCollapse: (_: DataTableRow, rowIndex: number) => toggleRowExpanded(rowIndex),
                         expandedRowRender: function renderExpand({ result }: DataTableRow) {
-                            if (
-                                (isEventsQuery(query.source) || isRevenueExampleEventsQuery(query.source)) &&
-                                Array.isArray(result)
-                            ) {
+                            if (isEventsQuery(query.source) && Array.isArray(result)) {
                                 return <EventDetails event={result[columnsInResponse.indexOf('*')] ?? {}} />
                             }
                             if (result && !Array.isArray(result)) {
@@ -1046,7 +1044,10 @@ export function DataTable({
                                         sourceFeatures.has(QueryFeature.displayResponseError) ? (
                                             <InsightErrorState
                                                 query={query}
-                                                excludeDetail
+                                                queryId={responseErrorObject?.queryId ?? queryId}
+                                                titleStatus={responseErrorObject?.status}
+                                                // A cancel is the user's own action: no apology or bug-report guidance
+                                                excludeDetail={queryCancelled}
                                                 onRetry={() => loadData('force_blocking')}
                                                 title={
                                                     queryCancelled
@@ -1068,6 +1069,7 @@ export function DataTable({
                                             detail={context?.emptyStateDetail}
                                             icon={context?.emptyStateIcon}
                                             sampleDataVariant="table"
+                                            insightProps={insightProps}
                                         />
                                     )
                                 }

@@ -1029,26 +1029,26 @@ class TestResolver(BaseTest):
         assert "events__override" in sql
         assert "LEFT" in sql.upper()
 
-    def test_join_using(self):
-        node = self._select(
-            "WITH my_table AS (SELECT 1 AS a) SELECT q1.a FROM my_table AS q1 INNER JOIN my_table AS q2 USING a"
-        )
+    @parameterized.expand(
+        [
+            (
+                "cte",
+                "WITH my_table AS (SELECT 1 AS a) SELECT q1.a FROM my_table AS q1 INNER JOIN my_table AS q2 USING a",
+            ),
+            ("table", "SELECT q1.event FROM events AS q1 INNER JOIN events AS q2 USING event"),
+        ],
+    )
+    def test_join_using_desugars_to_on(self, _name: str, query: str):
+        node = self._select(query)
         node = resolve_types(node, self.context, dialect="clickhouse")
         assert isinstance(node, ast.SelectQuery)
         assert isinstance(node.select_from, ast.JoinExpr)
         assert isinstance(node.select_from.next_join, ast.JoinExpr)
-        assert isinstance(node.select_from.next_join.constraint, ast.JoinConstraint)
         constraint = node.select_from.next_join.constraint
-        assert constraint.constraint_type == "USING"
-        assert cast(ast.Alias, constraint.expr).alias == "a"
-
-        node = self._select("SELECT q1.event FROM events AS q1 INNER JOIN events AS q2 USING event")
-        node = resolve_types(node, self.context, dialect="clickhouse")
-        assert isinstance(node, ast.SelectQuery)
-        assert isinstance(node.select_from, ast.JoinExpr)
-        assert isinstance(node.select_from.next_join, ast.JoinExpr)
-        assert isinstance(node.select_from.next_join.constraint, ast.JoinConstraint)
-        assert node.select_from.next_join.constraint.constraint_type == "USING"
+        assert isinstance(constraint, ast.JoinConstraint)
+        assert constraint.constraint_type == "ON"
+        assert isinstance(constraint.expr, ast.CompareOperation)
+        assert constraint.expr.op == ast.CompareOperationOp.Eq
 
     @override_settings(PERSON_ON_EVENTS_OVERRIDE=False, PERSON_ON_EVENTS_V2_OVERRIDE=False)
     @pytest.mark.usefixtures("unittest_snapshot")
@@ -2095,17 +2095,52 @@ class TestResolver(BaseTest):
                 "SELECT event FROM events WHERE uuid IN ('0198a4c2-8b3d-7e50-b4a1-2f9c6d8e0a1b', 'nope')",
             ),
             ("person_subtable_id", "SELECT event FROM events WHERE person.id = 'not-a-uuid'"),
-            (
-                "trailing_newline",
-                "SELECT event FROM events WHERE person_id = '0198a4c2-8b3d-7e50-b4a1-2f9c6d8e0a1b\n'",
-            ),
             ("persons_scope_id", "SELECT id FROM persons WHERE id = 'not-a-uuid'"),
         ]
     )
     def test_invalid_uuid_literal_comparison_raises(self, _name, query):
         expr = self._select(query)
-        with self.assertRaisesRegex(QueryError, "is not a valid UUID"):
+        with self.assertRaisesRegex(QueryError, "can never match .*, which holds UUIDs"):
             resolve_types(expr, self.context, dialect="clickhouse")
+
+    def test_invalid_uuid_literal_message_makes_whitespace_visible(self):
+        # the value and the suggested example must not read as the same string on screen
+        expr = self._select("SELECT event FROM events WHERE person_id = 'not a uuid '")
+        with self.assertRaisesRegex(QueryError, r"'not a uuid '"):
+            resolve_types(expr, self.context, dialect="clickhouse")
+
+    @parameterized.expand(
+        [
+            # a truncated id is a near miss, so the digit count explains the mismatch
+            ("truncated_uuid", "'0198a4c2-8b3d'", True),
+            ("numeric_id", "'2026072018044213140'", True),
+            # on text that was never a UUID attempt the same count would just read as noise
+            ("arbitrary_text", "'not a uuid'", False),
+        ]
+    )
+    def test_invalid_uuid_literal_message_counts_digits_only_for_near_misses(self, _name, literal, expects_count):
+        expr = self._select(f"SELECT event FROM events WHERE person_id = {literal}")
+        with self.assertRaises(QueryError) as raised:
+            resolve_types(expr, self.context, dialect="clickhouse")
+        assert ("hexadecimal digits" in str(raised.exception)) is expects_count
+
+    # ClickHouse only parses the canonical dashed-hex form, but these all name the same UUID —
+    # normalize them instead of dead-ending a user who pasted one
+    @parameterized.expand(
+        [
+            ("trailing_newline", "'0198a4c2-8b3d-7e50-b4a1-2f9c6d8e0a1b\n'"),
+            ("surrounding_whitespace", "'  0198a4c2-8b3d-7e50-b4a1-2f9c6d8e0a1b '"),
+            ("uppercase", "'0198A4C2-8B3D-7E50-B4A1-2F9C6D8E0A1B'"),
+            ("no_dashes", "'0198a4c28b3d7e50b4a12f9c6d8e0a1b'"),
+            ("braces", "'{0198a4c2-8b3d-7e50-b4a1-2f9c6d8e0a1b}'"),
+            ("urn_prefix", "'urn:uuid:0198a4c2-8b3d-7e50-b4a1-2f9c6d8e0a1b'"),
+        ]
+    )
+    def test_non_canonical_uuid_literal_is_canonicalized(self, _name, literal):
+        expr = self._select(f"SELECT event FROM events WHERE person_id = {literal}")
+        resolved = cast(ast.SelectQuery, resolve_types(expr, self.context, dialect="clickhouse"))
+        where = cast(ast.CompareOperation, resolved.where)
+        assert cast(ast.Constant, where.right).value == "0198a4c2-8b3d-7e50-b4a1-2f9c6d8e0a1b"
 
     @parameterized.expand(
         [
@@ -2117,3 +2152,9 @@ class TestResolver(BaseTest):
     def test_uuid_literal_comparison_allows(self, _name, query):
         expr = self._select(query)
         resolve_types(expr, self.context, dialect="clickhouse")
+
+    def test_uuid_literal_guard_skipped_for_non_clickhouse_dialects(self):
+        # other target dialects accept UUID text forms ClickHouse doesn't (braces, no dashes),
+        # so the canonical-form guard must not reject their queries
+        expr = self._select("SELECT event FROM events WHERE person_id = 'not-a-uuid'")
+        resolve_types(expr, self.context, dialect="postgres")

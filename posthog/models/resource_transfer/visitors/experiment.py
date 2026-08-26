@@ -29,6 +29,8 @@ class ExperimentVisitor(
         "conclusion",
         "conclusion_comment",
         "flag_cleanup_task_id",
+        # Points into the source team's GitHub integration, which does not transfer.
+        "repository",
         "created_at",
         "updated_at",
     ],
@@ -42,9 +44,13 @@ class ExperimentVisitor(
 
     @classmethod
     def get_dynamic_edges(cls, resource: Any) -> list[ResourceTransferEdge]:
-        cohort_ids, action_ids = collect_cohort_and_action_ids_from_experiment_json(resource)
+        collected = collect_cohort_and_action_ids_from_experiment_json(resource)
 
         edges: list[ResourceTransferEdge] = []
-        edges.extend(build_edges_for_ids(cohort_ids, Cohort, "json_cohort", rewrite_cohort_in_experiment_payload))
-        edges.extend(build_edges_for_ids(action_ids, Action, "json_action", rewrite_action_in_experiment_payload))
+        edges.extend(
+            build_edges_for_ids(collected.cohort_ids, Cohort, "json_cohort", rewrite_cohort_in_experiment_payload)
+        )
+        edges.extend(
+            build_edges_for_ids(collected.action_ids, Action, "json_action", rewrite_action_in_experiment_payload)
+        )
         return edges

@@ -54,7 +54,7 @@ class TestVisionActionSynthesis(BaseTest):
             name="summarizer",
             scanner_type=ScannerType.SUMMARIZER,
             scanner_config={"prompt": "summarize"},
-            model=ScannerModel.GEMINI_3_6_FLASH,
+            model=ScannerModel.GEMINI_3_7_FLASH,
         )
 
     def _observation(self, summary: str, title: str | None = None, session_id: str = "s1") -> ReplayObservation:
@@ -456,7 +456,7 @@ class TestVisionActionSynthesis(BaseTest):
             name="hidden",
             scanner_type=ScannerType.CLASSIFIER,
             scanner_config={"prompt": "classify"},
-            model=ScannerModel.GEMINI_3_6_FLASH,
+            model=ScannerModel.GEMINI_3_7_FLASH,
         )
         self._observation("visible scanner output", session_id="visible")
         ReplayObservation.objects.create(
@@ -473,7 +473,7 @@ class TestVisionActionSynthesis(BaseTest):
 
         prompts: list[str] = []
         with patch(
-            "posthog.rbac.user_access_control.UserAccessControl.filter_queryset_by_access_level",
+            "products.access_control.backend.facade.user_access_control.UserAccessControl.filter_queryset_by_access_level",
             side_effect=lambda qs, **_: qs.exclude(pk=hidden.pk),
         ):
             result = self._synthesize(action, run, captured_prompts=prompts)
@@ -641,6 +641,94 @@ class TestVisionActionSynthesis(BaseTest):
         self.assertEqual(result.observation_count, 2)
         run.refresh_from_db()
         self.assertEqual(set(run.observation_ids), {str(fixed.id), str(freeform.id)})
+
+    def test_summarizer_line_carries_outcome_and_friction_signal(self) -> None:
+        # The synthesis line must surface the summarizer's structured outcome + friction status, not just its
+        # prose — that explicit signal is what lets the model (and the validator) tell a clean session from an
+        # error one. Without it, a successful waitlist signup reads the same as a failed one.
+        self._typed_observation(
+            {
+                "scanner_type": "summarizer",
+                "title": "Signup",
+                "summary": "User joined the waitlist",
+                "outcome": "successfully joined the waitlist",
+                "friction_points": [],
+            },
+            session_id="s1",
+        )
+        action = self._action()
+        run = self._run_for(action)
+
+        prompts: list[str] = []
+        self._synthesize(action, run, captured_prompts=prompts)
+
+        self.assertIn("friction: none", prompts[0])
+        self.assertIn("outcome: successfully joined the waitlist", prompts[0])
+
+    def test_validation_drops_clean_citation_on_negative_claim(self) -> None:
+        # The fabricated-cluster guard: a clean session (friction_points empty, outcome present) cited as
+        # evidence of an error is a false citation. It must be stripped from the stored report so a reader
+        # who clicks it doesn't land on a success. The surrounding prose is left intact.
+        self._typed_observation(
+            {
+                "scanner_type": "summarizer",
+                "title": "Signup",
+                "summary": "User joined the waitlist with no problems",
+                "outcome": "successfully joined the waitlist",
+                "friction_points": [],
+            },
+            session_id="s1",
+        )
+        action = self._action()
+        run = self._run_for(action)
+
+        self._synthesize(action, run, llm_content="Some users hit an invalid invite link error [obs 1].")
+
+        run.refresh_from_db()
+        self.assertNotIn("[obs 1]", run.synthesized_markdown)
+        self.assertIn("invalid invite link error", run.synthesized_markdown)
+
+    def test_validation_keeps_citation_when_observation_reports_friction(self) -> None:
+        # A citation that genuinely backs a negative claim (the observation itself reports friction) must be
+        # preserved — the validator only removes contradictions, never real evidence.
+        self._typed_observation(
+            {
+                "scanner_type": "summarizer",
+                "title": "Broken link",
+                "summary": "User could not sign up",
+                "outcome": "abandoned after the invite link failed",
+                "friction_points": ["invalid invite link"],
+            },
+            session_id="s1",
+        )
+        action = self._action()
+        run = self._run_for(action)
+
+        self._synthesize(action, run, llm_content="Some users hit an invalid invite link error [obs 1].")
+
+        run.refresh_from_db()
+        self.assertIn("[obs 1]", run.synthesized_markdown)
+
+    def test_validation_keeps_clean_citation_on_non_negative_claim(self) -> None:
+        # A clean session cited for a non-negative claim (a success or neutral pattern) is a valid citation —
+        # the validator must not touch it. Only error/friction claims trigger the contradiction check.
+        self._typed_observation(
+            {
+                "scanner_type": "summarizer",
+                "title": "Signup",
+                "summary": "User joined the waitlist",
+                "outcome": "successfully joined the waitlist",
+                "friction_points": [],
+            },
+            session_id="s1",
+        )
+        action = self._action()
+        run = self._run_for(action)
+
+        self._synthesize(action, run, llm_content="Many users successfully joined the waitlist [obs 1].")
+
+        run.refresh_from_db()
+        self.assertIn("[obs 1]", run.synthesized_markdown)
 
 
 class TestMarkdownToSlack(BaseTest):

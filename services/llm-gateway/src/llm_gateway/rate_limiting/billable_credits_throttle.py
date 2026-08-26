@@ -9,7 +9,7 @@ _BUCKET_EXHAUSTED_DETAIL = {
         "Top up at https://app.posthog.com/organization/billing to continue."
     ),
     CreditBucket.POSTHOG_CODE_CREDITS: (
-        "Your team has reached its PostHog Code usage limit for this billing period. "
+        "Your team has reached its PostHog Desktop usage limit for this billing period. "
         "See https://app.posthog.com/organization/billing for your usage and limits."
     ),
 }
@@ -70,4 +70,7 @@ class BillableCreditThrottle(Throttle):
             detail=_BUCKET_EXHAUSTED_DETAIL.get(config.credit_bucket, _DEFAULT_EXHAUSTED_DETAIL),
             scope=self.scope,
             retry_after=_RETRY_AFTER_SECONDS,
+            # Credits come back on top-up or billing rollover, not when the
+            # back-off above elapses.
+            retry_after_resets_limit=False,
         )

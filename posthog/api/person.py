@@ -5,6 +5,8 @@ import dataclasses
 from datetime import UTC, datetime
 from typing import Any, Optional, Union, cast  # noqa: UP035
 
+from django.conf import settings
+
 import structlog
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -26,34 +28,28 @@ from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework_csv import renderers as csvrenderers
 
-from posthog.schema import (
-    ActorsQuery,
-    HogQLQueryModifiers,
-    InlineCohortCalculation,
-    InsightActorsQuery,
-    LifecycleQuery,
-    ProductKey,
-)
+from posthog.schema import ActorsQuery, ProductKey
 
 from posthog.hogql.constants import CSV_EXPORT_LIMIT
 
 from posthog.api.capture import CaptureInternalError, capture_internal
 from posthog.api.documentation import PersonPropertiesSerializer
+from posthog.api.fields import CoercedStringListField
+from posthog.api.mixins import ValidatedRequest, validated_request
 from posthog.api.property_value_metrics import PROPERTY_VALUES_DURATION
 from posthog.api.routing import TeamAndOrgViewSetMixin
-from posthog.api.utils import action, format_paginated_url
+from posthog.api.utils import action
 from posthog.auth import PersonalAPIKeyAuthentication
 from posthog.clickhouse.query_tagging import Feature, tag_queries
 from posthog.constants import LIMIT, OFFSET
+from posthog.errors import QueryErrorCategory, classify_query_error
 from posthog.event_usage import get_request_analytics_properties
 from posthog.helpers.impersonation import is_impersonated
-from posthog.hogql_queries.legacy_compatibility.filter_to_query import filter_to_query
 from posthog.metrics import LABEL_TEAM_ID
 from posthog.models import Filter, Person, Team, User
 from posthog.models.activity_logging.activity_log import Change, Detail, load_activity, log_activity
 from posthog.models.activity_logging.activity_page import activity_page_response
 from posthog.models.async_deletion import AsyncDeletion, DeletionType
-from posthog.models.filters.lifecycle_filter import LifecycleFilter
 from posthog.models.filters.properties_timeline_filter import PropertiesTimelineFilter
 from posthog.models.person.bulk_delete import (
     delete_persons_profile,
@@ -70,10 +66,12 @@ from posthog.models.person.util import (
     get_persons_mapped_by_distinct_id,
 )
 from posthog.personhog_client.caller_tag import personhog_caller_tag
-from posthog.queries.actor_base_query import get_groups, get_serialized_people
+from posthog.queries.actor_base_query import get_serialized_people
 from posthog.queries.properties_timeline import PropertiesTimeline
 from posthog.rate_limit import ClickHouseBurstRateThrottle, PersonalApiKeyRateThrottle, UserOrEmailRateThrottle
 from posthog.renderers import SafeJSONRenderer
+from posthog.slo.context import JsonValue, SloSpec, slo_operation
+from posthog.slo.types import SloArea, SloOperation
 from posthog.tasks.split_person import split_person
 from posthog.utils import (
     format_query_params_absolute_url,
@@ -95,6 +93,26 @@ logger = structlog.get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 DEFAULT_PAGE_LIMIT = 100
+
+# The id reaches the ClickHouse query id and every query_log row for the request, so bound it.
+# Cancelling matches on `query_id LIKE '<team_id>_<client_query_id>%'`, which makes an id holding
+# `%` or `_` reach the team's other queries. The cancel endpoint takes any id with or without this
+# param, so restricting the charset here would buy nothing and would reject ids like `req_1`.
+CLIENT_QUERY_ID_MAX_LENGTH = 128
+
+# Nginx's "Client Closed Request". Django and DRF have no name for it.
+HTTP_CLIENT_CLOSED_REQUEST = 499
+
+
+def tag_client_query_id(client_query_id: str | None) -> None:
+    """Name this request's ClickHouse queries so the caller can cancel them by that id."""
+    if not client_query_id:
+        return
+    if len(client_query_id) > CLIENT_QUERY_ID_MAX_LENGTH:
+        raise ValidationError({"client_query_id": f"Must be at most {CLIENT_QUERY_ID_MAX_LENGTH} characters."})
+    tag_queries(client_query_id=client_query_id)
+
+
 # Sync with .../lib/constants.tsx and .../cdp/utils.ts
 # It's almost certainly wrong to add more properties to this list, instead convince the user to send data to use with
 # these properties, or use e.g. a CDP transformation to rewrite their events.
@@ -186,11 +204,38 @@ class PersonUpdatePropertyRequestSerializer(serializers.Serializer):
     value = serializers.JSONField(help_text="The property value. Can be a string, number, boolean, or object.")
 
 
+# Matches the cap on the persons bulk-delete endpoint; also keeps the resulting
+# capture event safely under the ~1 MB Kafka message limit.
+MAX_UNSET_KEYS_PER_REQUEST = 1000
+
+
+@extend_schema_field(
+    {
+        "oneOf": [
+            {"type": "string", "minLength": 1},
+            {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "minItems": 1,
+                "maxItems": MAX_UNSET_KEYS_PER_REQUEST,
+            },
+        ]
+    }
+)
+class UnsetPropertyKeysField(CoercedStringListField):
+    default_error_messages = {
+        "invalid": "Provide '$unset' as a property key or a non-empty list of property keys.",
+    }
+
+
 class PersonDeletePropertyRequestSerializer(serializers.Serializer):
     def get_fields(self):
         fields = super().get_fields()
-        # The endpoint reads request.data["$unset"], so the field name must include the $ prefix.
-        fields["$unset"] = serializers.CharField(help_text="The property key to remove from this person.")
+        # The handler reads validated_data["$unset"], so the field name must include the $ prefix.
+        fields["$unset"] = UnsetPropertyKeysField(
+            max_items=MAX_UNSET_KEYS_PER_REQUEST,
+            help_text="A property key, or a list of property keys, to remove from this person.",
+        )
         return fields
 
 
@@ -519,11 +564,22 @@ class PersonViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
                 OpenApiTypes.STR,
                 description="Search persons, either by email (full text search) or distinct_id (exact match).",
             ),
+            OpenApiParameter(
+                "client_query_id",
+                OpenApiTypes.STR,
+                description=(
+                    "Names the ClickHouse query this request runs. Send the same id to "
+                    "`DELETE /api/projects/:project_id/query/:client_query_id/` to stop a search that is still "
+                    "running. Up to 128 characters."
+                ),
+            ),
             PersonPropertiesSerializer(required=False),
         ],
     )
     def list(self, request: request.Request, *args: Any, **kwargs: Any) -> response.Response:
         tag_queries(product=ProductKey.PERSONS, feature=Feature.QUERY)
+        client_query_id = request.GET.get("client_query_id")
+        tag_client_query_id(client_query_id)
         team = self.team
         filter = Filter(request=request, team=self.team)
 
@@ -575,38 +631,84 @@ class PersonViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
             limit=filter.limit,
             offset=filter.offset,
         )
-        # Use .calculate() (not .run()) — it applies the limit/offset paginator but skips the
-        # insight-caching wrapper. With an id-only select there's no actor-column hydration, so
-        # we still hydrate the person objects ourselves via get_serialized_people.
-        actors_runner = ActorsQueryRunner(team=team, query=actors_query)
-        actor_ids = [row[0] for row in actors_runner.calculate().results]
-        with personhog_caller_tag("persons/list"):
-            serialized_actors = get_serialized_people(team, actor_ids)
+        include_total = "include_total" in request.GET
+        # This endpoint bypasses `QueryRunner.run()`, so nothing else measures how long it takes.
+        # The search path is the slow one, so the shape of the request is recorded alongside the
+        # duration. The search term itself is never recorded - it is user data.
+        slo_properties: dict[str, JsonValue] = {
+            "query_type": "ActorsQuery",
+            "has_search": bool(filter.search),
+            "has_properties": bool(person_properties),
+            "has_distinct_id": bool(filter.distinct_id),
+            # Only a caller that can cancel sends an id, which is what separates the command
+            # palette's searches from the persons page's on the dashboard.
+            "has_client_query_id": bool(client_query_id),
+            "include_total": include_total,
+            "is_csv": is_csv_request,
+            "limit": filter.limit,
+            "offset": filter.offset,
+        }
+        with slo_operation(
+            spec=SloSpec(
+                # `User.distinct_id` is nullable, so fall back to the team like the query service does.
+                distinct_id=request.user.distinct_id or str(team.uuid),
+                area=SloArea.ANALYTIC_PLATFORM,
+                operation=SloOperation.PERSONS_LIST,
+                team_id=team.pk,
+                sample_rate=settings.PERSONS_LIST_SLO_SAMPLE_RATE,
+            ),
+            properties=slo_properties,
+        ) as slo:
+            # Use .calculate() (not .run()) — it applies the limit/offset paginator but skips the
+            # insight-caching wrapper. With an id-only select there's no actor-column hydration, so
+            # we still hydrate the person objects ourselves via get_serialized_people.
+            actors_runner = ActorsQueryRunner(team=team, query=actors_query)
+            # A cancel kills every ClickHouse query the request has in flight, so both queries below
+            # sit inside one handler. Anything that is not a cancellation is re-raised untouched.
+            try:
+                actor_ids = [row[0] for row in actors_runner.calculate().results]
 
-        restricted_person_properties = self.get_serializer_context().get("restricted_person_properties")
-        if restricted_person_properties:
-            for person_dict in serialized_actors:
-                properties = person_dict.get("properties")
-                if isinstance(properties, dict):
-                    person_dict["properties"] = {
-                        k: v for k, v in properties.items() if k not in restricted_person_properties
-                    }
+                with personhog_caller_tag("persons/list"):
+                    serialized_actors = get_serialized_people(team, actor_ids)
 
-        _should_paginate = len(actor_ids) >= filter.limit
+                restricted_person_properties = self.get_serializer_context().get("restricted_person_properties")
+                if restricted_person_properties:
+                    for person_dict in serialized_actors:
+                        properties = person_dict.get("properties")
+                        if isinstance(properties, dict):
+                            person_dict["properties"] = {
+                                k: v for k, v in properties.items() if k not in restricted_person_properties
+                            }
 
-        # If the undocumented include_total param is set to true, we'll return the total count of people
-        # This is extra time and DB load, so we only do this when necessary, which is in PostHog 3000 navigation
-        # TODO: Use a more scalable solution before PostHog 3000 navigation is released, and remove this param
-        total_count: Optional[int] = None
-        if "include_total" in request.GET:
-            count_inner = actors_runner.to_query()
-            count_inner.limit = None
-            count_inner.offset = None
-            count_query = ast.SelectQuery(
-                select=[ast.Call(name="count", args=[])],
-                select_from=ast.JoinExpr(table=count_inner),
-            )
-            total_count = execute_hogql_query(count_query, team=team).results[0][0]
+                _should_paginate = len(actor_ids) >= filter.limit
+
+                # If the undocumented include_total param is set to true, we'll return the total count of people
+                # This is extra time and DB load, so we only do this when necessary, which is in PostHog 3000 navigation
+                # TODO: Use a more scalable solution before PostHog 3000 navigation is released, and remove this param
+                total_count: Optional[int] = None
+                if include_total:
+                    count_inner = actors_runner.to_query()
+                    count_inner.limit = None
+                    count_inner.offset = None
+                    count_query = ast.SelectQuery(
+                        select=[ast.Call(name="count", args=[])],
+                        select_from=ast.JoinExpr(table=count_inner),
+                    )
+                    total_count = execute_hogql_query(count_query, team=team).results[0][0]
+            except Exception as err:
+                if classify_query_error(err) is not QueryErrorCategory.CANCELLED:
+                    raise
+                # The caller killed this search, so there is no body to return and nothing went
+                # wrong. Raising would report a server error for every cancelled search.
+                #
+                # Returning also leaves the SLO block without an exception, so it records a
+                # success with however long the kill took. A cancel is not a failure, so the
+                # outcome stays as it is and this tag is what keeps an abandoned search from
+                # reading as a fast one in the latency percentiles.
+                slo.tag(cancelled=True)
+                return Response(status=HTTP_CLIENT_CLOSED_REQUEST)
+
+            slo.tag(result_count=len(actor_ids))
 
         next_url = format_query_params_absolute_url(request, filter.offset + filter.limit) if _should_paginate else None
         previous_url = (
@@ -972,26 +1074,32 @@ class PersonViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
         self._set_properties({key: request.data["value"]}, request.user)
         return Response(status=202)
 
-    @extend_schema(request=PersonDeletePropertyRequestSerializer, parameters=[_PERSON_ID_PARAMETER])
+    @validated_request(PersonDeletePropertyRequestSerializer, parameters=[_PERSON_ID_PARAMETER])
     @action(methods=["POST"], detail=True, required_scopes=["person:write"])
-    def delete_property(self, request: request.Request, pk=None, **kwargs) -> response.Response:
+    def delete_property(self, request: ValidatedRequest, pk=None, **kwargs) -> response.Response:
         # Only distinct_ids[0] is used (to attribute the property-update event), so bound the fetch to one.
         with personhog_caller_tag("persons/delete-property"):
             person = get_person_by_pk_or_uuid(self.team_id, pk, distinct_id_limit=1)
         if person is None:
             raise Person.DoesNotExist
 
-        key = request.data.get("$unset")
-        if key:
-            non_writable = self._get_non_writable_person_properties(request)
-            if key in non_writable:
-                raise ValidationError(f'You do not have write access to the property "{key}".')
+        keys = request.validated_data["$unset"]
+
+        non_writable = self._get_non_writable_person_properties(request)
+        forbidden = sorted(set(keys) & non_writable)
+        if forbidden:
+            raise ValidationError(f"You do not have write access to the following properties: {', '.join(forbidden)}.")
+
+        # distinct_ids can be empty for a person orphaned by a merge, or when a concurrent
+        # merge lands between the person fetch and the distinct-id fetch (two separate RPCs).
+        if not person.distinct_ids:
+            raise ValidationError("This person has no distinct IDs, so its properties can't be removed.")
 
         event_name = "$delete_person_property"
         distinct_id = person.distinct_ids[0]
         timestamp = datetime.now(UTC)
         properties = {
-            "$unset": [request.data["$unset"]],
+            "$unset": keys,
         }
 
         try:
@@ -1214,6 +1322,17 @@ class PersonViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
     )
     @action(methods=["GET"], detail=True, required_scopes=["person:read"], pagination_class=None, filter_backends=[])
     def emails(self, request: request.Request, *args: Any, **kwargs: Any) -> response.Response:
+        return self._message_assets_response(request, kind="email")
+
+    @extend_schema(
+        parameters=[PersonMessageAssetsRequestSerializer],
+        responses=MessageAssetSerializer(many=True),
+    )
+    @action(methods=["GET"], detail=True, required_scopes=["person:read"], pagination_class=None, filter_backends=[])
+    def push_notifications(self, request: request.Request, *args: Any, **kwargs: Any) -> response.Response:
+        return self._message_assets_response(request, kind="push")
+
+    def _message_assets_response(self, request: request.Request, kind: str) -> response.Response:
         person = self.get_object()
         param_serializer = PersonMessageAssetsRequestSerializer(data=request.query_params)
         param_serializer.is_valid(raise_exception=True)
@@ -1233,6 +1352,7 @@ class PersonViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
             offset=params["offset"],
             after=after_date,
             before=before_date,
+            kind=kind,
         )
         # Single lookup for every workflow referenced by this page of rows so the tab shows
         # human-readable names instead of raw UUIDs. Deleted workflows drop out of the map
@@ -1246,67 +1366,6 @@ class PersonViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
         }
         enriched = [dataclasses.replace(row, function_name=name_by_id.get(row.function_id, "")) for row in data]
         return response.Response(MessageAssetSerializer(enriched, many=True).data)
-
-    @action(methods=["GET"], detail=False)
-    def lifecycle(self, request: request.Request) -> response.Response:
-        team = cast(User, request.user).team
-        if not team:
-            return response.Response(
-                {
-                    "message": "Could not retrieve team",
-                    "detail": "Could not validate team associated with user",
-                },
-                status=400,
-            )
-
-        target_date = request.GET.get("target_date", None)
-        if target_date is None:
-            return response.Response(
-                {
-                    "message": "Missing parameter",
-                    "detail": "Must include specified date",
-                },
-                status=400,
-            )
-        lifecycle_type = request.GET.get("lifecycle_type", None)
-        if lifecycle_type is None:
-            return response.Response(
-                {
-                    "message": "Missing parameter",
-                    "detail": "Must include lifecycle type",
-                },
-                status=400,
-            )
-
-        from posthog.hogql_queries.actors_query_runner import (  # noqa: PLC0415 — breaks import cycle (actors_query_runner imports from this module)
-            ActorsQueryRunner,
-        )
-
-        filter = LifecycleFilter(request=request, data=request.GET.dict(), team=self.team)
-        filter = prepare_actor_query_filter(filter)
-
-        lifecycle_query = cast(LifecycleQuery, filter_to_query({**filter.to_dict(), "insight": "LIFECYCLE"}))
-        source = InsightActorsQuery(source=lifecycle_query, day=target_date, status=lifecycle_type)
-
-        # Select actor ids only and hydrate them ourselves to keep the legacy response shape.
-        actors_query = ActorsQuery(source=source, select=["actor_id"], limit=filter.limit, offset=filter.offset)
-        # Expand cohorts inline so cohort filters work without a precomputed cohort. The modifier
-        # goes on the inner query because ActorsQueryRunner inherits modifiers from its source.
-        source.source.modifiers = (source.source.modifiers or HogQLQueryModifiers()).model_copy(
-            update={"inlineCohortCalculation": InlineCohortCalculation.ALWAYS}
-        )
-        with personhog_caller_tag("persons/lifecycle"):
-            results = list(ActorsQueryRunner(team=self.team, query=actors_query).calculate().results)
-            actor_ids = [str(row[0]) for row in results]
-
-            people: list[Any]
-            if lifecycle_query.aggregation_group_type_index is not None:
-                _, people = get_groups(self.team.pk, lifecycle_query.aggregation_group_type_index, actor_ids, None)
-            else:
-                people = get_serialized_people(self.team, actor_ids, None)
-
-        next_url = format_paginated_url(request, filter.offset, filter.limit) if len(results) >= filter.limit else None
-        return response.Response({"results": [{"people": people, "count": len(people)}], "next": next_url})
 
     @extend_schema(
         exclude=True,  # NOTE: We exclude as we want to push people to use the more powerful bulk_delete endpoint
@@ -1576,51 +1635,6 @@ class PersonViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
                 {"error": f"Failed to retrieve person properties for {identifier_type} '{identifier}'"},
                 status=500,
             )
-
-
-def prepare_actor_query_filter(filter: LifecycleFilter) -> LifecycleFilter:
-    if not filter.limit:
-        filter = filter.shallow_clone({LIMIT: DEFAULT_PAGE_LIMIT})
-
-    search = getattr(filter, "search", None)
-    if not search:
-        return filter
-
-    group_properties_filter_group: list[dict[str, object]] = []
-    if hasattr(filter, "aggregation_group_type_index"):
-        group_properties_filter_group += [
-            {
-                "key": "name",
-                "value": search,
-                "type": "group",
-                "group_type_index": filter.aggregation_group_type_index,
-                "operator": "icontains",
-            },
-            {
-                "key": "slug",
-                "value": search,
-                "type": "group",
-                "group_type_index": filter.aggregation_group_type_index,
-                "operator": "icontains",
-            },
-        ]
-
-    new_group = {
-        "type": "OR",
-        "values": [
-            {"key": "email", "type": "person", "value": search, "operator": "icontains"},
-            {"key": "name", "type": "person", "value": search, "operator": "icontains"},
-            {"key": "distinct_id", "type": "event", "value": search, "operator": "icontains"},
-            *group_properties_filter_group,
-        ],
-    }
-    prop_group = (
-        {"type": "AND", "values": [new_group, filter.property_groups.to_dict()]}
-        if filter.property_groups.to_dict()
-        else new_group
-    )
-
-    return filter.shallow_clone({"properties": prop_group, "search": None})
 
 
 class LegacyPersonViewSet(PersonViewSet):

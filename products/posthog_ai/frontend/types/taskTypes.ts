@@ -26,13 +26,15 @@ export enum OriginProduct {
     // Tasks created autonomously by the headless Signals Scout — team-scoped, visible to everyone.
     SIGNALS_SCOUT = 'signals_scout',
     POSTHOG_AI = 'posthog_ai',
+    // "Create fix task" on the MCP analytics tool-quality failure drill-down.
+    MCP_ANALYTICS = 'mcp_analytics',
 }
 
 /**
- * TaskTracker list filter: the current user's own tasks, team scout tasks, or — staff only —
- * every task on the team.
+ * TaskTracker list filter: the current user's own non-scout tasks, their own scout tasks, every
+ * team scout task, or — staff only — every task on the team.
  */
-export type TaskAssigneeFilter = 'for_you' | 'team_scouts' | 'all_team'
+export type TaskAssigneeFilter = 'for_you' | 'my_scouts' | 'team_scouts' | 'all_team'
 
 export enum TaskRunStatus {
     NOT_STARTED = 'not_started',
@@ -66,6 +68,9 @@ export interface TaskRun {
     branch: string | null
     status: TaskRunStatus
     environment: TaskRunEnvironment
+    runtime_adapter: string | null
+    model: string | null
+    reasoning_effort: string | null
     log_url: string | null
     error_message: string | null
     output: Record<string, any> | null
@@ -113,6 +118,7 @@ export interface TaskListParams {
     organization?: string
     stage?: string
     origin_product?: string
+    exclude_origin_product?: string
     /** `all` includes internal tasks (shown-by-default flag, not an access gate); `true` narrows to only-internal tasks. */
     internal?: 'true' | 'false' | 'all'
     search?: string
