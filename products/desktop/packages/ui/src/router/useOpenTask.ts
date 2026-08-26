@@ -1,8 +1,5 @@
 import { resolveService, resolveServiceOptional } from "@posthog/di/container";
-import {
-  type AgentActionTaskAttribution,
-  ANALYTICS_EVENTS,
-} from "@posthog/shared";
+import { type AgentActionAttribution, ANALYTICS_EVENTS } from "@posthog/shared";
 import type { Task } from "@posthog/shared/domain-types";
 import { navigateBrowserTab } from "@posthog/ui/features/browser-tabs/imperativeTabNavigation";
 import { useCurrentChannelStore } from "@posthog/ui/features/canvas/stores/currentChannelStore";
@@ -108,7 +105,7 @@ export interface TaskInputNavigationOptions {
    */
   folderRunEnvironment?: "local" | "cloud";
   reportAssociation?: { reportId: string; title: string };
-  agentActionAttribution?: AgentActionTaskAttribution;
+  agentActionAttribution?: AgentActionAttribution;
   /** Ignore whichever space is scoped and file the task nowhere. */
   unscoped?: boolean;
   /**

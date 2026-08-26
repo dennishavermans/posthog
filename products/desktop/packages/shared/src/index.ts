@@ -2,6 +2,7 @@ export * from "./adapter";
 export {
   type AgentAction,
   type AgentActionAttribution,
+  agentActionAttributionSchema,
   agentActionSchema,
   buildActionUrl,
   labelSchema,
@@ -120,7 +121,6 @@ export {
   pickAllowedModel,
 } from "./cloud-task-models";
 export {
-  type AgentActionTaskAttribution,
   buildInboxDeeplink,
   buildLoopDeeplink,
   buildScoutDeeplink,

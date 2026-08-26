@@ -13,7 +13,7 @@ import type { HostTrpcClient } from "@posthog/host-router/client";
 import { useHostTRPC, useHostTRPCClient } from "@posthog/host-router/react";
 import {
   type Adapter,
-  type AgentActionTaskAttribution,
+  type AgentActionAttribution,
   type AgentRuntime,
   ANALYTICS_EVENTS,
   PROJECT_BLUEBIRD_FLAG,
@@ -137,7 +137,7 @@ async function trackTaskCreated(
   selectedDirectory: string,
   hostClient: HostTrpcClient,
   resultingTaskId: string,
-  attribution?: AgentActionTaskAttribution,
+  attribution?: AgentActionAttribution,
 ): Promise<void> {
   try {
     const workspaceMode = input.workspaceMode ?? "local";
@@ -179,9 +179,9 @@ async function trackTaskCreated(
       uses_worktree_include: usesWorktreeInclude,
       adapter: input.adapter,
       resulting_task_id: resultingTaskId,
-      source_task_id: attribution?.sourceTaskId,
-      agent_action_id: attribution?.actionId,
-      agent_action_tool_call_id: attribution?.toolCallId,
+      source_task_id: attribution?.source_task_id,
+      agent_action_id: attribution?.action_id,
+      agent_action_tool_call_id: attribution?.tool_call_id,
     });
   } catch (error) {
     log.warn("Failed to track Task created event", { error });
@@ -548,14 +548,9 @@ export function useTaskCreation({
             if (allowNoRepo && channelId) {
               useTaskRepositoryDraftStore.getState().clearDraft(channelId);
             }
-            const agentActionAttribution =
-              useTaskInputPrefillStore.getState().prefill
-                .agentActionAttribution;
-            if (agentActionAttribution) {
-              useTaskInputPrefillStore
-                .getState()
-                .consumeAgentActionAttribution(agentActionAttribution.actionId);
-            }
+            const agentActionAttribution = useTaskInputPrefillStore
+              .getState()
+              .takeAgentActionAttribution();
             void trackTaskCreated(
               input,
               selectedDirectory,
