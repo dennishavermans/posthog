@@ -10,7 +10,6 @@ import {
     setFacetIncluded,
     setFacetSelection,
 } from './facetFilters'
-import type { FacetSource } from './facets'
 
 const NAMESPACE: FacetFilterTarget = {
     key: 'k8s.namespace.name',
@@ -33,10 +32,10 @@ const innerValues = (group: UniversalFiltersGroup): unknown[] => (group.values[0
 
 describe('facetFilters', () => {
     describe('facetFilterTarget', () => {
-        it.each<[string, FacetSource, FacetFilterTarget]>([
+        it.each<[string, string, FacetFilterTarget]>([
             [
                 'a column facet stores its selection as a log filter under its logKey',
-                { type: 'column', column: 'severity_text', logKey: 'severity_level' },
+                'severity_text',
                 {
                     key: 'severity_level',
                     type: PropertyFilterType.Log,
@@ -44,18 +43,14 @@ describe('facetFilters', () => {
             ],
             [
                 'a resource-attribute facet stores its selection under its attribute key',
-                { type: 'resourceAttribute', key: 'k8s.namespace.name' },
+                'k8s.namespace.name',
                 NAMESPACE,
             ],
-            [
-                'a plain-attribute (custom) facet stores its selection as log_attribute, not log_resource_attribute',
-                { type: 'attribute', key: 'log.iostream' },
-                {
-                    key: 'log.iostream',
-                    type: PropertyFilterType.LogAttribute,
-                },
-            ],
-        ])('%s', (_, source, expected) => {
+        ])('%s', (_, key, expected) => {
+            const source =
+                key === 'severity_text'
+                    ? ({ type: 'column', column: 'severity_text', logKey: 'severity_level' } as const)
+                    : ({ type: 'resourceAttribute', key } as const)
             expect(facetFilterTarget(source)).toEqual(expected)
         })
     })

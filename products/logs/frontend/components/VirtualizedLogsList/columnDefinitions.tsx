@@ -315,7 +315,6 @@ export function createConfiguredColumn(params: {
                               : LOGS_COLUMN_REGISTRY[config.type].getValue(log)
                       }
                       width={totalWidth}
-                      timestamp={log.timestamp}
                   />
               )
 

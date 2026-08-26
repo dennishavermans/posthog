@@ -407,34 +407,42 @@ async def _run(
     ignore_assertions: Optional[bool] = False,
     activity_environment: Optional[WorkflowEnvironment] = None,
     destinations: Optional[list["ExternalDataDestination"]] = None,
+    existing_schema_id: Optional[int] = None,
 ):
-    source = await sync_to_async(ExternalDataSource.objects.create)(
-        source_id=uuid.uuid4(),
-        connection_id=uuid.uuid4(),
-        destination_id=uuid.uuid4(),
-        team=team,
-        status="running",
-        source_type=source_type,
-        job_inputs=job_inputs,
-    )
-    source.created_at = datetime(2024, 1, 1, tzinfo=ZoneInfo("UTC"))
-    await sync_to_async(source.save)()
+    if existing_schema_id is not None:
+        # A genuine re-sync: the same schema (and so the same ownership identity a writer
+        # checks) runs again, rather than a fresh source and schema standing in for an
+        # unrelated one that happens to share a name.
+        schema = await sync_to_async(ExternalDataSchema.objects.get)(id=existing_schema_id)
+        source = await sync_to_async(lambda: schema.source)()
+    else:
+        source = await sync_to_async(ExternalDataSource.objects.create)(
+            source_id=uuid.uuid4(),
+            connection_id=uuid.uuid4(),
+            destination_id=uuid.uuid4(),
+            team=team,
+            status="running",
+            source_type=source_type,
+            job_inputs=job_inputs,
+        )
+        source.created_at = datetime(2024, 1, 1, tzinfo=ZoneInfo("UTC"))
+        await sync_to_async(source.save)()
 
-    schema = await sync_to_async(ExternalDataSchema.objects.create)(
-        name=schema_name,
-        team_id=team.pk,
-        source_id=source.pk,
-        sync_type=sync_type,
-        sync_type_config=sync_type_config or {},
-    )
-
-    def _link(destination: "ExternalDataDestination") -> None:
-        ExternalDataSourceDestination.objects.for_team(team.pk).create(
-            team_id=team.pk, source=source, destination=destination
+        schema = await sync_to_async(ExternalDataSchema.objects.create)(
+            name=schema_name,
+            team_id=team.pk,
+            source_id=source.pk,
+            sync_type=sync_type,
+            sync_type_config=sync_type_config or {},
         )
 
-    for destination in destinations or []:
-        await sync_to_async(_link)(destination)
+        def _link(destination: "ExternalDataDestination") -> None:
+            ExternalDataSourceDestination.objects.for_team(team.pk).create(
+                team_id=team.pk, source=source, destination=destination
+            )
+
+        for destination in destinations or []:
+            await sync_to_async(_link)(destination)
 
     workflow_id = str(uuid.uuid4())
     inputs = ExternalDataWorkflowInputs(
@@ -5136,10 +5144,13 @@ async def test_a_second_sync_merges_into_the_destination_rather_than_duplicating
         "destinations": [warehouse, destination],
     }
 
-    await _run(**run_kwargs)
+    _, first_inputs = await _run(**run_kwargs)
     after_first = await _destination_rows(postgres_config, STRIPE_CHARGE_RESOURCE_NAME)
 
-    await _run(**run_kwargs)
+    # Re-syncs the same schema, not a fresh one of the same name: a writer's ownership
+    # check is scoped to the schema id, and a second sync of the same source must still
+    # recognize the table it created the first time.
+    await _run(**run_kwargs, existing_schema_id=first_inputs.external_data_schema_id)
     after_second = await _destination_rows(postgres_config, STRIPE_CHARGE_RESOURCE_NAME)
 
     # Same source rows delivered twice must not double up at the destination.

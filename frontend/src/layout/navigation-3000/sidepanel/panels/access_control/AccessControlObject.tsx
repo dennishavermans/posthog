@@ -57,7 +57,7 @@ export function AccessControlObject(props: AccessControlLogicProps): JSX.Element
                     )}
                 </h2>
                 <p>{props.description}</p>
-                <PayGateMini feature={AvailableFeature.ACCESS_CONTROL} featureDetail="access-control-object-settings">
+                <PayGateMini feature={AvailableFeature.ACCESS_CONTROL}>
                     <div className="deprecated-space-y-6">
                         {canEditAccessControls === false ? (
                             <LemonBanner type="warning">
@@ -77,10 +77,7 @@ export function AccessControlObject(props: AccessControlLogicProps): JSX.Element
                         <AccessControlObjectUsers />
 
                         {/* Put this inside of Advanced Permissions (access control) so two aren't shown at once */}
-                        <PayGateMini
-                            feature={AvailableFeature.ROLE_BASED_ACCESS}
-                            featureDetail="access-control-object-roles"
-                        >
+                        <PayGateMini feature={AvailableFeature.ROLE_BASED_ACCESS}>
                             <AccessControlObjectRoles />
                         </PayGateMini>
                     </div>

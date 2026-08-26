@@ -56,7 +56,6 @@ export function UpgradeModal(): JSX.Element {
             <div className="max-w-2xl">
                 <PayGateMini
                     feature={upgradeModalFeatureKey}
-                    featureDetail="upgrade-modal"
                     currentUsage={upgradeModalFeatureUsage ?? undefined}
                     isGrandfathered={upgradeModalIsGrandfathered ?? undefined}
                     background={false}

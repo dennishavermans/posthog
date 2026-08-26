@@ -3,11 +3,10 @@ import { useCallback, useMemo } from 'react'
 
 import { logsViewerFiltersLogic } from 'products/logs/frontend/components/LogsViewer/Filters/logsViewerFiltersLogic'
 
-import { customFacetsLogic } from './customFacetsLogic'
 import { Facet, FacetOption } from './Facet'
 import { facetFilterTarget, facetSelection } from './facetFilters'
 import { facetRailLogic } from './facetRailLogic'
-import { FacetConfig, customFacetIdentity, mergeSelectedIntoOptions } from './facets'
+import { FacetConfig, mergeSelectedIntoOptions } from './facets'
 import { facetValuesLogic } from './facetValuesLogic'
 
 export interface RailFacetProps {
@@ -28,9 +27,6 @@ export function RailFacet({ id, facet, hidden }: RailFacetProps): JSX.Element | 
     const { setFacetSearch } = useActions(facetValuesLogic(logicProps))
     const { filterGroup } = useValues(logsViewerFiltersLogic({ id }))
     const { toggleFacetValue, toggleFacetCollapsed } = useActions(facetRailLogic({ id }))
-    const { removeCustomFacet } = useActions(customFacetsLogic)
-    const { entriesLoading } = useValues(customFacetsLogic)
-    const removeDisabledReason = entriesLoading ? 'Custom facets are updating' : undefined
 
     const { source } = facet
     // Everything the value rows are built from is memoized: Facet feeds them to a virtualized list
@@ -67,11 +63,6 @@ export function RailFacet({ id, facet, hidden }: RailFacetProps): JSX.Element | 
         (): void => toggleFacetCollapsed(facet.key),
         [toggleFacetCollapsed, facet.key]
     )
-    // Only custom facets carry an identity; curated facets get no remove control.
-    const onRemove = useMemo(() => {
-        const customIdentity = customFacetIdentity(facet)
-        return customIdentity ? (): void => removeCustomFacet(customIdentity.key, customIdentity.sourceType) : undefined
-    }, [facet, removeCustomFacet])
 
     if (hidden) {
         return null
@@ -89,8 +80,6 @@ export function RailFacet({ id, facet, hidden }: RailFacetProps): JSX.Element | 
                 collapsed={collapsed}
                 onToggleCollapsed={onToggleCollapsed}
                 dimZeroCounts
-                onRemove={onRemove}
-                removeDisabledReason={removeDisabledReason}
             />
         )
     }
@@ -110,8 +99,6 @@ export function RailFacet({ id, facet, hidden }: RailFacetProps): JSX.Element | 
             collapsed={collapsed}
             onToggleCollapsed={onToggleCollapsed}
             maxHeight={facet.maxHeight}
-            onRemove={onRemove}
-            removeDisabledReason={removeDisabledReason}
         />
     )
 }

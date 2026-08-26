@@ -28,10 +28,7 @@ export function OrganizationSecuritySettings(): JSX.Element | null {
 
     return (
         <>
-            <PayGateMini
-                feature={AvailableFeature.ORGANIZATION_SECURITY_SETTINGS}
-                featureDetail="organization-sharing-and-member-visibility"
-            >
+            <PayGateMini feature={AvailableFeature.ORGANIZATION_SECURITY_SETTINGS}>
                 <LemonSwitch
                     label={
                         <span>

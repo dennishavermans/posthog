@@ -175,9 +175,7 @@ export const facetValuesLogic = kea<facetValuesLogicType>([
                     const target: Partial<_LogsFacetValuesBodyApi> =
                         source.type === 'column'
                             ? { facetField: source.column }
-                            : source.type === 'attribute'
-                              ? { facetAttribute: source.key }
-                              : { facetResourceAttribute: source.key }
+                            : { facetResourceAttribute: source.key }
                     const response = await logsFacetValuesCreate(String(values.currentTeamId), {
                         query: {
                             ...target,

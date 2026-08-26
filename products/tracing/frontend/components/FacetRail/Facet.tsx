@@ -1,7 +1,7 @@
 import { CSSProperties, useMemo } from 'react'
 import { List } from 'react-window'
 
-import { IconChevronDown, IconChevronRight, IconMinusSmall, IconX } from '@posthog/icons'
+import { IconChevronDown, IconChevronRight, IconMinusSmall } from '@posthog/icons'
 import { LemonButton, LemonCheckbox, LemonInput } from '@posthog/lemon-ui'
 
 import { cn } from 'lib/utils/css-classes'
@@ -32,10 +32,6 @@ interface FacetProps {
     dimZeroCounts?: boolean
     /** The facet's latest fetch failed — show an inline error instead of pretending the list is fresh (suppresses emptyLabel). */
     error?: boolean
-    /** When set, renders a remove control in the header — for user-added custom facets only. */
-    onRemove?: () => void
-    /** Disables the remove control (with this explanation) while a custom-facet update is in flight. */
-    removeDisabledReason?: string
 }
 
 /**
@@ -67,8 +63,6 @@ export function Facet({
     maxHeight,
     dimZeroCounts = false,
     error = false,
-    onRemove,
-    removeDisabledReason,
 }: FacetProps): JSX.Element {
     const slug = slugify(title)
 
@@ -79,28 +73,16 @@ export function Facet({
 
     return (
         <div className="mb-3">
-            <div className="flex items-center gap-1 w-full px-1 mb-1">
-                <button
-                    type="button"
-                    onClick={onToggleCollapsed}
-                    disabled={!onToggleCollapsed}
-                    className="flex items-center gap-1 flex-1 min-w-0 text-[10px] font-semibold uppercase tracking-wide text-secondary hover:text-default"
-                    data-attr={`tracing-facet-${slug}-header`}
-                >
-                    {collapsed ? <IconChevronRight /> : <IconChevronDown />}
-                    <span className="truncate">{title}</span>
-                </button>
-                {onRemove && (
-                    <LemonButton
-                        size="small"
-                        icon={<IconX />}
-                        onClick={onRemove}
-                        disabledReason={removeDisabledReason}
-                        tooltip="Remove custom facet"
-                        data-attr={`tracing-facet-${slug}-remove`}
-                    />
-                )}
-            </div>
+            <button
+                type="button"
+                onClick={onToggleCollapsed}
+                disabled={!onToggleCollapsed}
+                className="flex items-center gap-1 w-full px-1 mb-1 text-[10px] font-semibold uppercase tracking-wide text-secondary hover:text-default"
+                data-attr={`tracing-facet-${slug}-header`}
+            >
+                {collapsed ? <IconChevronRight /> : <IconChevronDown />}
+                <span>{title}</span>
+            </button>
             {!collapsed && onSearchChange && (
                 <div className="px-1 pb-1">
                     <LemonInput

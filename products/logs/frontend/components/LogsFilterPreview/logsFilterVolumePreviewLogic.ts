@@ -5,12 +5,7 @@ import api from 'lib/api'
 
 import { FilterLogicalOperator, PropertyGroupFilter, UniversalFiltersGroup } from '~/types'
 
-import {
-    DEFAULT_PREVIEW_LOOKBACK,
-    LogsFilterPreviewLookback,
-    LogsFilterPreviewMetric,
-    LogsFilterPreviewPoint,
-} from './logsFilterVolumePreview'
+import { LogsFilterPreviewMetric, LogsFilterPreviewPoint } from './logsFilterVolumePreview'
 
 const EMPTY_FILTER_GROUP: UniversalFiltersGroup = {
     type: FilterLogicalOperator.And,
@@ -36,7 +31,6 @@ export interface logsFilterVolumePreviewLogicValues {
     filterGroup: UniversalFiltersGroup
     filterPreview: LogsFilterPreviewPoint[] | null
     filterPreviewLoading: boolean
-    lookback: LogsFilterPreviewLookback
     rankBy: LogsFilterPreviewMetric
 }
 
@@ -62,11 +56,9 @@ export interface logsFilterVolumePreviewLogicActions {
     }
     setPreviewRequest: (
         filterGroup: UniversalFiltersGroup,
-        rankBy: LogsFilterPreviewMetric,
-        lookback?: LogsFilterPreviewLookback
+        rankBy: LogsFilterPreviewMetric
     ) => {
         filterGroup: UniversalFiltersGroup
-        lookback: LogsFilterPreviewLookback
         rankBy: LogsFilterPreviewMetric
     }
 }
@@ -89,14 +81,9 @@ export const logsFilterVolumePreviewLogic = kea<logsFilterVolumePreviewLogicType
     key(({ previewKey }) => previewKey),
 
     actions({
-        setPreviewRequest: (
-            filterGroup: UniversalFiltersGroup,
-            rankBy: LogsFilterPreviewMetric,
-            lookback: LogsFilterPreviewLookback = DEFAULT_PREVIEW_LOOKBACK
-        ) => ({
+        setPreviewRequest: (filterGroup: UniversalFiltersGroup, rankBy: LogsFilterPreviewMetric) => ({
             filterGroup,
             rankBy,
-            lookback,
         }),
         refreshFilterPreview: true,
     }),
@@ -115,12 +102,6 @@ export const logsFilterVolumePreviewLogic = kea<logsFilterVolumePreviewLogicType
             'count' as LogsFilterPreviewMetric,
             {
                 setPreviewRequest: (_, { rankBy }) => rankBy,
-            },
-        ],
-        lookback: [
-            DEFAULT_PREVIEW_LOOKBACK as LogsFilterPreviewLookback,
-            {
-                setPreviewRequest: (_, { lookback }) => lookback,
             },
         ],
         // kea-loaders keeps the last successful value when a request fails. Consumers treat any
@@ -143,7 +124,7 @@ export const logsFilterVolumePreviewLogic = kea<logsFilterVolumePreviewLogicType
                     }
                     const response = await api.logs.sparkline({
                         query: {
-                            dateRange: { date_from: `-${values.lookback}`, date_to: null },
+                            dateRange: { date_from: '-24h', date_to: null },
                             filterGroup: wrapFilterGroup(values.filterGroup) as PropertyGroupFilter,
                             severityLevels: [],
                             serviceNames: [],

@@ -100,7 +100,6 @@ export const SidePanelActivity = (): JSX.Element => {
             <SidePanelPaneHeader title="Team activity" />
             <PayGateMini
                 feature={AvailableFeature.AUDIT_LOGS}
-                featureDetail="activity-log-side-panel"
                 className="flex flex-col flex-1 overflow-hidden"
                 overrideShouldShowGate={user?.is_impersonated || !!featureFlags[FEATURE_FLAGS.AUDIT_LOGS_ACCESS]}
             >

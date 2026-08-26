@@ -87,19 +87,15 @@ class ChangeKind(StrEnum):
 
 
 class FlakinessState(StrEnum):
-    """How unstable a snapshot's rendering is, and what to do about it.
+    """How unstable a snapshot's rendering is against its current baseline.
 
-    Derived, not stored. Scored on how often default-branch runs in the window
-    rendered the snapshot differently from its baseline, and on how much of the
-    diff threshold the absorbed ones leave free. The ladder is ordered by
-    urgency, and each rung asks for a different fix.
+    Derived, not stored. A snapshot is scored on the alternate hashes the
+    classifier can still match, so the score resets when the baseline moves.
     """
 
-    BROKEN = "broken"  # Fails nearly every run: the baseline is wrong, not the story
-    UNSTABLE = "unstable"  # Fails some runs and not others: the classic flake
-    AT_RISK = "at_risk"  # Never fails, but its diff is already touching the threshold
-    NOISY = "noisy"  # Renders variants, absorbed with room to spare
-    CLEAN = "clean"  # Matched its baseline on every run in the window
+    UNSTABLE = "unstable"  # Rendered a variant inside the recency window
+    SETTLED = "settled"  # Has variants against this baseline, but rendered none recently
+    CLEAN = "clean"  # No live variants against the current baseline
 
 
 class ActorType(StrEnum):

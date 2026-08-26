@@ -8,7 +8,6 @@ import { SceneDivider } from '~/layout/scenes/components/SceneDivider'
 import { UniversalFiltersGroup } from '~/types'
 
 import { LogsGroupByResults } from 'products/logs/frontend/components/LogsGroupBy/LogsGroupByResults'
-import { LogsMetricRuleQuickCreateModal } from 'products/logs/frontend/components/LogsMetricRules/LogsMetricRuleQuickCreateModal'
 import { LogsPatterns } from 'products/logs/frontend/components/LogsPatterns/LogsPatterns'
 import { logsViewerConfigLogic } from 'products/logs/frontend/components/LogsViewer/config/logsViewerConfigLogic'
 import { LogsViewerFilters, LogsViewerScope } from 'products/logs/frontend/components/LogsViewer/config/types'
@@ -397,7 +396,6 @@ function LogsViewerContent({
                 </div>
             </div>
             <LogDetailsModal timezone={timezone} />
-            <LogsMetricRuleQuickCreateModal />
         </div>
     )
 }
