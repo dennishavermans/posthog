@@ -203,6 +203,7 @@ export interface hogFlowEditorLogicActions {
                                     name?: string | undefined
                                     percentage: number
                                 }[]
+                                sticky_assignment?: boolean | undefined
                             }
                             created_at?: number | undefined
                             description: string
@@ -1050,6 +1051,7 @@ export interface hogFlowEditorLogicActions {
                                     name?: string | undefined
                                     percentage: number
                                 }[]
+                                sticky_assignment?: boolean | undefined
                             }
                             created_at?: number | undefined
                             description: string

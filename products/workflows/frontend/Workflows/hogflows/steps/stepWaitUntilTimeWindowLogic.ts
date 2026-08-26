@@ -104,6 +104,7 @@ export interface stepWaitUntilTimeWindowLogicActions {
                       name?: string | undefined
                       percentage: number
                   }[]
+                  sticky_assignment?: boolean | undefined
               }
             | {
                   reason?: string | undefined
@@ -397,6 +398,7 @@ export interface stepWaitUntilTimeWindowLogicActions {
                       name?: string | undefined
                       percentage: number
                   }[]
+                  sticky_assignment?: boolean | undefined
               }
             | {
                   reason?: string | undefined
