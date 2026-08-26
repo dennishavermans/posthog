@@ -92,6 +92,47 @@ def _drop(dsn: str, *tables: str) -> None:
             conn.execute(f'DROP TABLE IF EXISTS public."{table}" CASCADE')
 
 
+class TestStagingTableNameTruncation:
+    """Postgres silently truncates any identifier past 63 bytes. The run-scoped suffix has to
+    survive that truncation itself, or a long enough `table_name` collapses the staging name
+    back onto a name Postgres would treat identically to the live table's own (also
+    truncated) name.
+    """
+
+    async def test_a_short_table_name_is_untouched(self) -> None:
+        ctx = _ctx("orders", "full_refresh")
+        name = staging_table_name(ctx)
+
+        assert name.startswith("orders__ph_stage_")
+        assert len(name.encode()) <= 63
+
+    async def test_a_long_table_name_still_ends_with_its_full_run_suffix(self) -> None:
+        ctx = _ctx("r" * 100, "full_refresh")
+        name = staging_table_name(ctx)
+        suffix = f"__ph_stage_{ctx.run_uuid.replace('-', '')[:12]}"
+
+        # The whole point: Postgres's own truncation drops the *end* of an over-length
+        # identifier first, which is exactly this suffix. Truncating the base ourselves means
+        # the suffix is always what's left, not what's cut.
+        assert name.endswith(suffix)
+        assert len(name.encode()) <= 63
+
+    async def test_two_long_table_names_sharing_a_63_byte_prefix_still_differ(self) -> None:
+        # What an attacker actually needs for the identifier-truncation attack: two
+        # `table_name`s identical for the first 63 bytes (what Postgres alone would leave
+        # standing) but different beyond it.
+        first = _ctx("r" * 100 + "-one", "full_refresh")
+        second = _ctx("r" * 100 + "-two", "full_refresh")
+
+        assert staging_table_name(first) != staging_table_name(second)
+
+    async def test_a_multibyte_table_name_does_not_raise(self) -> None:
+        ctx = _ctx("é" * 60, "full_refresh")
+        name = staging_table_name(ctx)
+
+        assert len(name.encode()) <= 63
+
+
 class TestFullRefresh:
     async def test_the_live_table_only_changes_once_the_run_completes(self, dsn, table_name) -> None:
         ctx = _ctx(table_name, "full_refresh")
@@ -224,6 +265,36 @@ class TestFullRefreshTableOwnership:
             # The pre-existing table was never touched, and the staging table is still there
             # for a retry to pick up once the name collision is resolved.
             assert _read(dsn, table_name) == [(99, "untouched")]
+        finally:
+            _drop(dsn, table_name, staging_table_name(ctx))
+
+    async def test_a_full_refresh_refuses_to_reuse_an_existing_table_as_staging(self, dsn, table_name) -> None:
+        """Guards the staging table itself, not just the final swap target.
+
+        Before the ownership check on `write_batch`'s first batch existed, an identifier
+        collision (see `TestStagingTableNameTruncation`) or any other reason a table already
+        sat at the generated staging name would have this writer adopt it silently: evolve
+        its schema, delete rows matching this run's batch index, and stamp its own ownership
+        marker over whatever was there — all before `finalize_run` ever got a chance to check
+        anything.
+        """
+        ctx = _ctx(table_name, "full_refresh")
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            conn.execute(f'CREATE TABLE public."{staging_table_name(ctx)}" (id BIGINT, name TEXT)')
+            conn.execute(f"INSERT INTO public.\"{staging_table_name(ctx)}\" VALUES (99, 'untouched')")
+
+        writer = LocalPostgresWriter(ctx, dsn)
+        try:
+            with pytest.raises(UnrelatedTableExistsError):
+                await writer.write_batch(
+                    _batches(_rows(["a"], [1])),
+                    DestinationBatchContext(run=ctx, batch_index=0, is_final_batch=True),
+                )
+
+            # Neither the pre-existing table's schema nor its rows were touched.
+            with psycopg.connect(dsn, autocommit=True) as conn:
+                rows = conn.execute(f'SELECT id, name FROM public."{staging_table_name(ctx)}" ORDER BY id').fetchall()
+            assert rows == [(99, "untouched")]
         finally:
             _drop(dsn, table_name, staging_table_name(ctx))
 

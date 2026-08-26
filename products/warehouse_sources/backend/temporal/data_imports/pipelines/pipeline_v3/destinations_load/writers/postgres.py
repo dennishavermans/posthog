@@ -91,10 +91,22 @@ class UnrelatedTableExistsError(RuntimeError):
     """A sync would have replaced or mutated a table this writer never created."""
 
 
+# Postgres silently truncates any identifier past this many bytes. Truncating the base name
+# ourselves, instead of leaving it to Postgres, guarantees the run-scoped suffix below always
+# survives: Postgres's own truncation drops the *end* of the identifier first, which is
+# exactly that suffix, collapsing a long `table_name` back onto its own (also truncated)
+# name. An editor who controls a custom source's resource name could otherwise pick one
+# sharing the first 63 bytes with an existing table on the destination and have this "staging"
+# table alias it directly. `_is_owned` below is what actually stops that alias being written
+# to; this just keeps the identifier from silently losing its uniqueness in the first place.
+_MAX_PG_IDENTIFIER_BYTES = 63
+
+
 def staging_table_name(ctx: DestinationRunContext) -> str:
-    # Run-scoped, so two runs of the same table never share a staging table. Postgres caps
-    # identifiers at 63 bytes, hence the truncated run id.
-    return f"{ctx.table_name}__ph_stage_{ctx.run_uuid.replace('-', '')[:12]}"
+    # Run-scoped, so two runs of the same table never share a staging table.
+    suffix = f"__ph_stage_{ctx.run_uuid.replace('-', '')[:12]}"
+    base = ctx.table_name.encode()[: _MAX_PG_IDENTIFIER_BYTES - len(suffix)].decode(errors="ignore")
+    return f"{base}{suffix}"
 
 
 def _to_json_text(value: Any, *, from_map: bool) -> str | None:
@@ -278,19 +290,25 @@ class PostgresDestinationWriter:
             first = True
             async for batch in batches:
                 if first:
-                    table_existed = False
-                    if not full_refresh:
-                        # An incremental run writes straight into the live table, so a table
-                        # that predates this sync and merely happens to share `table_name`
-                        # must be refused up front, before its schema is evolved or a row in
-                        # it is touched. A full refresh gets the same guarantee at swap time,
-                        # in `finalize_run`, once the new data is known to be complete.
-                        table_existed = await self._table_exists(client, target)
-                        if table_existed and not await self._is_owned(client, target, run.schema_id):
-                            raise UnrelatedTableExistsError(
-                                f'"{self._schema}"."{target}" already exists and was not created by this sync; '
-                                "refusing to merge an incremental run's rows into it."
+                    # An incremental run writes straight into the live table, and a full
+                    # refresh writes into what it treats as *its own* staging table — either
+                    # way, a table that predates this sync and merely happens to share the
+                    # generated name must be refused up front, before its schema is evolved or
+                    # a row in it is touched. Reusing an unowned table as staging would mutate
+                    # or delete unrelated data and, on the final batch, replace its ownership
+                    # marker and swap it in under `finalize_run`'s nose. A full refresh's own
+                    # table gets one further check at swap time, once the new data is known to
+                    # be complete.
+                    table_existed = await self._table_exists(client, target)
+                    if table_existed and not await self._is_owned(client, target, run.schema_id):
+                        raise UnrelatedTableExistsError(
+                            f'"{self._schema}"."{target}" already exists and was not created by this sync; '
+                            + (
+                                "refusing to reuse it as a staging table."
+                                if full_refresh
+                                else "refusing to merge an incremental run's rows into it."
                             )
+                        )
 
                     await self._ensure_table(
                         client,
