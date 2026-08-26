@@ -27,6 +27,13 @@ SES_TENANT_CONFIGURATION_SETS: list[str] = [
     if cs.strip()
 ]
 
+# SNS topics allowed to deliver SES tenant reputation events (EventBridge -> SNS -> webhook).
+# Empty (the default) leaves the webhook inert: the SNS signature proves a message came from AWS,
+# but only the allowlist proves it came from *our* topic.
+WORKFLOWS_SES_EVENTS_SNS_TOPIC_ARNS: list[str] = [
+    arn.strip() for arn in os.getenv("WORKFLOWS_SES_EVENTS_SNS_TOPIC_ARNS", "").split(",") if arn.strip()
+]
+
 # Mailbox providers that sending health is broken down by, as SES ISP dimension values.
 # SES exposes no API to enumerate them and AWS documents the vocabulary only as "e.g. Gmail,
 # Yahoo", so this stays configurable: an unrecognized value returns zeros rather than an error,
