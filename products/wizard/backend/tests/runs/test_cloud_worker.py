@@ -269,6 +269,26 @@ def test_execute_wizard_maps_command_timeout(get_sandbox_class: MagicMock) -> No
         execute_wizard(request)
 
 
+@patch("products.wizard.backend.logic.workers.service.get_sandbox_class")
+def test_execute_wizard_surfaces_wizard_error_code(get_sandbox_class: MagicMock) -> None:
+    request = WizardExecutionRequest(
+        sandbox_id="worker-id",
+        workspace_path="/tmp/workspace/repos/posthog/posthog",
+        team_id=7,
+        wizard_version="2.60.0",
+        program_command=("audit",),
+    )
+    get_sandbox_class.return_value.get_by_id.return_value.execute.return_value = _execution_result(
+        stderr='Audit failed\nphw-error: {"code":"PHW_DETECT_NO_POSTHOG_SDK","message":"Missing SDK"}',
+        exit_code=1,
+    )
+
+    with pytest.raises(WizardWorkerExecutionError) as error:
+        execute_wizard(request)
+
+    assert error.value.wizard_error_code == "PHW_DETECT_NO_POSTHOG_SDK"
+
+
 @patch("products.wizard.backend.logic.workers.service.repository_facade.create_pull_request")
 @patch("products.wizard.backend.logic.workers.service.repository_facade.create_signed_commit")
 @patch("products.wizard.backend.logic.workers.service.get_sandbox_class")

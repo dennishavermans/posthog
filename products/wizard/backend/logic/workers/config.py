@@ -7,6 +7,7 @@ from products.tasks.backend.facade.sandbox import SandboxTemplate
 WIZARD_TIMEOUT_SECONDS = 45 * 60
 WIZARD_TIMEOUT_EXIT_CODE = 124
 WIZARD_ERROR_DETAIL_LENGTH = 2000
+WIZARD_ERROR_OUTPUT_PREFIX = "phw-error:"
 LOCAL_WIZARD_BUILD_TIMEOUT_SECONDS = 15 * 60
 LOCAL_WIZARD_ARCHIVE_PATH = "/tmp/posthog-local-wizard.tar.gz"
 LOCAL_WIZARD_INSTALL_PATH = "/tmp/posthog-local-wizard"

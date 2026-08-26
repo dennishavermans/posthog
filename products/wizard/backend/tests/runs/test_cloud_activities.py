@@ -243,6 +243,10 @@ def test_clone_repository_rejects_access_revoked_after_creation(team, user) -> N
     (
         (WizardWorkerTimeoutError(), WIZARD_WORKER_TIMEOUT_ERROR_TYPE),
         (WizardWorkerExecutionError("execution", 1), WIZARD_WORKER_EXECUTION_ERROR_TYPE),
+        (
+            WizardWorkerExecutionError("execution", 1, wizard_error_code="PHW_DETECT_NO_POSTHOG_SDK"),
+            "PHW_DETECT_NO_POSTHOG_SDK",
+        ),
     ),
 )
 def test_execute_wizard_maps_worker_error(worker_error: Exception, error_type: str) -> None:

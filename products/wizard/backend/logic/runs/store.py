@@ -18,7 +18,6 @@ from products.wizard.backend.facade.contracts import (
 from products.wizard.backend.facade.enums import (
     WizardRunDispatchStatus,
     WizardRunEnvironment,
-    WizardRunErrorCode,
     WizardRunStage,
     WizardRunStatus,
 )
@@ -159,11 +158,11 @@ def set_run_status(
     team_id: int,
     run_id: UUID,
     status: WizardRunStatus,
-    error_code: WizardRunErrorCode | None,
+    error_code: str | None,
 ) -> WizardRunDTO:
     run = _get_run_record(team_id, run_id)
     run.status = status.value
-    run.error_code = error_code.value if error_code is not None else None
+    run.error_code = error_code
     run.error_message = error_message(error_code)
 
     update_fields = ["status", "error_code", "error_message", "updated_at"]

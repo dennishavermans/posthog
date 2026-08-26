@@ -28,7 +28,7 @@ from products.wizard.backend.facade.contracts import (
     WizardRunPullRequestArtifactDTO,
     WizardSessionDTO,
 )
-from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStage, WizardRunStatus
+from products.wizard.backend.facade.enums import WizardRunStage, WizardRunStatus
 from products.wizard.backend.facade.validation import validate_wizard_version as validate_wizard_version_value
 from products.wizard.backend.logic import (
     registry as registry_service,
@@ -122,7 +122,7 @@ def update_run_status(
     run_id: UUID,
     status: WizardRunStatus,
     *,
-    error_code: WizardRunErrorCode | None = None,
+    error_code: str | None = None,
 ) -> WizardRunDTO:
     return run_service.transition_run(team_id, run_id, status, error_code=error_code)
 

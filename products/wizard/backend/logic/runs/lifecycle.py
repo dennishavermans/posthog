@@ -16,12 +16,7 @@ from products.wizard.backend.facade.contracts import (
     WizardRunDTO,
     WizardRunPage,
 )
-from products.wizard.backend.facade.enums import (
-    WizardRunEnvironment,
-    WizardRunErrorCode,
-    WizardRunStage,
-    WizardRunStatus,
-)
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStage, WizardRunStatus
 from products.wizard.backend.facade.errors import (
     IllegalStatusTransitionError,
     InvalidWorkspaceEnvironmentError,
@@ -168,7 +163,7 @@ def fail_run(
     team_id: int,
     run_id: UUID,
     *,
-    error_code: WizardRunErrorCode | None = None,
+    error_code: str | None = None,
 ) -> WizardRunDTO:
     return transition_run(team_id, run_id, WizardRunStatus.FAILED, error_code=error_code)
 
@@ -209,7 +204,7 @@ def transition_run(
     run_id: UUID,
     next_status: WizardRunStatus,
     *,
-    error_code: WizardRunErrorCode | None = None,
+    error_code: str | None = None,
 ) -> WizardRunDTO:
     with database_transaction.atomic():
         run = store.get_run_for_update(team_id, run_id)

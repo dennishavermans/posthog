@@ -158,7 +158,7 @@ def report_run_status_changed(previous: WizardRunDTO, current: WizardRunDTO) -> 
 
 
 def report_run_finished(run: WizardRunDTO, failure_stage: WizardRunStage | None) -> None:
-    error_code = run.error_code.value if run.error_code is not None else "none"
+    error_code = run.error_code or "none"
 
     WIZARD_RUNS_FINISHED_TOTAL.labels(
         environment=run.environment.value,

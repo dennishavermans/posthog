@@ -21,10 +21,11 @@ async def _run_activity(input: WizardRunFinalizationActivityInput) -> None:
     (
         (WizardRunStatus.FAILED, WizardRunErrorCode.TIMEOUT),
         (WizardRunStatus.FAILED, WizardRunErrorCode.EXECUTION_FAILED),
+        (WizardRunStatus.FAILED, "PHW_DETECT_NO_POSTHOG_SDK"),
         (WizardRunStatus.CANCELLED, None),
     ),
 )
-def test_finalize_run_is_retry_safe(team, user, status: WizardRunStatus, error_code: WizardRunErrorCode | None) -> None:
+def test_finalize_run_is_retry_safe(team, user, status: WizardRunStatus, error_code: str | None) -> None:
     with (
         patch(
             "products.wizard.backend.logic.runs.repository_access.repo_selection.resolve_team_github_integration_id",

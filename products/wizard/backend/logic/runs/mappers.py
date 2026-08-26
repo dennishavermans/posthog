@@ -6,7 +6,6 @@ from products.wizard.backend.facade.contracts import (
 )
 from products.wizard.backend.facade.enums import (
     WizardRunEnvironment,
-    WizardRunErrorCode,
     WizardRunStage,
     WizardRunStatus,
     WizardWorkspaceType,
@@ -41,7 +40,7 @@ def run_from_record(run: WizardRun) -> WizardRunDTO:
         workspace=workspace_from_record(run.workspace_type, run.workspace),
         program=program_from_mapping(run.program, allow_latest_version=True),
         status=WizardRunStatus(run.status),
-        error_code=WizardRunErrorCode(run.error_code) if run.error_code else None,
+        error_code=run.error_code,
         error_message=run.error_message,
         stage=WizardRunStage(run.stage) if run.stage else None,
         created_at=run.created_at,

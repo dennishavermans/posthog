@@ -19,6 +19,7 @@ from products.wizard.backend.facade.enums import (
     WizardWorkspaceType,
 )
 from products.wizard.backend.facade.errors import InvalidRepositoryError
+from products.wizard.backend.facade.validation import is_wizard_error_code
 from products.wizard.backend.presentation.registry.serializers import WizardProgramSerializer
 
 
@@ -166,12 +167,21 @@ class WizardRunStatusUpdateRequestSerializer(serializers.Serializer):
         ],
         help_text="New terminal status for the Wizard run.",
     )
-    error_code = serializers.ChoiceField(
+    error_code = serializers.CharField(
         required=False,
         allow_null=True,
-        choices=[error_code.value for error_code in WizardRunErrorCode],
+        max_length=50,
         help_text="Machine-readable reason the Wizard run failed.",
     )
+
+    def validate_error_code(self, value: str | None) -> str | None:
+        if value is None or is_wizard_error_code(value):
+            return value
+        try:
+            WizardRunErrorCode(value)
+        except ValueError as error:
+            raise serializers.ValidationError("Enter a valid Wizard run error code.") from error
+        return value
 
     def validate(self, attrs: dict[str, object]) -> dict[str, object]:
         if attrs.get("error_code") is not None and attrs["status"] != WizardRunStatus.FAILED.value:
@@ -181,9 +191,8 @@ class WizardRunStatusUpdateRequestSerializer(serializers.Serializer):
     def to_status(self) -> WizardRunStatus:
         return WizardRunStatus(cast(str, self.validated_data["status"]))
 
-    def to_error_code(self) -> WizardRunErrorCode | None:
-        value = cast(str | None, self.validated_data.get("error_code"))
-        return WizardRunErrorCode(value) if value is not None else None
+    def to_error_code(self) -> str | None:
+        return cast(str | None, self.validated_data.get("error_code"))
 
 
 class WizardRunSerializer(serializers.Serializer):
@@ -206,10 +215,9 @@ class WizardRunSerializer(serializers.Serializer):
         choices=[run_status.value for run_status in WizardRunStatus],
         help_text="Current lifecycle status of the Wizard run.",
     )
-    error_code = serializers.ChoiceField(
+    error_code = serializers.CharField(
         read_only=True,
         allow_null=True,
-        choices=[error_code.value for error_code in WizardRunErrorCode],
         help_text="Machine-readable failure reason, or null if the run has not failed.",
     )
     error_message = serializers.CharField(

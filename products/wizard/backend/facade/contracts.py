@@ -15,7 +15,6 @@ from posthog.dataclasses import frozen
 from .enums import (
     WizardRunArtifactType,
     WizardRunEnvironment,
-    WizardRunErrorCode,
     WizardRunStage,
     WizardRunStatus,
     WizardSessionRunPhase,
@@ -148,7 +147,7 @@ class WizardRunDTO:
     workspace: WizardWorkspace
     program: WizardProgram
     status: WizardRunStatus
-    error_code: WizardRunErrorCode | None
+    error_code: str | None
     error_message: str | None
     stage: WizardRunStage | None
     created_at: datetime

@@ -480,6 +480,11 @@ class TestWizardRunViewSet(APIBaseTest):
         (
             ({"status": "completed"}, WizardRunStatus.COMPLETED, None),
             ({"status": "failed", "error_code": "timeout"}, WizardRunStatus.FAILED, "timeout"),
+            (
+                {"status": "failed", "error_code": "PHW_DETECT_NO_POSTHOG_SDK"},
+                WizardRunStatus.FAILED,
+                "PHW_DETECT_NO_POSTHOG_SDK",
+            ),
             ({"status": "cancelled"}, WizardRunStatus.CANCELLED, None),
         )
     )
@@ -504,6 +509,25 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json()["status"], expected_status.value)
         self.assertEqual(response.json()["error_code"], expected_error_code)
+
+    def test_transition_rejects_invalid_error_code(self) -> None:
+        created = self.client.post(
+            self._url(),
+            {
+                "program_id": "posthog-integration",
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "example-project"},
+            },
+            format="json",
+        ).json()
+
+        response = self.client.patch(
+            self._url(created["id"]),
+            {"status": "failed", "error_code": "arbitrary-error"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_transition_rejects_terminal_run(self) -> None:
         created = self.client.post(

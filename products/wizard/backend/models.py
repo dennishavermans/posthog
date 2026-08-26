@@ -16,7 +16,6 @@ from products.wizard.backend.facade.enums import (
     WizardRunArtifactType,
     WizardRunDispatchStatus,
     WizardRunEnvironment,
-    WizardRunErrorCode,
     WizardRunStage,
     WizardRunStatus,
     WizardSessionRunPhase,
@@ -106,9 +105,7 @@ class WizardRun(UUIDModel, TeamScopedRootMixin, CreatedMetaFields, UpdatedMetaFi
         choices=[(status.value, status.value) for status in WizardRunStatus],
     )
 
-    error_code = models.CharField(
-        max_length=50, choices=[(error.value, error.value) for error in WizardRunErrorCode], null=True, blank=True
-    )
+    error_code = models.CharField(max_length=50, null=True, blank=True)
 
     idempotency_key = models.CharField(max_length=255, null=True, blank=True)
     request_fingerprint = models.CharField(max_length=64, null=True, blank=True)

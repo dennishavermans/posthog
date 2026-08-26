@@ -135,6 +135,10 @@ async def test_cloud_workflow_prepares_local_wizard_before_workspace(
             TimeoutError("Activity timed out", type=TimeoutType.START_TO_CLOSE, last_heartbeat_details=[]),
             WizardRunErrorCode.TIMEOUT,
         ),
+        (
+            ApplicationError("Wizard failed", type="PHW_DETECT_NO_POSTHOG_SDK"),
+            "PHW_DETECT_NO_POSTHOG_SDK",
+        ),
         (ApplicationError("Worker failed", type="WorkerFailure"), WizardRunErrorCode.EXECUTION_FAILED),
     ],
 )
@@ -144,7 +148,7 @@ async def test_cloud_workflow_persists_execution_failure(
     worker: ProvisionedWizardWorker,
     workspace: PreparedGitRepositoryWorkspace,
     cause: BaseException,
-    expected_error_code: WizardRunErrorCode,
+    expected_error_code: str,
 ) -> None:
     activity_error = _activity_error(cause)
     execute_activity = AsyncMock(side_effect=[worker, workspace, activity_error, None, None])
@@ -261,4 +265,4 @@ def test_cloud_workflow_identity_and_input_parsing() -> None:
 def test_activity_failures_map_to_their_stage(activity_type: str, expected_error_code: str) -> None:
     error = _activity_error(ApplicationError("failed", type="ExternalFailure"), activity_type)
 
-    assert execute_run_workflow_module.wizard_run_error_code(error).value == expected_error_code
+    assert execute_run_workflow_module.wizard_run_error_code(error) == expected_error_code

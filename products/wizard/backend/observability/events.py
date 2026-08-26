@@ -43,7 +43,7 @@ def enqueue_stage_entered(run: WizardRunDTO, stage: WizardRunStage) -> None:
 def enqueue_run_finished(run: WizardRunDTO, failure_stage: WizardRunStage | None, event: str) -> None:
     properties: WizardEventProperties = {
         "status": run.status.value,
-        "error_code": run.error_code.value if run.error_code is not None else None,
+        "error_code": run.error_code,
         "failure_stage": failure_stage.value if failure_stage is not None else None,
     }
 

@@ -48,6 +48,7 @@ from products.wizard.backend.logic.workers.config import (
 )
 from products.wizard.backend.logic.workers.contracts import WizardWorkerResourceUsage, WizardWorkerUsageMeasurement
 from products.wizard.backend.logic.workers.local_package import build_local_wizard_source_archive
+from products.wizard.backend.logic.workers.wizard_error_output import wizard_error_code_from_stderr
 from products.wizard.backend.observability.service import wizard_observability
 
 logger = logging.getLogger(__name__)
@@ -100,13 +101,22 @@ class WizardWorkerResult:
 
 
 class WizardWorkerExecutionError(Exception):
-    def __init__(self, stage: str, exit_code: int, detail: str | None = None) -> None:
+    def __init__(
+        self,
+        stage: str,
+        exit_code: int,
+        detail: str | None = None,
+        wizard_error_code: str | None = None,
+    ) -> None:
         self.stage = stage
         self.exit_code = exit_code
         self.detail = detail
+        self.wizard_error_code = wizard_error_code
+
         message = f"Wizard Worker {stage} failed with exit code {exit_code}."
         if detail:
             message = f"{message}\n{detail}"
+
         super().__init__(message)
 
 
@@ -279,7 +289,12 @@ def measure_worker_usage(sandbox_id: str) -> WizardWorkerUsageMeasurement | None
 
 def _raise_for_failure(stage: str, exit_code: int, *, stdout: str = "", stderr: str = "") -> None:
     if exit_code != 0:
-        raise WizardWorkerExecutionError(stage, exit_code, _failure_detail(stdout, stderr))
+        raise WizardWorkerExecutionError(
+            stage,
+            exit_code,
+            _failure_detail(stdout, stderr),
+            wizard_error_code_from_stderr(stderr),
+        )
 
 
 def _failure_detail(stdout: str, stderr: str) -> str | None:

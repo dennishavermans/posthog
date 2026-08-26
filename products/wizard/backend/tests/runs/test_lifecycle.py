@@ -107,6 +107,21 @@ def test_fail_run_persists_error_code(team, user) -> None:
 
 
 @pytest.mark.django_db
+def test_fail_run_persists_wizard_error_code(team, user) -> None:
+    created = _create_local_run(team.id, user.id)
+
+    failed = wizard_facade.update_run_status(
+        team.id,
+        created.id,
+        WizardRunStatus.FAILED,
+        error_code="PHW_DETECT_NO_POSTHOG_SDK",
+    )
+
+    assert failed.error_code == "PHW_DETECT_NO_POSTHOG_SDK"
+    assert failed.error_message == "The Wizard could not complete the selected program."
+
+
+@pytest.mark.django_db
 def test_invalid_persisted_transition_leaves_run_unchanged(team, user) -> None:
     created = _create_local_run(team.id, user.id)
     completed = wizard_facade.update_run_status(team.id, created.id, WizardRunStatus.COMPLETED)

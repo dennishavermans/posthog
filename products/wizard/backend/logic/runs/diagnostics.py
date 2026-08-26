@@ -1,7 +1,7 @@
 from products.wizard.backend.facade.enums import WizardRunErrorCode
 
 
-def error_message(error_code: WizardRunErrorCode | None) -> str | None:
+def error_message(error_code: str | None) -> str | None:
     match error_code:
         case WizardRunErrorCode.TIMEOUT:
             return "The Wizard run timed out."
@@ -19,3 +19,7 @@ def error_message(error_code: WizardRunErrorCode | None) -> str | None:
             return "The Wizard run could not be dispatched."
         case None:
             return None
+        case value if value.startswith("PHW_"):
+            return "The Wizard could not complete the selected program."
+        case _:
+            return "The Wizard run failed."

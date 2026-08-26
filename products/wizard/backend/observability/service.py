@@ -105,7 +105,7 @@ class WizardObservability:
             extra={
                 **self._run_context(current),
                 "status": current.status.value,
-                "error_code": current.error_code.value if current.error_code is not None else None,
+                "error_code": current.error_code,
                 "failure_stage": previous.stage.value if previous.stage is not None else None,
             },
         )

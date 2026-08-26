@@ -54,15 +54,6 @@ class Migration(migrations.Migration):
                     "error_code",
                     models.CharField(
                         blank=True,
-                        choices=[
-                            ("timeout", "timeout"),
-                            ("provisioning_failed", "provisioning_failed"),
-                            ("repository_access_failed", "repository_access_failed"),
-                            ("workspace_preparation_failed", "workspace_preparation_failed"),
-                            ("execution_failed", "execution_failed"),
-                            ("artifact_creation_failed", "artifact_creation_failed"),
-                            ("dispatch_failed", "dispatch_failed"),
-                        ],
                         max_length=50,
                         null=True,
                     ),

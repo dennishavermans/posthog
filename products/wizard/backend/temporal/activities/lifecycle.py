@@ -6,7 +6,7 @@ from posthog.temporal.common.utils import asyncify
 
 from products.wizard.backend.facade import api as wizard_facade
 from products.wizard.backend.facade.contracts import WizardRunDTO
-from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunErrorCode, WizardRunStatus
+from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
 from products.wizard.backend.facade.errors import IllegalStatusTransitionError
 from products.wizard.backend.temporal.contracts import WizardRunFinalizationActivityInput
 
@@ -27,7 +27,7 @@ def transition_cloud_run(
     run_id: UUID,
     status: WizardRunStatus,
     *,
-    error_code: WizardRunErrorCode | None = None,
+    error_code: str | None = None,
 ) -> None:
     current = _get_cloud_run(team_id, run_id)
     if _matches(current, status, error_code):
@@ -52,6 +52,6 @@ def _get_cloud_run(team_id: int, run_id: UUID) -> WizardRunDTO:
 def _matches(
     run: WizardRunDTO,
     status: WizardRunStatus,
-    error_code: WizardRunErrorCode | None,
+    error_code: str | None,
 ) -> bool:
     return run.status == status and run.error_code == error_code

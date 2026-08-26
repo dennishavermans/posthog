@@ -2,7 +2,7 @@ from uuid import UUID
 
 from posthog.dataclasses import frozen
 
-from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus, WizardWorkspaceType
+from products.wizard.backend.facade.enums import WizardRunStatus, WizardWorkspaceType
 
 
 @frozen
@@ -17,7 +17,7 @@ class WizardRunFinalizationActivityInput:
     team_id: int
     run_id: UUID
     status: WizardRunStatus
-    error_code: WizardRunErrorCode | None = None
+    error_code: str | None = None
 
     def __post_init__(self) -> None:
         if self.status not in (WizardRunStatus.FAILED, WizardRunStatus.CANCELLED):

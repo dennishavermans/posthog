@@ -39,6 +39,6 @@ def execute_wizard(input: PreparedGitRepositoryWorkspace) -> None:
     except cloud_worker.WizardWorkerExecutionError as error:
         raise ApplicationError(
             str(error),
-            type=WIZARD_WORKER_EXECUTION_ERROR_TYPE,
+            type=error.wizard_error_code or WIZARD_WORKER_EXECUTION_ERROR_TYPE,
             non_retryable=True,
         ) from error

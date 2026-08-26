@@ -1,4 +1,4 @@
-from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunStatus
+from products.wizard.backend.facade.enums import WizardRunStatus
 from products.wizard.backend.facade.errors import IllegalStatusTransitionError, InvalidTransitionMetadataError
 
 _ALLOWED_STATUS_TRANSITIONS = frozenset(
@@ -17,7 +17,7 @@ def transition(
     current_status: WizardRunStatus,
     next_status: WizardRunStatus,
     *,
-    error_code: WizardRunErrorCode | None = None,
+    error_code: str | None = None,
 ) -> WizardRunStatus:
     if (current_status, next_status) not in _ALLOWED_STATUS_TRANSITIONS:
         raise IllegalStatusTransitionError

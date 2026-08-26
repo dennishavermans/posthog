@@ -15,4 +15,10 @@ Measure each SLI over one calendar month.
 
 Do not count user input failures as platform failures. Examples include an inaccessible repository and an invalid repository configuration.
 
+## Failure codes
+
+The Wizard writes a final `phw-error:` record to standard error when a program fails. The worker stores its `PHW_*` code on the Wizard run.
+
+The backend stores only the code. The UI owns the user message and recovery steps. If the record is absent or invalid, use the platform error for the failed stage.
+
 Collect latency data before you set latency SLOs. Review these targets after 30 to 60 days of production data.
