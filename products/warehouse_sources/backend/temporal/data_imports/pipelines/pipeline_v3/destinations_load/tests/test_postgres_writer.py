@@ -15,9 +15,9 @@ from products.warehouse_sources.backend.temporal.data_imports.destinations.contr
     DestinationRunContext,
 )
 from products.warehouse_sources.backend.temporal.data_imports.pipelines.pipeline_v3.destinations_load.writers.postgres import (
-    _OWNERSHIP_COMMENT,
     PostgresDestinationWriter,
     UnrelatedTableExistsError,
+    _owned_marker,
     staging_table_name,
 )
 
@@ -62,10 +62,12 @@ def table_name() -> str:
     return f"dest_test_{uuid.uuid4().hex[:10]}"
 
 
-def _ctx(table_name: str, sync_type: str, primary_keys: tuple[str, ...] = ()) -> DestinationRunContext:
+def _ctx(
+    table_name: str, sync_type: str, primary_keys: tuple[str, ...] = (), schema_id: str = "schema"
+) -> DestinationRunContext:
     return DestinationRunContext(
         team_id=1,
-        schema_id="schema",
+        schema_id=schema_id,
         source_id="source",
         job_id="job",
         run_uuid=str(uuid.uuid4()),
@@ -345,6 +347,62 @@ class TestIncrementalTableOwnership:
             _drop(dsn, table_name)
 
 
+class TestCrossSchemaTableOwnership:
+    """`table_name` is derived from the editable resource name, so two different schemas can
+    choose the same target name on the same destination. Ownership must be scoped to the
+    schema that created the table, not just "some posthog warehouse sync created this", or one
+    schema's resource could pass as the owner of another schema's table.
+    """
+
+    async def test_a_full_refresh_refuses_to_replace_a_table_a_different_schema_created(self, dsn, table_name) -> None:
+        first = _ctx(table_name, "full_refresh", schema_id="schema-a")
+        first_writer = LocalPostgresWriter(first, dsn)
+        second = _ctx(table_name, "full_refresh", schema_id="schema-b")
+        second_writer = LocalPostgresWriter(second, dsn)
+        try:
+            await first_writer.write_batch(
+                _batches(_rows(["a"], [1])),
+                DestinationBatchContext(run=first, batch_index=0, is_final_batch=True),
+            )
+            await first_writer.finalize_run(first)
+
+            await second_writer.write_batch(
+                _batches(_rows(["b"], [2])),
+                DestinationBatchContext(run=second, batch_index=0, is_final_batch=True),
+            )
+
+            with pytest.raises(UnrelatedTableExistsError):
+                await second_writer.finalize_run(second)
+
+            # The first schema's table is exactly as that schema's run left it.
+            assert _read(dsn, table_name) == [(1, "a")]
+        finally:
+            _drop(dsn, table_name, staging_table_name(first), staging_table_name(second))
+
+    async def test_an_incremental_run_refuses_to_write_into_a_table_a_different_schema_created(
+        self, dsn, table_name
+    ) -> None:
+        first = _ctx(table_name, "incremental", primary_keys=("id",), schema_id="schema-a")
+        first_writer = LocalPostgresWriter(first, dsn)
+        second = _ctx(table_name, "incremental", primary_keys=("id",), schema_id="schema-b")
+        second_writer = LocalPostgresWriter(second, dsn)
+        try:
+            await first_writer.write_batch(
+                _batches(_rows(["a"], [1])),
+                DestinationBatchContext(run=first, batch_index=0, is_final_batch=True),
+            )
+
+            with pytest.raises(UnrelatedTableExistsError):
+                await second_writer.write_batch(
+                    _batches(_rows(["b"], [2])),
+                    DestinationBatchContext(run=second, batch_index=0, is_final_batch=True),
+                )
+
+            assert _read(dsn, table_name) == [(1, "a")]
+        finally:
+            _drop(dsn, table_name)
+
+
 class TestValueFidelity:
     async def test_values_holding_csv_control_characters_survive_the_copy(self, dsn, table_name) -> None:
         # The bulk load is a COPY in CSV format, where a tab ends a field and a newline ends a
@@ -469,7 +527,7 @@ class TestMergeConstraints:
         # this table, so the writer has to add one before it can merge into it.
         with psycopg.connect(dsn, autocommit=True) as conn:
             conn.execute(f'CREATE TABLE "{table_name}" (id BIGINT, name TEXT)')
-            conn.execute(f"COMMENT ON TABLE \"{table_name}\" IS '{_OWNERSHIP_COMMENT}'")
+            conn.execute(f"COMMENT ON TABLE \"{table_name}\" IS '{_owned_marker('schema')}'")
 
         ctx = _ctx(table_name, "incremental", primary_keys=("id",))
         writer = LocalPostgresWriter(ctx, dsn)

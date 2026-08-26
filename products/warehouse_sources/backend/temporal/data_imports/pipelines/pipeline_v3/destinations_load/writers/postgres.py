@@ -68,12 +68,23 @@ BATCH_INDEX_COLUMN = "_ph_batch_index"
 # `delivery.py`), which a custom-source manifest controls; without this check, naming a
 # resource after an unrelated table already sitting in the destination schema would be enough
 # to have it dropped, or merged into, on the next sync.
+#
+# Scoped by schema id, not just a fixed literal: `table_name` collides across sources on
+# purpose (it's how a customer routes several tables to one name), but ownership must not. A
+# bare marker would let one schema's resource collide with another schema's table name on the
+# same destination and have `_is_owned` accept it as its own, since both sync writers stamp
+# the identical comment.
 _OWNERSHIP_COMMENT = "posthog-warehouse-sync-owned"
 
 
-def _published_comment(run_uuid: str) -> str:
+def _owned_marker(schema_id: str) -> str:
+    """Ownership marker scoped to the schema whose sync created the table."""
+    return f"{_OWNERSHIP_COMMENT}:{schema_id}"
+
+
+def _published_comment(schema_id: str, run_uuid: str) -> str:
     """Ownership marker plus the run that last published, so a replay can recognize itself."""
-    return f"{_OWNERSHIP_COMMENT}:{run_uuid}"
+    return f"{_owned_marker(schema_id)}:{run_uuid}"
 
 
 class UnrelatedTableExistsError(RuntimeError):
@@ -275,7 +286,7 @@ class PostgresDestinationWriter:
                         # it is touched. A full refresh gets the same guarantee at swap time,
                         # in `finalize_run`, once the new data is known to be complete.
                         table_existed = await self._table_exists(client, target)
-                        if table_existed and not await self._is_owned(client, target):
+                        if table_existed and not await self._is_owned(client, target, run.schema_id):
                             raise UnrelatedTableExistsError(
                                 f'"{self._schema}"."{target}" already exists and was not created by this sync; '
                                 "refusing to merge an incremental run's rows into it."
@@ -295,11 +306,11 @@ class PostgresDestinationWriter:
                         await self._delete_batch_rows(client, target, ctx.batch_index)
                         # Marked on the staging table, not the live one: the comment survives
                         # the rename in `finalize_run`, which is where it gets checked.
-                        await self._mark_owned(client, target)
+                        await self._mark_owned(client, target, run.schema_id)
                     elif not table_existed:
                         # A table this writer just created for an incremental run never gets
                         # renamed, so mark it in place rather than at swap time.
-                        await self._mark_owned(client, target)
+                        await self._mark_owned(client, target, run.schema_id)
                     first = False
 
                 rows_written += await self._write_record_batch(client, target, batch, ctx, full_refresh=full_refresh)
@@ -471,23 +482,33 @@ class PostgresDestinationWriter:
             wanted = sorted(columns)
             return any(sorted(row[0] or []) == wanted for row in await cursor.fetchall())
 
-    async def _mark_owned(self, client: PostgreSQLClient, table: str) -> None:
+    async def _mark_owned(self, client: PostgreSQLClient, table: str, schema_id: str) -> None:
         async with self._write_cursor(client) as cursor:
             # `COMMENT ON TABLE ... IS <text>` is a utility statement: Postgres's grammar
             # only accepts a string literal there, not a bind parameter, so this can't go
             # through the usual `%s` placeholder (it fails with a syntax error at `$1`).
-            # `_OWNERSHIP_COMMENT` is a fixed constant, never user input, so inlining it as
-            # a literal is safe.
+            # `schema_id` is the schema's immutable id, never user-editable input, so inlining
+            # it as a literal is safe the same way the fixed constant was.
             await cursor.execute(
                 sql.SQL("COMMENT ON TABLE {}.{} IS {}").format(
-                    sql.Identifier(self._schema), sql.Identifier(table), sql.Literal(_OWNERSHIP_COMMENT)
+                    sql.Identifier(self._schema), sql.Identifier(table), sql.Literal(_owned_marker(schema_id))
                 )
             )
 
-    async def _is_owned(self, client: PostgreSQLClient, table: str) -> bool:
-        # `startswith`, not equality: a published table carries the run uuid after the marker.
+    async def _is_owned(self, client: PostgreSQLClient, table: str, schema_id: str) -> bool:
+        # Not a plain `startswith`: schema ids are arbitrary strings, and one could be a
+        # character-prefix of another ("abc" of "abc123"), which would let a table another
+        # schema owns pass as owned here. Split on the marker's own `:` separators instead so
+        # the owning schema id is compared for exact equality; a published table carries the
+        # run uuid as a further segment after it, which this ignores.
         comment = await self._table_comment(client, table)
-        return comment is not None and comment.startswith(_OWNERSHIP_COMMENT)
+        if comment is None:
+            return False
+        marker, sep, rest = comment.partition(":")
+        if marker != _OWNERSHIP_COMMENT or not sep:
+            return False
+        owner = rest.split(":", 1)[0]
+        return owner == schema_id
 
     async def _table_comment(self, client: PostgreSQLClient, table: str) -> str | None:
         async with client.connection.cursor() as cursor:
@@ -510,7 +531,7 @@ class PostgresDestinationWriter:
             return False
         if not await self._table_exists(client, ctx.table_name):
             return False
-        return await self._table_comment(client, ctx.table_name) == _published_comment(ctx.run_uuid)
+        return await self._table_comment(client, ctx.table_name) == _published_comment(ctx.schema_id, ctx.run_uuid)
 
     async def finalize_run(self, ctx: DestinationRunContext) -> None:
         """Publish a full refresh by swapping the staging table into place."""
@@ -524,7 +545,9 @@ class PostgresDestinationWriter:
                 # Already swapped by an earlier attempt at this same final batch.
                 return
 
-            if await self._table_exists(client, ctx.table_name) and not await self._is_owned(client, ctx.table_name):
+            if await self._table_exists(client, ctx.table_name) and not await self._is_owned(
+                client, ctx.table_name, ctx.schema_id
+            ):
                 # A table with this name exists and this writer never created it. Refuse
                 # rather than drop it: `table_name` comes from the source's resource name,
                 # which a custom-source manifest controls, and a table that predates this
@@ -562,7 +585,7 @@ class PostgresDestinationWriter:
                     sql.SQL("COMMENT ON TABLE {}.{} IS {}").format(
                         sql.Identifier(self._schema),
                         sql.Identifier(ctx.table_name),
-                        sql.Literal(_published_comment(ctx.run_uuid)),
+                        sql.Literal(_published_comment(ctx.schema_id, ctx.run_uuid)),
                     )
                 )
 
