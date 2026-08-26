@@ -3,6 +3,7 @@ from uuid import UUID
 from products.wizard.backend.facade.enums import WizardRunEnvironment, WizardRunStatus
 from products.wizard.backend.logic.runs import store
 from products.wizard.backend.logic.runs.errors import WizardRunDispatchError
+from products.wizard.backend.logic.workers.config import local_wizard_source_root
 from products.wizard.backend.observability.contracts import WizardRunDispatchOutcome
 from products.wizard.backend.observability.service import wizard_observability
 from products.wizard.backend.temporal import client as temporal_client
@@ -18,7 +19,13 @@ def dispatch_created_cloud_wizard_run_to_temporal_worker(team_id: int, run_id: U
         return
 
     try:
-        temporal_client.start_wizard_run_workflow(WizardRunActivityInput(team_id=team_id, run_id=run_id))
+        temporal_client.start_wizard_run_workflow(
+            WizardRunActivityInput(
+                team_id=team_id,
+                run_id=run_id,
+                use_local_wizard_source=local_wizard_source_root() is not None,
+            )
+        )
     except WizardTemporalError as error:
         store.mark_dispatch_failed(team_id, run_id)
         wizard_observability.dispatch_finished(run, WizardRunDispatchOutcome.FAILED)

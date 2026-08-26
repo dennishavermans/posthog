@@ -5,6 +5,8 @@ from uuid import uuid4
 import pytest
 from unittest.mock import patch
 
+from django.test import override_settings
+
 from kombu.exceptions import OperationalError
 from prometheus_client import REGISTRY
 
@@ -30,6 +32,7 @@ from products.wizard.backend.observability import events, metrics, service
 from products.wizard.backend.observability.contracts import WizardRunDispatchOutcome, WizardWorkerCleanupOutcome
 from products.wizard.backend.observability.service import WizardObservability
 from products.wizard.backend.observability.worker_usage import worker_usage_observation
+from products.wizard.backend.temporal.contracts import WizardRunActivityInput
 from products.wizard.backend.temporal.errors import WizardTemporalError
 
 
@@ -250,6 +253,23 @@ def test_dispatch_reports_success() -> None:
         dispatch.dispatch_created_cloud_wizard_run_to_temporal_worker(run.team_id, run.id)
 
     dispatch_finished.assert_called_once_with(run, WizardRunDispatchOutcome.SUCCEEDED)
+
+
+@override_settings(DEBUG=True, LOCAL_WIZARD_ROOT="/tmp/posthog-wizard")
+def test_dispatch_enables_local_wizard_source() -> None:
+    run = _cloud_run()
+
+    with (
+        patch.object(dispatch.store, "get_run", return_value=run),
+        patch.object(dispatch.temporal_client, "start_wizard_run_workflow") as start_workflow,
+        patch.object(dispatch.store, "mark_dispatch_succeeded"),
+        patch.object(dispatch.wizard_observability, "dispatch_finished"),
+    ):
+        dispatch.dispatch_created_cloud_wizard_run_to_temporal_worker(run.team_id, run.id)
+
+    start_workflow.assert_called_once_with(
+        WizardRunActivityInput(team_id=run.team_id, run_id=run.id, use_local_wizard_source=True)
+    )
 
 
 def test_dispatch_reports_failure() -> None:

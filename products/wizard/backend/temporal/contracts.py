@@ -9,6 +9,7 @@ from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunSt
 class WizardRunActivityInput:
     team_id: int
     run_id: UUID
+    use_local_wizard_source: bool = False
 
 
 @frozen
@@ -31,6 +32,7 @@ class ProvisionedWizardWorker:
     run_id: UUID
     sandbox_id: str
     workspace_type: WizardWorkspaceType
+    use_local_wizard_source: bool = False
 
 
 @frozen
@@ -41,3 +43,4 @@ class PreparedGitRepositoryWorkspace:
     repository: str
     root_path: str
     github_integration_id: int
+    use_local_wizard_source: bool = False

@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from pathlib import Path
 from uuid import UUID
 
 from django.conf import settings
@@ -27,12 +28,15 @@ from products.wizard.backend.logic.artifacts.config import (
 )
 from products.wizard.backend.logic.workers.commands import (
     build_git_diff_command,
+    build_local_wizard_preparation_command,
     build_read_handoff_command,
     build_wizard_command,
     pull_request_branch,
     wizard_handoff_output_path,
 )
 from products.wizard.backend.logic.workers.config import (
+    LOCAL_WIZARD_ARCHIVE_PATH,
+    LOCAL_WIZARD_BUILD_TIMEOUT_SECONDS,
     SANDBOX_CPU_CORES,
     SANDBOX_DISK_SIZE_GB,
     SANDBOX_EXECUTION_TIMEOUT_SECONDS,
@@ -43,6 +47,7 @@ from products.wizard.backend.logic.workers.config import (
     WIZARD_TIMEOUT_EXIT_CODE,
 )
 from products.wizard.backend.logic.workers.contracts import WizardWorkerResourceUsage, WizardWorkerUsageMeasurement
+from products.wizard.backend.logic.workers.local_package import build_local_wizard_source_archive
 from products.wizard.backend.observability.service import wizard_observability
 
 logger = logging.getLogger(__name__)
@@ -75,6 +80,7 @@ class WizardExecutionRequest:
     team_id: int
     wizard_version: str
     program_command: tuple[str, ...]
+    use_local_wizard_source: bool = False
 
 
 @frozen
@@ -143,10 +149,44 @@ def clone_repository(request: GitRepositoryCloneRequest) -> str:
     return sandbox_repo_path(request.repository)
 
 
+def prepare_local_wizard(sandbox_id: str, source_root: Path) -> None:
+    archive = build_local_wizard_source_archive(source_root)
+
+    try:
+        sandbox = get_sandbox_class().get_by_id(sandbox_id)
+
+        upload_result = sandbox.write_file(LOCAL_WIZARD_ARCHIVE_PATH, archive)
+        _raise_for_failure(
+            "local Wizard source upload",
+            upload_result.exit_code,
+            stdout=upload_result.stdout,
+            stderr=upload_result.stderr,
+        )
+
+        build_result = sandbox.execute(
+            build_local_wizard_preparation_command(),
+            timeout_seconds=LOCAL_WIZARD_BUILD_TIMEOUT_SECONDS,
+        )
+        _raise_for_failure(
+            "local Wizard build",
+            build_result.exit_code,
+            stdout=build_result.stdout,
+            stderr=build_result.stderr,
+        )
+    except (SandboxExecutionError, SandboxNotFoundError, SandboxTimeoutError) as error:
+        raise WizardWorkerExecutionError("local Wizard preparation", 1, str(error)) from error
+
+
 def execute_wizard(request: WizardExecutionRequest) -> None:
     sandbox = get_sandbox_class().get_by_id(request.sandbox_id)
     wizard_result = sandbox.execute(
-        build_wizard_command(request.workspace_path, request.team_id, request.wizard_version, request.program_command),
+        build_wizard_command(
+            request.workspace_path,
+            request.team_id,
+            request.wizard_version,
+            request.program_command,
+            use_local_wizard_source=request.use_local_wizard_source,
+        ),
         timeout_seconds=SANDBOX_EXECUTION_TIMEOUT_SECONDS,
     )
     if wizard_result.exit_code == WIZARD_TIMEOUT_EXIT_CODE:
@@ -243,7 +283,7 @@ def _raise_for_failure(stage: str, exit_code: int, *, stdout: str = "", stderr: 
 
 
 def _failure_detail(stdout: str, stderr: str) -> str | None:
-    output = stdout.strip() or stderr.strip()
+    output = "\n".join(value for value in (stdout.strip(), stderr.strip()) if value)
     return output[-WIZARD_ERROR_DETAIL_LENGTH:] or None
 
 

@@ -61,6 +61,7 @@ def provision_worker(input: WizardRunActivityInput) -> ProvisionedWizardWorker:
             run_id=input.run_id,
             sandbox_id=existing_sandbox_id,
             workspace_type=WizardWorkspaceType.GIT_REPOSITORY,
+            use_local_wizard_source=input.use_local_wizard_source,
         )
 
     provisioning = cloud_worker.provision_wizard_worker(
@@ -77,6 +78,7 @@ def provision_worker(input: WizardRunActivityInput) -> ProvisionedWizardWorker:
         run_id=input.run_id,
         sandbox_id=provisioning.sandbox_id,
         workspace_type=WizardWorkspaceType.GIT_REPOSITORY,
+        use_local_wizard_source=input.use_local_wizard_source,
     )
 
 
@@ -123,6 +125,7 @@ def clone_repository(input: ProvisionedWizardWorker) -> PreparedGitRepositoryWor
         repository=run.workspace.repository,
         root_path=root_path,
         github_integration_id=integration_id,
+        use_local_wizard_source=input.use_local_wizard_source,
     )
 
 

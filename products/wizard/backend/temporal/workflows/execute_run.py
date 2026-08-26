@@ -10,6 +10,7 @@ from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunSt
 from products.wizard.backend.temporal.activities.execution import execute_wizard
 from products.wizard.backend.temporal.activities.handoff import create_run_artifacts
 from products.wizard.backend.temporal.activities.lifecycle import finalize_run
+from products.wizard.backend.temporal.activities.local_package import prepare_local_wizard
 from products.wizard.backend.temporal.activities.workspace import clone_repository, destroy_worker, provision_worker
 from products.wizard.backend.temporal.config import (
     CLEANUP_RETRY_POLICY,
@@ -20,6 +21,8 @@ from products.wizard.backend.temporal.config import (
     FINALIZATION_TIMEOUT,
     HANDOFF_RETRY_POLICY,
     HANDOFF_TIMEOUT,
+    LOCAL_PACKAGE_PREPARATION_RETRY_POLICY,
+    LOCAL_PACKAGE_PREPARATION_TIMEOUT,
     PREPARATION_RETRY_POLICY,
     PREPARATION_TIMEOUT,
     PROVISION_RETRY_POLICY,
@@ -60,6 +63,15 @@ class ExecuteWizardRunWorkflow(PostHogWorkflow):
 
             if worker is None:
                 raise RuntimeError("Wizard Worker provisioning returned no worker.")
+
+            if input.use_local_wizard_source:
+                await workflow.execute_activity(
+                    prepare_local_wizard,
+                    worker,
+                    start_to_close_timeout=LOCAL_PACKAGE_PREPARATION_TIMEOUT,
+                    retry_policy=LOCAL_PACKAGE_PREPARATION_RETRY_POLICY,
+                    cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+                )
 
             workspace = await self._prepare_workspace(worker)
 

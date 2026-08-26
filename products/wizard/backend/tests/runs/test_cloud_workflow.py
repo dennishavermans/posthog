@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -10,6 +11,7 @@ from products.wizard.backend.facade.enums import WizardRunErrorCode, WizardRunSt
 from products.wizard.backend.temporal.activities.execution import WIZARD_WORKER_TIMEOUT_ERROR_TYPE, execute_wizard
 from products.wizard.backend.temporal.activities.handoff import create_run_artifacts
 from products.wizard.backend.temporal.activities.lifecycle import finalize_run
+from products.wizard.backend.temporal.activities.local_package import prepare_local_wizard
 from products.wizard.backend.temporal.activities.workspace import clone_repository, destroy_worker, provision_worker
 from products.wizard.backend.temporal.contracts import (
     PreparedGitRepositoryWorkspace,
@@ -94,6 +96,31 @@ async def test_cloud_workflow_completes_after_worker_execution(
     assert execute_activity.await_args_list[3].kwargs["retry_policy"].maximum_attempts == 1
     assert execute_activity.await_args_list[0].kwargs["retry_policy"].maximum_attempts == 1
     assert execute_activity.await_args_list[4].kwargs["retry_policy"].maximum_attempts == 5
+
+
+@pytest.mark.asyncio
+async def test_cloud_workflow_prepares_local_wizard_before_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    workflow_input: WizardRunActivityInput,
+    worker: ProvisionedWizardWorker,
+    workspace: PreparedGitRepositoryWorkspace,
+) -> None:
+    local_input = replace(workflow_input, use_local_wizard_source=True)
+    local_worker = replace(worker, use_local_wizard_source=True)
+    local_workspace = replace(workspace, use_local_wizard_source=True)
+    execute_activity = AsyncMock(side_effect=[local_worker, None, local_workspace, None, None, None])
+    monkeypatch.setattr(execute_run_workflow_module.workflow, "execute_activity", execute_activity)
+
+    await ExecuteWizardRunWorkflow().run(local_input)
+
+    assert [call.args[0] for call in execute_activity.await_args_list] == [
+        provision_worker,
+        prepare_local_wizard,
+        clone_repository,
+        execute_wizard,
+        create_run_artifacts,
+        destroy_worker,
+    ]
 
 
 @pytest.mark.asyncio

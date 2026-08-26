@@ -7,13 +7,22 @@ from django.conf import settings
 from posthog.utils import get_instance_region
 
 from products.wizard.backend.facade.validation import is_executable_wizard_version
-from products.wizard.backend.logic.workers.config import WIZARD_TIMEOUT_SECONDS
+from products.wizard.backend.logic.workers.config import (
+    LOCAL_WIZARD_ARCHIVE_PATH,
+    LOCAL_WIZARD_INSTALL_PATH,
+    WIZARD_TIMEOUT_SECONDS,
+)
 
 _WIZARD_PROGRAM_COMMAND_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 def build_wizard_command(
-    repository_path: str, team_id: int, wizard_version: str, program_command: tuple[str, ...]
+    repository_path: str,
+    team_id: int,
+    wizard_version: str,
+    program_command: tuple[str, ...],
+    *,
+    use_local_wizard_source: bool = False,
 ) -> str:
     if not is_executable_wizard_version(wizard_version):
         raise ValueError("Invalid Wizard version")
@@ -21,10 +30,16 @@ def build_wizard_command(
     if any(_WIZARD_PROGRAM_COMMAND_PATTERN.fullmatch(argument) is None for argument in program_command):
         raise ValueError("Invalid Wizard program command")
 
+    executable = (
+        f"node {shlex.quote(f'{LOCAL_WIZARD_INSTALL_PATH}/dist/bin.js')}"
+        if use_local_wizard_source
+        else f"npx --yes {shlex.quote(f'@posthog/wizard@{wizard_version}')}"
+    )
+
     parts = [
         f"cd {shlex.quote(repository_path)} &&",
         f"timeout -k 30 {WIZARD_TIMEOUT_SECONDS}",
-        f"npx --yes {shlex.quote(f'@posthog/wizard@{wizard_version}')}",
+        executable,
         *(shlex.quote(argument) for argument in program_command),
         "--headless-DONOTUSE-EXPERIMENTAL",
         "--install-dir .",
@@ -36,6 +51,25 @@ def build_wizard_command(
         parts.append('--base-url "$POSTHOG_API_URL"')
 
     return " ".join(parts)
+
+
+def build_local_wizard_preparation_command() -> str:
+    archive_path = shlex.quote(LOCAL_WIZARD_ARCHIVE_PATH)
+    install_path = shlex.quote(LOCAL_WIZARD_INSTALL_PATH)
+    return " && ".join(
+        (
+            f"rm -rf {install_path}",
+            f"mkdir -p {install_path}",
+            f"tar -xzf {archive_path} -C {install_path}",
+            f"cd {install_path}",
+            "HUSKY=0 pnpm install --frozen-lockfile",
+            "pnpm run prebuild",
+            "pnpm exec tsdown",
+            "chmod +x ./dist/bin.js",
+            "cp -r scripts/** dist",
+            "rm -f dist/*.no-jest.*",
+        )
+    )
 
 
 def build_git_diff_command(repository_path: str) -> str:

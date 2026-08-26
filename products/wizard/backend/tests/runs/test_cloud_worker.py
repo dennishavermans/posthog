@@ -1,14 +1,24 @@
+import io
+import tarfile
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from unittest.mock import MagicMock, patch
 
+from django.test import override_settings
+
 from parameterized import parameterized
 
 from products.tasks.backend.facade.repository import RepositoryPullRequest
 from products.tasks.backend.facade.sandbox import SandboxNotFoundError
 from products.wizard.backend.logic.workers.commands import wizard_handoff_output_path
+from products.wizard.backend.logic.workers.config import (
+    LOCAL_WIZARD_ARCHIVE_PATH,
+    LOCAL_WIZARD_INSTALL_PATH,
+    local_wizard_source_root,
+)
 from products.wizard.backend.logic.workers.service import (
     GitRepositoryCloneRequest,
     GitRepositoryHandoffRequest,
@@ -21,12 +31,18 @@ from products.wizard.backend.logic.workers.service import (
     create_git_repository_handoff,
     destroy_worker,
     execute_wizard,
+    prepare_local_wizard,
     provision_wizard_worker,
 )
 
 
 def _execution_result(*, stdout: str = "", stderr: str = "", exit_code: int = 0) -> SimpleNamespace:
     return SimpleNamespace(stdout=stdout, stderr=stderr, exit_code=exit_code)
+
+
+@override_settings(DEBUG=False, LOCAL_WIZARD_ROOT="/tmp/posthog-wizard")
+def test_local_wizard_source_is_disabled_outside_debug_mode() -> None:
+    assert local_wizard_source_root() is None
 
 
 @patch("products.wizard.backend.logic.workers.service.get_sandbox_class")
@@ -97,6 +113,59 @@ def test_clone_repository_rejects_clone_failure(
         clone_repository(request)
 
 
+@patch("products.wizard.backend.logic.workers.service.get_sandbox_class")
+def test_prepare_local_wizard_uploads_source_and_builds_it(get_sandbox_class: MagicMock, tmp_path: Path) -> None:
+    source_root = tmp_path / "wizard"
+    source_root.mkdir()
+    (source_root / "package.json").write_text('{"name":"@posthog/wizard"}')
+    (source_root / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'")
+    (source_root / "pnpm-workspace.yaml").write_text("packages: []")
+    (source_root / "bin.ts").write_text("export {}")
+    (source_root / "src").mkdir()
+    (source_root / "src" / "error.ts").write_text("export const code = 'sdk_missing'")
+    (source_root / ".env").write_text("SECRET=value")
+    (source_root / "node_modules").mkdir()
+    (source_root / "node_modules" / "dependency.js").write_text("ignored")
+    sandbox = get_sandbox_class.return_value.get_by_id.return_value
+    sandbox.write_file.return_value = _execution_result()
+    sandbox.execute.return_value = _execution_result()
+
+    prepare_local_wizard("worker-id", source_root)
+
+    archive = sandbox.write_file.call_args.args[1]
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as value:
+        names = set(value.getnames())
+
+    assert "src/error.ts" in names
+    assert ".env" not in names
+    assert "node_modules/dependency.js" not in names
+    sandbox.write_file.assert_called_once_with(LOCAL_WIZARD_ARCHIVE_PATH, archive)
+    command = sandbox.execute.call_args.args[0]
+    assert LOCAL_WIZARD_INSTALL_PATH in command
+    assert "pnpm exec tsdown" in command
+    assert "pnpm build" not in command
+
+
+@patch("products.wizard.backend.logic.workers.service.get_sandbox_class")
+def test_prepare_local_wizard_reports_build_stderr(get_sandbox_class: MagicMock, tmp_path: Path) -> None:
+    source_root = tmp_path / "wizard"
+    source_root.mkdir()
+    (source_root / "package.json").write_text('{"name":"@posthog/wizard"}')
+    (source_root / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'")
+    sandbox = get_sandbox_class.return_value.get_by_id.return_value
+    sandbox.write_file.return_value = _execution_result()
+    sandbox.execute.return_value = _execution_result(
+        stdout="Build complete",
+        stderr="Local build failed",
+        exit_code=1,
+    )
+
+    with pytest.raises(WizardWorkerExecutionError) as error:
+        prepare_local_wizard("worker-id", source_root)
+
+    assert error.value.detail == "Build complete\nLocal build failed"
+
+
 @parameterized.expand(
     (
         ("default", (), "npx --yes @posthog/wizard@2.60.0 --headless-DONOTUSE-EXPERIMENTAL"),
@@ -120,6 +189,7 @@ def test_execute_wizard_uses_selected_program(
         team_id=7,
         wizard_version="2.60.0",
         program_command=program_command,
+        use_local_wizard_source=False,
     )
     sandbox = get_sandbox_class.return_value.get_by_id.return_value
     sandbox.execute.return_value = _execution_result()
@@ -131,6 +201,25 @@ def test_execute_wizard_uses_selected_program(
     assert command.startswith(f"cd {request.workspace_path} &&")
     assert expected_invocation in command
     assert "wizard-secret" not in command
+
+
+@patch("products.wizard.backend.logic.workers.service.get_sandbox_class")
+def test_execute_wizard_uses_prepared_local_wizard(get_sandbox_class: MagicMock) -> None:
+    request = WizardExecutionRequest(
+        sandbox_id="worker-id",
+        workspace_path="/tmp/workspace/repos/posthog/posthog",
+        team_id=7,
+        wizard_version="2.60.0",
+        program_command=("audit", "web-analytics"),
+        use_local_wizard_source=True,
+    )
+    sandbox = get_sandbox_class.return_value.get_by_id.return_value
+    sandbox.execute.return_value = _execution_result()
+
+    execute_wizard(request)
+
+    command = sandbox.execute.call_args.args[0]
+    assert f"node {LOCAL_WIZARD_INSTALL_PATH}/dist/bin.js audit web-analytics" in command
 
 
 @patch("products.wizard.backend.logic.workers.service.get_sandbox_class")

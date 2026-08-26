@@ -27,6 +27,7 @@ def execute_wizard(input: PreparedGitRepositoryWorkspace) -> None:
                 team_id=input.team_id,
                 wizard_version=run.program.wizard_version,
                 program_command=run.program.command,
+                use_local_wizard_source=input.use_local_wizard_source,
             )
         )
     except cloud_worker.WizardWorkerTimeoutError as error:

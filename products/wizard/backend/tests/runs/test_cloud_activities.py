@@ -1,10 +1,12 @@
 from datetime import timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from unittest.mock import MagicMock, patch
 
 from django.apps import apps
+from django.test import override_settings
 from django.utils import timezone
 
 from asgiref.sync import async_to_sync
@@ -44,6 +46,7 @@ from products.wizard.backend.temporal.activities.errors import (
 )
 from products.wizard.backend.temporal.activities.execution import execute_wizard
 from products.wizard.backend.temporal.activities.handoff import create_run_artifacts
+from products.wizard.backend.temporal.activities.local_package import prepare_local_wizard
 from products.wizard.backend.temporal.activities.workspace import clone_repository, provision_worker
 from products.wizard.backend.temporal.contracts import (
     PreparedGitRepositoryWorkspace,
@@ -123,6 +126,10 @@ async def _run_clone_repository(input: ProvisionedWizardWorker) -> PreparedGitRe
     return await ActivityEnvironment().run(clone_repository, input)
 
 
+async def _run_prepare_local_wizard(input: ProvisionedWizardWorker) -> None:
+    await ActivityEnvironment().run(prepare_local_wizard, input)
+
+
 async def _run_execute_wizard(input: PreparedGitRepositoryWorkspace) -> None:
     await ActivityEnvironment().run(execute_wizard, input)
 
@@ -193,6 +200,24 @@ def test_clone_repository_rechecks_access_before_preparing_workspace(team, user)
             repository="posthog/posthog",
         )
     )
+
+
+@override_settings(DEBUG=True, LOCAL_WIZARD_ROOT="/tmp/posthog-wizard")
+def test_prepare_local_wizard_uses_configured_source() -> None:
+    worker = ProvisionedWizardWorker(
+        team_id=7,
+        run_id=uuid4(),
+        sandbox_id="worker-id",
+        workspace_type=WizardWorkspaceType.GIT_REPOSITORY,
+        use_local_wizard_source=True,
+    )
+
+    with patch(
+        "products.wizard.backend.temporal.activities.local_package.cloud_worker.prepare_local_wizard"
+    ) as prepare:
+        async_to_sync(_run_prepare_local_wizard)(worker)
+
+    prepare.assert_called_once_with(worker.sandbox_id, Path("/tmp/posthog-wizard").resolve())
 
 
 @pytest.mark.django_db(transaction=True)
