@@ -1592,11 +1592,13 @@ class ExternalDataSchemaViewset(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
             )
             return Response(
                 status=status.HTTP_200_OK,
-                data={
-                    "destination_ids": [str(link.destination_id) for link in links] if overridden else None,
-                    "inherits_from_source": not overridden,
-                    "effective_destination_ids": [str(d.id) for d in resolve_destinations(schema)],
-                },
+                data=SchemaDestinationsSerializer(
+                    {
+                        "destination_ids": [str(link.destination_id) for link in links] if overridden else None,
+                        "inherits_from_source": not overridden,
+                        "effective_destination_ids": [str(d.id) for d in resolve_destinations(schema)],
+                    }
+                ).data,
             )
 
         serializer = DestinationLinkSerializer(data=request.data)
@@ -1608,7 +1610,9 @@ class ExternalDataSchemaViewset(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
         )
         return Response(
             status=status.HTTP_200_OK,
-            data={"destination_ids": attached, "inherits_from_source": attached is None},
+            data=SchemaDestinationsSerializer(
+                {"destination_ids": attached, "inherits_from_source": attached is None}
+            ).data,
         )
 
     @extend_schema(parameters=[LogEntryRequestSerializer])

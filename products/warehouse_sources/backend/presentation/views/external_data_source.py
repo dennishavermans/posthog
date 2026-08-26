@@ -4960,7 +4960,9 @@ class ExternalDataSourceViewSet(TeamAndOrgViewSetMixin, AccessControlViewSetMixi
                 .filter(source_id=source.id, enabled=True)
                 .exclude(destination__deleted=True)
             ]
-            return Response(status=status.HTTP_200_OK, data={"destination_ids": attached})
+            return Response(
+                status=status.HTTP_200_OK, data=SourceDestinationsSerializer({"destination_ids": attached}).data
+            )
 
         serializer = DestinationLinkSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -4981,7 +4983,9 @@ class ExternalDataSourceViewSet(TeamAndOrgViewSetMixin, AccessControlViewSetMixi
             source_id=source.id,
             destination_ids=serializer.validated_data["destination_ids"],
         )
-        return Response(status=status.HTTP_200_OK, data={"destination_ids": attached})
+        return Response(
+            status=status.HTTP_200_OK, data=SourceDestinationsSerializer({"destination_ids": attached}).data
+        )
 
     @action(methods=["PATCH"], detail=True)
     def revenue_analytics_config(self, request: Request, *args: Any, **kwargs: Any) -> Response:
