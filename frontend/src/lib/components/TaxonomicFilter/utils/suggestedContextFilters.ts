@@ -9,12 +9,11 @@ import {
 } from 'lib/components/TaxonomicFilter/types'
 
 /*
- * These mirror the legacy `infiniteListLogic` context-filter selectors
- * (`contextFilteredRecentItems` / `contextFilteredPinnedItems`). It's a
- * deliberate fork, not a shared util: the rebuild and the legacy kea picker
- * are independent code paths, and the legacy one is being retired with the
- * rest of `infiniteListLogic`. Until then, behaviour changes here that should
- * also apply to the legacy picker must be made in both places.
+ * The legacy `infiniteListLogic` picker and the rebuild both call
+ * `filterPinnedForContext`, so a change to pinned behaviour reaches both.
+ * `filterRecentsForContext` is not shared: `infiniteListLogic` holds its own
+ * copy of the same rule in `contextFilteredRecentItems`, so a change to recents
+ * behaviour must be made in both places until the legacy picker is retired.
  */
 
 /** Recents whose source group is one of the picker's groups, with operators the
@@ -55,16 +54,23 @@ export function filterRecentsForContext(
     return expandRecentsForDisplay(inScope, selectingKeyOnly)
 }
 
-/** Pinned items whose source group is one of the picker's groups. */
+/** Pinned items whose source group is one of the picker's groups, minus that group's excluded values. */
 export function filterPinnedForContext(
     pinnedFilterItems: TaxonomicDefinitionTypes[],
-    taxonomicGroupTypes: TaxonomicFilterGroupType[]
+    taxonomicGroupTypes: TaxonomicFilterGroupType[],
+    excludedProperties?: ExcludedProperties
 ): TaxonomicDefinitionTypes[] {
     if (!pinnedFilterItems?.length) {
         return []
     }
     const availableTypes = new Set(taxonomicGroupTypes)
-    return pinnedFilterItems.filter(
-        (item) => hasPinnedContext(item) && availableTypes.has(item._pinnedContext.sourceGroupType)
-    )
+    return pinnedFilterItems.filter((item) => {
+        if (!hasPinnedContext(item) || !availableTypes.has(item._pinnedContext.sourceGroupType)) {
+            return false
+        }
+        // Pins live in local storage, so an excluded value pinned earlier would otherwise stay
+        // one click from selection in a picker that no longer lists it.
+        const excludedValues = excludedProperties?.[item._pinnedContext.sourceGroupType]
+        return !excludedValues?.includes(item._pinnedContext.value)
+    })
 }
