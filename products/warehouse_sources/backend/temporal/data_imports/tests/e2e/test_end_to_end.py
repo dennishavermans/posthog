@@ -484,7 +484,12 @@ async def _run(
         assert run.status == ExternalDataJobStatus.COMPLETED
         assert run.finished_at is not None
         assert run.storage_delta_mib is not None
-        assert run.storage_delta_mib != 0
+        if existing_schema_id is None:
+            # A fresh schema's table grows from empty, so this always adds storage.
+            # A genuine re-sync of identical rows merges into the existing table and
+            # can legitimately add zero net storage (dedup, or even compaction shrink),
+            # so that case only checks storage_delta_mib was computed at all, above.
+            assert run.storage_delta_mib != 0
 
         mock_compact_table.assert_called()
         mock_get_data_import_finished_metric.assert_called_with(
