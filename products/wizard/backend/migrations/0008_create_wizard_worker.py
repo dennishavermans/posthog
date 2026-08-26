@@ -5,15 +5,12 @@ import posthog.uuidt
 
 
 class Migration(migrations.Migration):
-    dependencies = [
-        ("wizard", "0015_add_run_dispatch_state"),
-    ]
+    dependencies = [("wizard", "0007_create_wizard_run_artifact")]
 
     operations = [
         migrations.CreateModel(
             name="WizardWorker",
             fields=[
-                ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True, null=True)),
                 (
                     "id",
@@ -24,27 +21,19 @@ class Migration(migrations.Migration):
                         serialize=False,
                     ),
                 ),
-                (
-                    "sandbox_id",
-                    models.CharField(blank=True, max_length=255, null=True, unique=True),
-                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("sandbox_id", models.CharField(blank=True, max_length=255, null=True, unique=True)),
+                ("resource_usage", models.JSONField(blank=True, null=True)),
                 (
                     "cleanup_status",
                     models.CharField(
-                        choices=[
-                            ("active", "active"),
-                            ("pending", "pending"),
-                            ("cleaned", "cleaned"),
-                        ],
+                        choices=[("active", "active"), ("pending", "pending"), ("cleaned", "cleaned")],
                         default="active",
                         max_length=20,
                     ),
                 ),
                 ("cleanup_attempts", models.PositiveSmallIntegerField(default=0)),
-                (
-                    "cleanup_error",
-                    models.CharField(blank=True, max_length=255, null=True),
-                ),
+                ("cleanup_error", models.CharField(blank=True, max_length=255, null=True)),
                 ("cleaned_at", models.DateTimeField(blank=True, null=True)),
                 (
                     "run",
@@ -64,8 +53,6 @@ class Migration(migrations.Migration):
                     ),
                 ),
             ],
-            options={
-                "abstract": False,
-            },
+            options={"abstract": False},
         ),
     ]

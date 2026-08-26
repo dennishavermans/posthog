@@ -5,10 +5,7 @@ import posthog.uuidt
 
 
 class Migration(migrations.Migration):
-    dependencies = [
-        ("posthog", "1306_add_youtube_analytics_integration_kind"),
-        ("wizard", "0006_create_wizard_run"),
-    ]
+    dependencies = [("wizard", "0006_create_wizard_run")]
 
     operations = [
         migrations.CreateModel(
@@ -25,11 +22,16 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "type",
-                    models.CharField(choices=[("git_diff", "git_diff")], max_length=30),
+                    models.CharField(
+                        choices=[("git_diff", "git_diff"), ("pull_request", "pull_request")],
+                        max_length=30,
+                    ),
                 ),
-                ("storage_path", models.CharField(max_length=1024)),
-                ("size_bytes", models.PositiveBigIntegerField()),
-                ("content_hash", models.CharField(max_length=64)),
+                ("storage_path", models.CharField(blank=True, max_length=1024, null=True)),
+                ("external_url", models.URLField(blank=True, max_length=1024, null=True)),
+                ("metadata", models.JSONField(blank=True, null=True)),
+                ("size_bytes", models.PositiveBigIntegerField(blank=True, null=True)),
+                ("content_hash", models.CharField(blank=True, max_length=64, null=True)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 (
                     "run",
@@ -49,14 +51,13 @@ class Migration(migrations.Migration):
                     ),
                 ),
             ],
-            options={
-                "abstract": False,
-                "constraints": [
-                    models.UniqueConstraint(
-                        fields=("run", "type"),
-                        name="unique_wizard_artifact_type_per_run",
-                    )
-                ],
-            },
+            options={"abstract": False},
+        ),
+        migrations.AddConstraint(
+            model_name="wizardrunartifact",
+            constraint=models.UniqueConstraint(
+                fields=("run", "type"),
+                name="unique_wizard_artifact_type_per_run",
+            ),
         ),
     ]
