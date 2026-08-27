@@ -10,6 +10,7 @@ import { LemonDialog, lemonToast } from '@posthog/lemon-ui'
 import api from 'lib/api'
 import { tryShowMCPHint } from 'lib/components/MCPHint/mcpHintLogic'
 import { SetupTaskId, globalSetupLogic } from 'lib/components/ProductSetup'
+import { FEATURE_FLAGS } from 'lib/constants'
 import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
 import { preflightLogic } from 'scenes/PreflightCheck/preflightLogic'
 import { Scene } from 'scenes/sceneTypes'
@@ -41,6 +42,8 @@ import {
     RowFilter,
 } from '~/types'
 
+import { externalDataSourcesDestinationsPartialUpdate } from 'products/warehouse_sources/frontend/generated/api'
+
 import type { AvailableSetupTaskIdsEnumApi } from '../../../../../frontend/src/generated/core/api.schemas'
 import type { PaginatedResponse } from '../../../../../frontend/src/lib/api'
 import type { FeatureFlagsSet } from '../../../../../frontend/src/lib/logic/featureFlagLogic'
@@ -54,6 +57,7 @@ import {
 } from '../../shared/components/forms/schemaGroupingUtils'
 import type { WebhookCreateResult } from '../../shared/components/forms/WebhookSetupForm'
 import { sourceManagementLogic } from '../../shared/logics/sourceManagementLogic'
+import { shouldShowDestinationStep } from './components/destinationStepUtils'
 import { FILE_UPLOAD_SOURCE_CONFIG, FILE_UPLOAD_SOURCE_NAME } from './fileUploadSource'
 import { selfManagedSourceLogic } from './selfManagedSourceLogic'
 import { restoreSourceFormState, saveSourceFormState } from './wizardFormStorage'
@@ -2254,6 +2258,11 @@ export type sourceWizardLogicType = MakeLogicType<
     sourceWizardLogicMeta
 >
 
+// Numbered after the existing steps rather than slotted between them. Several scenes embed this
+// wizard and pin steps 1-5 (webhook, progress), so renumbering would move the ground under them
+// for a flag most projects do not have on. Order comes from the explicit jumps below, not the number.
+export const WIZARD_DESTINATION_STEP = 6
+
 export const sourceWizardLogic = kea<sourceWizardLogicType>([
     path(['products', 'dataWarehouse', 'sourceWizardLogic']),
     props({} as SourceWizardLogicProps),
@@ -2274,6 +2283,7 @@ export const sourceWizardLogic = kea<sourceWizardLogicType>([
         onBack: true,
         onNext: true,
         onSubmit: true,
+        setWizardDestinationIds: (destinationIds: string[]) => ({ destinationIds }),
         resetSourceForm: (accessMethod?: 'warehouse' | 'direct') => ({ accessMethod }),
         setDatabaseSchemas: (schemas: ExternalDataSourceSyncSchema[]) => ({
             schemas,
@@ -2392,11 +2402,20 @@ export const sourceWizardLogic = kea<sourceWizardLogicType>([
                 toggleManualLinkFormVisible: (_, { visible }) => visible,
             },
         ],
+        wizardDestinationIds: [
+            [] as string[],
+            {
+                setWizardDestinationIds: (_, { destinationIds }) => destinationIds,
+                onClear: () => [],
+            },
+        ],
         currentStep: [
             1,
             {
                 onNext: (state) => state + 1,
-                onBack: (state) => state - 1,
+                // The destination step sits after the numbered ones, so stepping back from it
+                // returns to table selection rather than decrementing into the progress step.
+                onBack: (state) => (state === WIZARD_DESTINATION_STEP ? 3 : state - 1),
                 onClear: () => 1,
                 setStep: (_, { step }) => step,
                 setInitialConnector: () => 2,
@@ -2896,6 +2915,10 @@ export const sourceWizardLogic = kea<sourceWizardLogicType>([
                     return 'Next'
                 }
 
+                if (currentStep === WIZARD_DESTINATION_STEP) {
+                    return 'Import'
+                }
+
                 if (currentStep === 5) {
                     if (onComplete) {
                         return 'Next'
@@ -2998,6 +3021,23 @@ export const sourceWizardLogic = kea<sourceWizardLogicType>([
                 }[]
             ) => getDefaultExpandedSchemaKeys(groupedDatabaseSchema),
         ],
+        // Destinations are picked before the source is created, so the first sync already lands
+        // where the user wants it. Choosing them afterwards costs a full resync of every table.
+        showDestinationStep: [
+            (s) => [s.featureFlags, s.isDirectQueryMode, s.databaseSchema, (_, props) => props.requiredTables],
+            (
+                featureFlags: FeatureFlagsSet,
+                isDirectQueryMode: boolean,
+                databaseSchema: ExternalDataSourceSyncSchema[],
+                requiredTables: unknown
+            ): boolean =>
+                shouldShowDestinationStep({
+                    flagEnabled: !!featureFlags[FEATURE_FLAGS.WAREHOUSE_MULTI_DESTINATION],
+                    isDirectQueryMode,
+                    schemas: databaseSchema,
+                    requiredTables,
+                }),
+        ],
         modalTitle: [
             (s) => [s.currentStep, s.isDirectQueryMode],
             (currentStep: number, isDirectQueryMode: boolean) => {
@@ -3014,6 +3054,10 @@ export const sourceWizardLogic = kea<sourceWizardLogicType>([
 
                 if (currentStep === 4) {
                     return 'Set up webhook'
+                }
+
+                if (currentStep === WIZARD_DESTINATION_STEP) {
+                    return 'Choose destinations'
                 }
 
                 if (currentStep === 5) {
@@ -3295,6 +3339,12 @@ export const sourceWizardLogic = kea<sourceWizardLogicType>([
                                 actions.openCdcSelfManagedSetupDialog()
                                 return
                             }
+                            if (values.showDestinationStep) {
+                                // Pick destinations before the source exists, so its first sync
+                                // already lands where the user wants it.
+                                actions.setStep(WIZARD_DESTINATION_STEP)
+                                return
+                            }
                             actions.setIsLoading(true)
                             actions.createSource()
                             if (values.selectedConnector) {
@@ -3313,7 +3363,15 @@ export const sourceWizardLogic = kea<sourceWizardLogicType>([
                 })
             }
 
-            if (step === 4) {
+            if (step === WIZARD_DESTINATION_STEP) {
+                actions.setIsLoading(true)
+                actions.createSource()
+                if (values.selectedConnector) {
+                    posthog.capture('source created', {
+                        sourceType: values.selectedConnector.name,
+                    })
+                }
+            } else if (step === 4) {
                 if (webhookResultHasNoPendingInputs(values.webhookResult)) {
                     actions.onNext()
                 } else {
@@ -3399,6 +3457,24 @@ export const sourceWizardLogic = kea<sourceWizardLogicType>([
                 })
 
                 actions.setSourceId(id)
+
+                // Applied before the first sync starts, so the source's opening run already
+                // carries these destinations and no backfill is needed. A failure here is not
+                // worth losing the created source over: the Destinations tab can still set them,
+                // at the cost of a resync.
+                if (values.wizardDestinationIds.length > 0) {
+                    try {
+                        await externalDataSourcesDestinationsPartialUpdate(String(values.currentTeamId), id, {
+                            destination_ids: values.wizardDestinationIds,
+                        })
+                    } catch (e: any) {
+                        posthog.captureException(e)
+                        lemonToast.error(
+                            'We created the source but could not save its destinations. Set them on the source’s Destinations tab.'
+                        )
+                    }
+                }
+
                 actions.resetSourceConnectionDetails()
                 actions.loadSources()
                 actions.markTaskAsCompleted(SetupTaskId.ConnectSource)

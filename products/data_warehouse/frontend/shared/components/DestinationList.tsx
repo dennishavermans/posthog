@@ -1,8 +1,6 @@
 import { IconPencil } from '@posthog/icons'
 import { LemonButton, LemonSwitch, LemonTable, LemonTableColumn, LemonTag } from '@posthog/lemon-ui'
 
-import { updatedAtColumn } from 'lib/lemon-ui/LemonTable/columnUtils'
-
 import { ExternalDataDestinationApi } from 'products/warehouse_sources/frontend/generated/api.schemas'
 
 import { DestinationIcon, destinationTypeLabel } from './DestinationIcon'
@@ -71,7 +69,6 @@ export function DestinationList({
                 </LemonTag>
             ),
         },
-        updatedAtColumn() as LemonTableColumn<ExternalDataDestinationApi, any>,
         {
             title: '',
             key: 'actions',

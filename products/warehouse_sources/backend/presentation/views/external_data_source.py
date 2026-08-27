@@ -108,6 +108,7 @@ from products.warehouse_sources.backend.facade.api import validate_source_prefix
 from products.warehouse_sources.backend.facade.models import (
     MANAGED_WAREHOUSE_SOURCE_PREFIX,
     DataWarehouseTable,
+    ExternalDataDestination,
     ExternalDataJob,
     ExternalDataSchema,
     ExternalDataSource,
@@ -4960,6 +4961,18 @@ class ExternalDataSourceViewSet(TeamAndOrgViewSetMixin, AccessControlViewSetMixi
                 .filter(source_id=source.id, enabled=True)
                 .exclude(destination__deleted=True)
             ]
+            # A source nobody configured has no links but is not syncing nowhere: it syncs to the
+            # PostHog warehouse. Report where it actually goes, or the picker shows every
+            # destination off and saving from that state silently drops the warehouse.
+            # Looked up rather than resolved, because `resolve_destinations` creates the
+            # warehouse row on demand and a GET must not write.
+            if not attached:
+                warehouse = (
+                    ExternalDataDestination.objects.for_team(self.team_id)
+                    .filter(type=ExternalDataDestination.Type.POSTHOG_WAREHOUSE, deleted=False)
+                    .first()
+                )
+                attached = [str(warehouse.id)] if warehouse else []
             return Response(
                 status=status.HTTP_200_OK, data=SourceDestinationsSerializer({"destination_ids": attached}).data
             )
