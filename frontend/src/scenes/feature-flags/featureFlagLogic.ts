@@ -887,7 +887,6 @@ export interface featureFlagLogicValues {
         | 'Release toggle (boolean)'
         | 'Remote configuration (single payload)'
     hasEarlyAccessFeatures: boolean
-    tagsRequired: boolean
     hasEncryptedPayloadBeenSaved: boolean | undefined
     hasExperiment: boolean | null
     hasSurveys: boolean | null
@@ -937,6 +936,7 @@ export interface featureFlagLogicValues {
     showFeatureFlagErrors: boolean
     showImplementation: boolean
     sidePanelContext: SidePanelSceneContext | null
+    tagsRequired: boolean
     templateExpanded: boolean
     templates: Array<{
         description: string
