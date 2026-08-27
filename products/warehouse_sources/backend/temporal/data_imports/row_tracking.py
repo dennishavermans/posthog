@@ -1,7 +1,7 @@
 import uuid
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from django.conf import settings
@@ -22,6 +22,7 @@ from posthog.settings import EE_AVAILABLE
 from posthog.settings.base_variables import TEST
 from posthog.sync import database_sync_to_async_pool
 
+from products.warehouse_sources.backend.billing import FREE_HISTORICAL_WINDOW, FREE_PERIOD_END, FREE_PERIOD_START
 from products.warehouse_sources.backend.models.external_data_job import ExternalDataJob
 
 if TYPE_CHECKING:
@@ -153,11 +154,6 @@ async def get_all_rows_for_team(team_id: int) -> int:
             return 0
 
 
-# To be removed after 2025-11-06
-dwh_pricing_free_period_start = datetime(2025, 10, 29, 0, 0, 0, tzinfo=UTC)
-dwh_pricing_free_period_end = datetime(2025, 11, 6, 0, 0, 0, tzinfo=UTC)
-
-
 async def will_hit_billing_limit(team_id: int, source: "ExternalDataSource", logger: FilteringBoundLogger) -> bool:
     if not EE_AVAILABLE:
         return False
@@ -168,20 +164,16 @@ async def will_hit_billing_limit(team_id: int, source: "ExternalDataSource", log
         await logger.adebug("Running will_hit_billing_limit")
 
         # Handle free period for newly created data sources
-        if source.created_at >= datetime.now(UTC) - timedelta(days=7):
+        if source.created_at >= datetime.now(UTC) - FREE_HISTORICAL_WINDOW:
             await logger.ainfo(
                 f"Skipping billing limits check for newly created data source for 7-days free rows. source.created_at = {source.created_at}"
             )
             return False
 
         # Handle free period for data synced during free period (to be removed after 2025-11-06)
-        if (
-            not TEST
-            and datetime.now(UTC) >= dwh_pricing_free_period_start
-            and datetime.now(UTC) <= dwh_pricing_free_period_end
-        ):
+        if not TEST and datetime.now(UTC) >= FREE_PERIOD_START and datetime.now(UTC) <= FREE_PERIOD_END:
             await logger.ainfo(
-                f"Skipping billing limits check for data synced during free period from {dwh_pricing_free_period_start} to {dwh_pricing_free_period_end}."
+                f"Skipping billing limits check for data synced during free period from {FREE_PERIOD_START} to {FREE_PERIOD_END}."
             )
             return False
 
@@ -206,7 +198,7 @@ async def will_hit_billing_limit(team_id: int, source: "ExternalDataSource", log
 
                 # Get all completed rows for all teams in org
                 rows_synced_in_billing_period_dict = ExternalDataJob.objects.filter(
-                    Q(finished_at__gte=F("pipeline__created_at") + timedelta(days=7)),
+                    Q(finished_at__gte=F("pipeline__created_at") + FREE_HISTORICAL_WINDOW),
                     team_id__in=all_teams_in_org,
                     finished_at__gte=current_billing_cycle_start_dt,
                     billable=True,

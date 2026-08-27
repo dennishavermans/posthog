@@ -7,7 +7,7 @@ import logging
 import dataclasses
 from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, Literal, Optional, TypedDict, Union
 
 from django.conf import settings
@@ -73,8 +73,12 @@ from products.tasks.backend.facade.billing import (
     get_billable_sandbox_compute_usage_by_team,
     get_task_sandbox_usage_by_team,
 )
-from products.warehouse_sources.backend.facade.models import DataWarehouseTable, ExternalDataJob, ExternalDataSchema
-from products.warehouse_sources.backend.facade.types import ExternalDataJobStatus, ExternalDataSchemaStatus
+from products.warehouse_sources.backend.facade.billing import (
+    get_free_historical_rows_synced_by_team,
+    get_rows_synced_by_team,
+)
+from products.warehouse_sources.backend.facade.models import DataWarehouseTable, ExternalDataSchema
+from products.warehouse_sources.backend.facade.types import ExternalDataSchemaStatus
 
 logger = structlog.get_logger(__name__)
 logging.getLogger(__name__).setLevel(logging.INFO)
@@ -2029,70 +2033,16 @@ def combine_posthog_code_credits(token_credits: int, compute_credits: int) -> in
     return token_credits + compute_credits
 
 
-dwh_pricing_free_period_start = datetime(2025, 10, 29, 0, 0, 0, tzinfo=UTC)
-dwh_pricing_free_period_end = datetime(2025, 11, 6, 0, 0, 0, tzinfo=UTC)
-
-
 @timed_log()
 @retry(tries=QUERY_RETRIES, delay=QUERY_RETRY_DELAY, backoff=QUERY_RETRY_BACKOFF)
 def get_teams_with_rows_synced_in_period(begin: datetime, end: datetime) -> list:
-    if begin >= dwh_pricing_free_period_start and begin < dwh_pricing_free_period_end:
-        # during the free period, everyone gets free rows synced
-        return []
-
-    if begin >= dwh_pricing_free_period_end:
-        # after the free period, don't include rows reported in the free historical period
-        return list(
-            ExternalDataJob.objects.filter(
-                ~Q(pipeline__created_at__gte=end - timedelta(days=7)),
-                finished_at__gte=begin,
-                finished_at__lte=end,
-                billable=True,
-                status=ExternalDataJobStatus.COMPLETED,
-            )
-            .values("team_id")
-            .annotate(total=Sum("rows_synced"))
-        )
-
-    return list(
-        ExternalDataJob.objects.filter(
-            finished_at__gte=begin,
-            finished_at__lte=end,
-            billable=True,
-            status=ExternalDataJobStatus.COMPLETED,
-        )
-        .values("team_id")
-        .annotate(total=Sum("rows_synced"))
-    )
+    return get_rows_synced_by_team(begin, end)
 
 
 @timed_log()
 @retry(tries=QUERY_RETRIES, delay=QUERY_RETRY_DELAY, backoff=QUERY_RETRY_BACKOFF)
 def get_teams_with_free_historical_rows_synced_in_period(begin: datetime, end: datetime) -> list:
-    if begin >= dwh_pricing_free_period_start and begin < dwh_pricing_free_period_end:
-        # during the free period, all rows get reported as free historical rows synced
-        return list(
-            ExternalDataJob.objects.filter(
-                finished_at__gte=begin,
-                finished_at__lte=end,
-                billable=True,
-                status=ExternalDataJobStatus.COMPLETED,
-            )
-            .values("team_id")
-            .annotate(total=Sum("rows_synced"))
-        )
-
-    return list(
-        ExternalDataJob.objects.filter(
-            finished_at__gte=begin,
-            finished_at__lte=end,
-            billable=True,
-            status=ExternalDataJobStatus.COMPLETED,
-            pipeline__created_at__gte=end - timedelta(days=7),
-        )
-        .values("team_id")
-        .annotate(total=Sum("rows_synced"))
-    )
+    return get_free_historical_rows_synced_by_team(begin, end)
 
 
 @timed_log()

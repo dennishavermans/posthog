@@ -20,8 +20,8 @@ from structlog.types import FilteringBoundLogger
 
 from posthog.models import Team
 from posthog.sync import database_sync_to_async
-from posthog.tasks.usage_report import ExternalDataJob
 
+from products.warehouse_sources.backend.models.external_data_job import ExternalDataJob
 from products.warehouse_sources.backend.models.external_data_source import ExternalDataSource
 from products.warehouse_sources.backend.temporal.data_imports.row_tracking import (
     finish_row_tracking,
