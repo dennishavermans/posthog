@@ -30916,6 +30916,7 @@ export namespace Schemas {
       /**
          * Minimum seconds between thread-opening notifications per issue. 0 disables the throttle.
          * @minimum 0
+         * @maximum 2147483647
          */
       throttle_seconds?: number;
       /** Delivery targets notifications fan out to. */
@@ -30937,6 +30938,7 @@ export namespace Schemas {
       /**
          * Minimum seconds between thread-opening notifications per issue. Omit to keep the current value.
          * @minimum 0
+         * @maximum 2147483647
          */
       throttle_seconds?: number;
       /** Delivery targets notifications fan out to. When provided, replaces all current destinations. */
@@ -61261,6 +61263,7 @@ export namespace Schemas {
       /**
          * Minimum seconds between thread-opening notifications per issue. Omit to keep the current value.
          * @minimum 0
+         * @maximum 2147483647
          */
       throttle_seconds?: number;
       /** Delivery targets notifications fan out to. When provided, replaces all current destinations. */
