@@ -85,6 +85,11 @@ class LogsTable(Table):
         "service_name": StringDatabaseField(
             name="service_name", nullable=False, description="Name of the service that emitted the log."
         ),
+        "pattern": StringDatabaseField(
+            name="pattern",
+            nullable=False,
+            description="Message template this log matches, with the variable parts masked; empty when no pattern was mined.",
+        ),
         # internal fields for query optimization
         # Physical type-suffixed backing map of `attributes`. A bare arrayElement() on it reads only
         # the serialization bucket holding the key; membership guards (has/mapContains) force reading

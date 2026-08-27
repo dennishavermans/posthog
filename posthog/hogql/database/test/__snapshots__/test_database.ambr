@@ -2334,6 +2334,16 @@
                   "schema_valid": true,
                   "table": null,
                   "type": "string"
+              },
+              "pattern": {
+                  "chain": null,
+                  "fields": null,
+                  "hogql_value": "pattern",
+                  "id": null,
+                  "name": "pattern",
+                  "schema_valid": true,
+                  "table": null,
+                  "type": "string"
               }
           },
           "id": "logs",
@@ -13676,6 +13686,16 @@
                   "hogql_value": "service_name",
                   "id": null,
                   "name": "service_name",
+                  "schema_valid": true,
+                  "table": null,
+                  "type": "string"
+              },
+              "pattern": {
+                  "chain": null,
+                  "fields": null,
+                  "hogql_value": "pattern",
+                  "id": null,
+                  "name": "pattern",
                   "schema_valid": true,
                   "table": null,
                   "type": "string"
