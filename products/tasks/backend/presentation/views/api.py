@@ -475,7 +475,11 @@ class TaskViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         operation_id="tasks_usage_retrieve",
         responses={200: TaskUsageResponseSerializer},
         summary="Get task usage",
-        description="Return estimated model and cloud compute costs attributed to a task.",
+        description=(
+            "Return estimated model and cloud compute costs attributed to a task. "
+            "Costs are null for tasks that did not start in PostHog Desktop, because their spend "
+            "is billed outside the PostHog Desktop credit pool."
+        ),
     )
     @action(detail=True, methods=["get"], url_path="usage", required_scopes=["task:read"])
     def usage(self, request, pk=None, **kwargs):
@@ -489,9 +493,9 @@ class TaskViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
         return Response(
             TaskUsageResponseSerializer(
                 {
-                    "token_cost_usd": usage.token_cost_usd,
-                    "compute_cost_usd": usage.compute_cost_usd,
-                    "total_cost_usd": usage.total_cost_usd,
+                    "token_cost_usd": usage.token_cost_usd if usage is not None else None,
+                    "compute_cost_usd": usage.compute_cost_usd if usage is not None else None,
+                    "total_cost_usd": usage.total_cost_usd if usage is not None else None,
                 }
             ).data
         )

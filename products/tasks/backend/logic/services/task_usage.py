@@ -23,6 +23,7 @@ from posthog.clickhouse.query_tagging import Feature, Product, tags_context
 from posthog.dataclasses import frozen
 from posthog.models import Team
 
+from products.tasks.backend.logic.services.compute_quota import is_task_billable_compute
 from products.tasks.backend.logic.services.sandbox_pricing import (
     COMPUTE_RATE_CARDS,
     calculate_sandbox_compute_cost,
@@ -49,11 +50,23 @@ class TaskUsage:
         return self.token_cost_usd + self.compute_cost_usd
 
 
-def get_task_usage(*, team_id: int, task_id: UUID, task_created_at: datetime) -> TaskUsage:
+def get_task_usage(*, team_id: int, task_id: UUID, task_created_at: datetime) -> TaskUsage | None:
+    """Costs attributed to a task, or None when the task does not draw from the PostHog Desktop credit pool.
+
+    Slack, PostHog AI on the web, scouts, and signals bill their spend elsewhere, so a figure
+    from those surfaces would not correspond to anything a Desktop user is charged for.
+    """
+    if not _draws_from_desktop_credits(team_id=team_id, task_id=task_id):
+        return None
     return TaskUsage(
         token_cost_usd=_get_task_token_cost(team_id=team_id, task_id=task_id, task_created_at=task_created_at),
         compute_cost_usd=_get_task_compute_cost(team_id=team_id, task_id=task_id),
     )
+
+
+def _draws_from_desktop_credits(*, team_id: int, task_id: UUID) -> bool:
+    task = Task.objects.filter(team_id=team_id, id=task_id).select_related("loop").first()
+    return task is not None and is_task_billable_compute(task)
 
 
 class TaskTokenUsageUnavailable(Exception):

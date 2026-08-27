@@ -2433,11 +2433,18 @@ class TaskArtifactsResponseSerializer(serializers.Serializer):
 
 
 class TaskUsageResponseSerializer(serializers.Serializer):
-    token_cost_usd = serializers.FloatField(help_text="Estimated model cost attributed to this task in US dollars.")
-    compute_cost_usd = serializers.FloatField(
-        help_text="Estimated cloud compute cost attributed to this task in US dollars."
+    token_cost_usd = serializers.FloatField(
+        allow_null=True,
+        help_text="Estimated model cost attributed to this task in US dollars. Null when the task did not start in PostHog Desktop.",
     )
-    total_cost_usd = serializers.FloatField(help_text="Estimated total cost attributed to this task in US dollars.")
+    compute_cost_usd = serializers.FloatField(
+        allow_null=True,
+        help_text="Estimated cloud compute cost attributed to this task in US dollars. Null when the task did not start in PostHog Desktop.",
+    )
+    total_cost_usd = serializers.FloatField(
+        allow_null=True,
+        help_text="Estimated total cost attributed to this task in US dollars. Null when the task did not start in PostHog Desktop, so its spend is billed outside the PostHog Desktop credit pool.",
+    )
 
 
 class InternalTaskUsageRequestSerializer(serializers.Serializer):

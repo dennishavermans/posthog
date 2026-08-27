@@ -2685,7 +2685,9 @@ export class PostHogAPIClient {
     return normalizeTaskResponse(data, { teamId });
   }
 
-  async getTaskUsage(taskId: string): Promise<TaskUsage> {
+  /** Null for a task that did not start in PostHog Desktop — its spend is billed
+   *  outside the Desktop credit pool, so there is no figure to attribute to it. */
+  async getTaskUsage(taskId: string): Promise<TaskUsage | null> {
     const teamId = await this.getTeamId();
     const urlPath = `/api/projects/${teamId}/tasks/${taskId}/usage/`;
     const response = await this.api.fetcher.fetch({
@@ -2696,7 +2698,19 @@ export class PostHogAPIClient {
     if (!response.ok) {
       throw new Error(`Failed to fetch task usage: ${response.statusText}`);
     }
-    return (await response.json()) as TaskUsage;
+    const usage = (await response.json()) as {
+      token_cost_usd: number | null;
+      compute_cost_usd: number | null;
+      total_cost_usd: number | null;
+    };
+    if (
+      usage.token_cost_usd === null ||
+      usage.compute_cost_usd === null ||
+      usage.total_cost_usd === null
+    ) {
+      return null;
+    }
+    return usage as TaskUsage;
   }
 
   async getPinnedTaskIds(): Promise<string[]> {

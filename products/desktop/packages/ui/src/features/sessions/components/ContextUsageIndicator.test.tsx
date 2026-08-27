@@ -13,6 +13,7 @@ const taskUsageState = vi.hoisted(() => ({
         compute_cost_usd: number;
         total_cost_usd: number;
       }
+    | null
     | undefined,
 }));
 vi.mock("@posthog/ui/features/feature-flags/useFeatureFlag", () => ({
@@ -110,6 +111,22 @@ describe("ContextUsageIndicator", () => {
       </Theme>,
     );
     expect(screen.queryByText("$0.42")).not.toBeInTheDocument();
+  });
+
+  // A task started in Slack, PostHog AI on the web, a scout, or a signal is
+  // billed outside the Desktop credit pool, so the API attributes no cost to it.
+  it("shows no cost when the task is not attributed to Desktop credits", () => {
+    enableCost(true);
+    taskUsageState.data = null;
+    const { container } = render(
+      <Theme>
+        <ContextUsageIndicator usage={usage()} taskId="task-1" />
+      </Theme>,
+    );
+    expect(screen.queryByText("$0.42")).not.toBeInTheDocument();
+    expect(container.querySelector("button")?.getAttribute("aria-label")).toBe(
+      "Context usage: 25%",
+    );
   });
 
   it("renders a finite stroke offset at 0% (no NaN/Infinity)", () => {

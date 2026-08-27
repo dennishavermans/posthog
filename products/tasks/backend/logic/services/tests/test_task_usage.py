@@ -10,6 +10,8 @@ from unittest.mock import patch
 from django.core.cache import cache
 from django.test import SimpleTestCase
 
+from parameterized import parameterized
+
 from posthog.clickhouse.query_tagging import Feature, Product, get_query_tags
 
 from products.tasks.backend.logic.services import task_usage
@@ -82,9 +84,36 @@ class TestTaskUsage(ClickhouseTestMixin, APIBaseTest):
                 task_created_at=self.task.created_at,
             )
 
+        assert usage is not None
         assert usage.token_cost_usd == Decimal("2.5")
         assert usage.compute_cost_usd == 0
         assert usage.total_cost_usd == Decimal("2.5")
+
+    @parameterized.expand(
+        [
+            ("slack", Task.OriginProduct.SLACK, TaskClientProvenance.POSTHOG_DESKTOP),
+            ("posthog_ai", Task.OriginProduct.POSTHOG_AI, None),
+            ("signals_scout", Task.OriginProduct.SIGNALS_SCOUT, None),
+            ("signal_report", Task.OriginProduct.SIGNAL_REPORT, None),
+        ]
+    )
+    def test_usage_is_unavailable_for_tasks_started_outside_desktop(
+        self, _name: str, origin_product: str, client_provenance: TaskClientProvenance | None
+    ) -> None:
+        task = Task.objects.create(
+            team=self.team,
+            created_by=self.user,
+            title="Elsewhere task",
+            description="",
+            origin_product=origin_product,
+            client_provenance=client_provenance,
+        )
+
+        with patch.object(task_usage, "_get_task_token_cost") as get_token_cost:
+            usage = task_usage.get_task_usage(team_id=self.team.id, task_id=task.id, task_created_at=task.created_at)
+
+        assert usage is None
+        get_token_cost.assert_not_called()
 
     def test_compute_cost_only_includes_billable_desktop_sessions(self) -> None:
         rate_start = datetime(2026, 8, 1, tzinfo=UTC)
@@ -124,6 +153,7 @@ class TestTaskUsage(ClickhouseTestMixin, APIBaseTest):
                 task_created_at=self.task.created_at,
             )
 
+        assert usage is not None
         assert usage.compute_cost_usd == Decimal("0.20")
 
     def test_usage_is_reported_before_the_first_rate_card_takes_effect(self) -> None:
@@ -163,6 +193,7 @@ class TestTaskUsage(ClickhouseTestMixin, APIBaseTest):
                 task_created_at=self.task.created_at,
             )
 
+        assert usage is not None
         assert usage.compute_cost_usd == Decimal(0)
         assert usage.total_cost_usd == Decimal("2.5")
 

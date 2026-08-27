@@ -1047,22 +1047,37 @@ class TestTaskAPI(BaseTaskAPITest):
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token.token}")
         return client
 
+    @parameterized.expand(
+        [
+            (
+                "attributed_to_desktop_credits",
+                TaskUsage(token_cost_usd=Decimal("12.34"), compute_cost_usd=Decimal("0.56")),
+                {"token_cost_usd": 12.34, "compute_cost_usd": 0.56, "total_cost_usd": 12.9},
+            ),
+            # A task started outside PostHog Desktop is billed elsewhere, so the endpoint
+            # attributes no cost to it rather than reporting zero.
+            (
+                "billed_outside_desktop",
+                None,
+                {"token_cost_usd": None, "compute_cost_usd": None, "total_cost_usd": None},
+            ),
+        ]
+    )
     @patch("products.tasks.backend.presentation.views.api.get_task_usage")
-    def test_usage_returns_task_cost_breakdown(self, mock_get_task_usage: MagicMock) -> None:
+    def test_usage_returns_task_cost_breakdown(
+        self,
+        _name: str,
+        usage: TaskUsage | None,
+        expected_body: dict[str, float | None],
+        mock_get_task_usage: MagicMock,
+    ) -> None:
         task = self.create_task()
-        mock_get_task_usage.return_value = TaskUsage(
-            token_cost_usd=Decimal("12.34"),
-            compute_cost_usd=Decimal("0.56"),
-        )
+        mock_get_task_usage.return_value = usage
 
         response = self.client.get(f"/api/projects/@current/tasks/{task.id}/usage/")
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.json() == {
-            "token_cost_usd": 12.34,
-            "compute_cost_usd": 0.56,
-            "total_cost_usd": 12.9,
-        }
+        assert response.json() == expected_body
 
     @patch("products.tasks.backend.presentation.views.api.get_task_usage")
     def test_usage_returns_bad_gateway_when_token_usage_is_unavailable(self, mock_get_task_usage: MagicMock) -> None:

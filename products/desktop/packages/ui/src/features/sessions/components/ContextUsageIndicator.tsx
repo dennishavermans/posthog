@@ -44,7 +44,9 @@ export function ContextUsageIndicator({
   const hasSize = size > 0;
   const strokeDashoffset = CIRCUMFERENCE - (percentage / 100) * CIRCUMFERENCE;
   const color = getOverallUsageColor(percentage);
-  const showCost = costEnabled && taskUsage !== undefined;
+  // A task started outside PostHog Desktop reports no usage — its spend is
+  // billed elsewhere, so there is nothing to show against the Desktop credits.
+  const showCost = costEnabled && taskUsage != null;
   const showCostText = showCost && costVisible;
   // The ring carries no text, so the token figures reach a reader only through
   // the accessible name. Cost joins them only while it has no text of its own,

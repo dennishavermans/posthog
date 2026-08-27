@@ -1575,7 +1575,7 @@ export const getTasksUsageRetrieveUrl = (projectId: string, id: string) => {
 }
 
 /**
- * Return estimated model and cloud compute costs attributed to a task.
+ * Return estimated model and cloud compute costs attributed to a task. Costs are null for tasks that did not start in PostHog Desktop, because their spend is billed outside the PostHog Desktop credit pool.
  * @summary Get task usage
  */
 export const tasksUsageRetrieve = async (

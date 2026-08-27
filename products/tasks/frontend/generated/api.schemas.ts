@@ -2881,12 +2881,21 @@ export interface TaskStagedArtifactsPrepareUploadResponseApi {
 }
 
 export interface TaskUsageResponseApi {
-    /** Estimated model cost attributed to this task in US dollars. */
-    token_cost_usd: number
-    /** Estimated cloud compute cost attributed to this task in US dollars. */
-    compute_cost_usd: number
-    /** Estimated total cost attributed to this task in US dollars. */
-    total_cost_usd: number
+    /**
+     * Estimated model cost attributed to this task in US dollars. Null when the task did not start in PostHog Desktop.
+     * @nullable
+     */
+    token_cost_usd: number | null
+    /**
+     * Estimated cloud compute cost attributed to this task in US dollars. Null when the task did not start in PostHog Desktop.
+     * @nullable
+     */
+    compute_cost_usd: number | null
+    /**
+     * Estimated total cost attributed to this task in US dollars. Null when the task did not start in PostHog Desktop, so its spend is billed outside the PostHog Desktop credit pool.
+     * @nullable
+     */
+    total_cost_usd: number | null
 }
 
 /**
