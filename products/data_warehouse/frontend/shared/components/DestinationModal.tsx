@@ -1,10 +1,11 @@
 import { useActions, useValues } from 'kea'
 import { Form } from 'kea-forms'
 
-import { LemonButton, LemonInput, LemonModal, LemonSelect } from '@posthog/lemon-ui'
+import { LemonButton, LemonInput, LemonModal } from '@posthog/lemon-ui'
 
+import { IntegrationChoice } from 'lib/components/CyclotronJob/integrations/IntegrationChoice'
+import { LemonBanner } from 'lib/lemon-ui/LemonBanner'
 import { LemonField } from 'lib/lemon-ui/LemonField'
-import { PostgreSQLSetupModal } from 'scenes/integrations/postgresql/PostgreSQLSetupModal'
 
 import {
     DestinationModalLogicProps,
@@ -15,13 +16,13 @@ import { DestinationIcon } from './DestinationIcon'
 
 export function DestinationModal(props: DestinationModalLogicProps): JSX.Element {
     const logic = destinationModalLogic(props)
-    const { isOpen, editing, postgresIntegrations, isDestinationFormSubmitting, showConnectionSetup } = useValues(logic)
-    const { closeModal, submitDestinationForm, setDestinationFormValue, setConnectionSetupOpen } = useActions(logic)
+    const { isOpen, editing, isDestinationFormSubmitting } = useValues(logic)
+    const { closeModal, submitDestinationForm } = useActions(logic)
 
     return (
         <>
             <LemonModal
-                isOpen={isOpen && !showConnectionSetup}
+                isOpen={isOpen}
                 onClose={closeModal}
                 title={
                     <div className="flex gap-2 items-center">
@@ -61,48 +62,32 @@ export function DestinationModal(props: DestinationModalLogicProps): JSX.Element
                         info="Credentials live on the connection, so one connection can back several destinations and batch exports."
                     >
                         {({ value, onChange }) => (
-                            <div className="flex gap-2 items-center">
-                                <LemonSelect
-                                    className="flex-1"
-                                    value={value}
-                                    onChange={onChange}
-                                    placeholder="Pick a connection"
-                                    options={postgresIntegrations.map((integration) => ({
-                                        value: integration.id,
-                                        label: integration.display_name || `Connection ${integration.id}`,
-                                    }))}
-                                />
-                                <LemonButton
-                                    type="secondary"
-                                    onClick={() => setConnectionSetupOpen(true)}
-                                    data-attr="warehouse-destination-new-connection"
-                                >
-                                    New connection
-                                </LemonButton>
-                            </div>
+                            <IntegrationChoice
+                                integration="postgresql"
+                                value={value ?? undefined}
+                                onChange={onChange}
+                            />
                         )}
                     </LemonField>
 
                     <div className="flex gap-2">
                         <LemonField name="database" label="Database" className="flex-1">
-                            <LemonInput data-attr="warehouse-destination-database" />
+                            <LemonInput data-attr="warehouse-destination-database" disabled={!!editing} />
                         </LemonField>
                         <LemonField name="schema" label="Schema" className="flex-1">
-                            <LemonInput data-attr="warehouse-destination-schema" />
+                            <LemonInput data-attr="warehouse-destination-schema" disabled={!!editing} />
                         </LemonField>
                     </div>
+
+                    {editing ? (
+                        <LemonBanner type="info">
+                            The database and schema are fixed once a destination exists. Everything already synced sits
+                            in the current one, so pointing it somewhere else would leave that behind and need a full
+                            resync. Add a second destination instead.
+                        </LemonBanner>
+                    ) : null}
                 </Form>
             </LemonModal>
-
-            <PostgreSQLSetupModal
-                isOpen={showConnectionSetup}
-                onComplete={(integrationId?: number) => {
-                    if (integrationId) {
-                        setDestinationFormValue('integrationId', integrationId)
-                    }
-                    setConnectionSetupOpen(false)
-                }}
-            />
         </>
     )
 }
