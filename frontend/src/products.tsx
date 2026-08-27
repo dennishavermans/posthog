@@ -93,6 +93,7 @@ export const productRoutes: Record<string, [string, string]> = {
     '/prompt-management/prompts': ['AIObservabilityPrompts', 'aiObservabilityPrompts'],
     '/prompt-management/prompts/:name': ['AIObservabilityPrompt', 'aiObservabilityPrompt'],
     '/alerts': ['Alerts', 'alerts'],
+    '/apm': ['APM', 'apm'],
     '/business-knowledge': ['BusinessKnowledge', 'businessKnowledge'],
     '/transformations': ['Transformations', 'transformations'],
     '/event-filtering': ['EventFiltering', 'eventFiltering'],
@@ -542,6 +543,13 @@ export const productConfiguration: Record<string, any> = {
         name: 'Alerts',
         iconType: 'inbox',
         description: 'Monitor insight metrics and get notified when conditions are met.',
+    },
+    APM: {
+        name: 'APM',
+        projectBased: true,
+        layout: 'app-container',
+        description: 'Monitor logs, traces, and metrics for your services in one place.',
+        iconType: 'tracing',
     },
     BusinessKnowledge: {
         name: 'Business knowledge',
@@ -1057,6 +1065,7 @@ export const productUrls = {
         `/ai-observability/clusters/${encodeURIComponent(runId)}/${clusterId}`,
     alert: (alertId: string): string => `/alerts?alert_type=insights&alert_id=${alertId}`,
     alerts: (): string => '/alerts',
+    apm: (tab?: string): string => (tab ? `/apm?tab=${tab}` : '/apm'),
     businessKnowledge: (): string => '/business-knowledge',
     transformations: (): string => '/transformations',
     eventFiltering: (): string => '/event-filtering',
@@ -1842,6 +1851,7 @@ export const getTreeItemsNew = (): FileSystemImport[] => [
 /** This const is auto-generated, as is the whole file */
 export type ProductTreePath =
     | 'AI gateway'
+    | 'APM'
     | 'Apps'
     | 'Business knowledge'
     | 'Clusters'
@@ -1908,6 +1918,18 @@ export const getTreeItemsProducts = (): FileSystemImport[] => [
         tags: ['alpha'],
         sceneKey: 'AIGateway',
         sceneKeys: ['AIGateway'],
+    },
+    {
+        path: 'APM',
+        intents: [ProductKey.LOGS, ProductKey.TRACING, ProductKey.METRICS],
+        category: ProductItemCategory.APP_MONITORING,
+        iconType: 'tracing',
+        iconColor: ['var(--color-product-tracing-light)', 'var(--color-product-tracing-dark)'] as FileSystemIconColor,
+        href: urls.apm(),
+        flag: FEATURE_FLAGS.UNIFIED_APM_PRODUCT,
+        tags: ['alpha'],
+        sceneKey: 'APM',
+        sceneKeys: ['APM'],
     },
     {
         path: 'Apps',
