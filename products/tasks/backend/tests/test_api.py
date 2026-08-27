@@ -1054,8 +1054,6 @@ class TestTaskAPI(BaseTaskAPITest):
                 TaskUsage(token_cost_usd=Decimal("12.34"), compute_cost_usd=Decimal("0.56")),
                 {"token_cost_usd": 12.34, "compute_cost_usd": 0.56, "total_cost_usd": 12.9},
             ),
-            # A task started outside PostHog Desktop is billed elsewhere, so the endpoint
-            # attributes no cost to it rather than reporting zero.
             (
                 "billed_outside_desktop",
                 None,

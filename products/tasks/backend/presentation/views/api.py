@@ -490,15 +490,9 @@ class TaskViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
             usage = get_task_usage(team_id=self.team_id, task_id=task.id, task_created_at=task.created_at)
         except TaskTokenUsageUnavailable as error:
             raise TaskUsageUpstreamUnavailable() from error
-        return Response(
-            TaskUsageResponseSerializer(
-                {
-                    "token_cost_usd": usage.token_cost_usd if usage is not None else None,
-                    "compute_cost_usd": usage.compute_cost_usd if usage is not None else None,
-                    "total_cost_usd": usage.total_cost_usd if usage is not None else None,
-                }
-            ).data
-        )
+        if usage is None:
+            return Response({"token_cost_usd": None, "compute_cost_usd": None, "total_cost_usd": None})
+        return Response(TaskUsageResponseSerializer(usage).data)
 
     @extend_schema(operation_id="tasks_artifacts_list", responses=TaskArtifactsResponseSerializer)
     @action(detail=True, methods=["get"], url_path="artifacts", required_scopes=["task:read"])

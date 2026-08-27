@@ -17,8 +17,7 @@ export function useTaskUsage(
     {
       enabled: enabled && taskId !== undefined,
       staleTime: TASK_USAGE_REFRESH_MS,
-      // A task's billing surface never changes, so stop polling once the API
-      // says this one is not attributed to the PostHog Desktop credit pool.
+      // A task's billing surface never changes, so a null answer is final.
       refetchInterval: (query) =>
         query.state.data === null ? false : TASK_USAGE_REFRESH_MS,
       refetchOnMount: "always",

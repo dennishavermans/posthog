@@ -51,22 +51,16 @@ class TaskUsage:
 
 
 def get_task_usage(*, team_id: int, task_id: UUID, task_created_at: datetime) -> TaskUsage | None:
-    """Costs attributed to a task, or None when the task does not draw from the PostHog Desktop credit pool.
-
-    Slack, PostHog AI on the web, scouts, and signals bill their spend elsewhere, so a figure
-    from those surfaces would not correspond to anything a Desktop user is charged for.
+    """Costs attributed to a task, or None when its spend is billed outside the PostHog Desktop
+    credit pool, where a figure would not correspond to anything the user is charged for.
     """
-    if not _draws_from_desktop_credits(team_id=team_id, task_id=task_id):
+    task = Task.objects.filter(team_id=team_id, id=task_id).select_related("loop").first()
+    if task is None or not is_task_billable_compute(task):
         return None
     return TaskUsage(
         token_cost_usd=_get_task_token_cost(team_id=team_id, task_id=task_id, task_created_at=task_created_at),
         compute_cost_usd=_get_task_compute_cost(team_id=team_id, task_id=task_id),
     )
-
-
-def _draws_from_desktop_credits(*, team_id: int, task_id: UUID) -> bool:
-    task = Task.objects.filter(team_id=team_id, id=task_id).select_related("loop").first()
-    return task is not None and is_task_billable_compute(task)
 
 
 class TaskTokenUsageUnavailable(Exception):

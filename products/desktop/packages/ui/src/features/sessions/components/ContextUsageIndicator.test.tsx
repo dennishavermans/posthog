@@ -113,8 +113,6 @@ describe("ContextUsageIndicator", () => {
     expect(screen.queryByText("$0.42")).not.toBeInTheDocument();
   });
 
-  // A task started in Slack, PostHog AI on the web, a scout, or a signal is
-  // billed outside the Desktop credit pool, so the API attributes no cost to it.
   it("shows no cost when the task is not attributed to Desktop credits", () => {
     enableCost(true);
     taskUsageState.data = null;

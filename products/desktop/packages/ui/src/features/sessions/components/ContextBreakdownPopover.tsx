@@ -9,7 +9,6 @@ import type { ContextUsage } from "@posthog/ui/features/sessions/hooks/useContex
 
 interface ContextBreakdownPopoverProps {
   usage: ContextUsage;
-  /** Null for a task started outside PostHog Desktop, whose spend is billed elsewhere. */
   taskUsage?: TaskUsage | null;
 }
 
