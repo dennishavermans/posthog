@@ -10,6 +10,7 @@ import { ExternalDataDestinationApi } from 'products/warehouse_sources/frontend/
 
 import { DestinationIcon, destinationTypeLabel } from '../../shared/components/DestinationIcon'
 import { destinationTarget } from '../../shared/components/destinationTarget'
+import { SyncedSources } from './SyncedSources'
 
 const MANAGED_REASON = 'The PostHog warehouse is managed for you'
 
@@ -60,6 +61,11 @@ export function WarehouseDestinationsTable({
                     {destinationTypeLabel(destination.type)}
                 </LemonTag>
             ),
+        },
+        {
+            title: 'Synced by',
+            key: 'synced_sources',
+            render: (_, destination) => <SyncedSources destination={destination} />,
         },
         updatedAtColumn() as LemonTableColumn<ExternalDataDestinationApi, any>,
         {
