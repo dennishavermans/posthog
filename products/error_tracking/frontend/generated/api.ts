@@ -159,7 +159,7 @@ export const getErrorTrackingAlertsCreateUrl = (projectId: string) => {
 
 export const errorTrackingAlertsCreate = async (
     projectId: string,
-    errorTrackingAlertCreateRequestApi: NonReadonly<ErrorTrackingAlertCreateRequestApi>,
+    errorTrackingAlertCreateRequestApi: ErrorTrackingAlertCreateRequestApi,
     options?: RequestInit
 ): Promise<ErrorTrackingAlertApi> => {
     return apiMutator<ErrorTrackingAlertApi>(getErrorTrackingAlertsCreateUrl(projectId), {
@@ -192,7 +192,7 @@ export const getErrorTrackingAlertsUpdateUrl = (projectId: string, id: string) =
 export const errorTrackingAlertsUpdate = async (
     projectId: string,
     id: string,
-    errorTrackingAlertUpdateRequestApi?: NonReadonly<ErrorTrackingAlertUpdateRequestApi>,
+    errorTrackingAlertUpdateRequestApi?: ErrorTrackingAlertUpdateRequestApi,
     options?: RequestInit
 ): Promise<ErrorTrackingAlertApi> => {
     return apiMutator<ErrorTrackingAlertApi>(getErrorTrackingAlertsUpdateUrl(projectId, id), {
@@ -210,7 +210,7 @@ export const getErrorTrackingAlertsPartialUpdateUrl = (projectId: string, id: st
 export const errorTrackingAlertsPartialUpdate = async (
     projectId: string,
     id: string,
-    patchedErrorTrackingAlertUpdateRequestApi?: NonReadonly<PatchedErrorTrackingAlertUpdateRequestApi>,
+    patchedErrorTrackingAlertUpdateRequestApi?: PatchedErrorTrackingAlertUpdateRequestApi,
     options?: RequestInit
 ): Promise<ErrorTrackingAlertApi> => {
     return apiMutator<ErrorTrackingAlertApi>(getErrorTrackingAlertsPartialUpdateUrl(projectId, id), {
