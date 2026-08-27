@@ -4,6 +4,7 @@ import { Form } from 'kea-forms'
 import { LemonButton, LemonInput, LemonModal } from '@posthog/lemon-ui'
 
 import { IntegrationChoice } from 'lib/components/CyclotronJob/integrations/IntegrationChoice'
+import { IntegrationView } from 'lib/integrations/IntegrationView'
 import { LemonBanner } from 'lib/lemon-ui/LemonBanner'
 import { LemonField } from 'lib/lemon-ui/LemonField'
 
@@ -16,7 +17,7 @@ import { DestinationIcon } from './DestinationIcon'
 
 export function DestinationModal(props: DestinationModalLogicProps): JSX.Element {
     const logic = destinationModalLogic(props)
-    const { isOpen, editing, isDestinationFormSubmitting } = useValues(logic)
+    const { isOpen, editing, editingIntegration, isDestinationFormSubmitting } = useValues(logic)
     const { closeModal, submitDestinationForm } = useActions(logic)
 
     return (
@@ -61,13 +62,23 @@ export function DestinationModal(props: DestinationModalLogicProps): JSX.Element
                         label="Connection"
                         info="Credentials live on the connection, so one connection can back several destinations and batch exports."
                     >
-                        {({ value, onChange }) => (
-                            <IntegrationChoice
-                                integration="postgresql"
-                                value={value ?? undefined}
-                                onChange={onChange}
-                            />
-                        )}
+                        {({ value, onChange }) =>
+                            editing ? (
+                                editingIntegration ? (
+                                    <IntegrationView integration={editingIntegration} suffix={<></>} />
+                                ) : (
+                                    <span className="text-muted">
+                                        This destination's connection is no longer available.
+                                    </span>
+                                )
+                            ) : (
+                                <IntegrationChoice
+                                    integration="postgresql"
+                                    value={value ?? undefined}
+                                    onChange={onChange}
+                                />
+                            )
+                        }
                     </LemonField>
 
                     <div className="flex gap-2">
@@ -81,9 +92,9 @@ export function DestinationModal(props: DestinationModalLogicProps): JSX.Element
 
                     {editing ? (
                         <LemonBanner type="info">
-                            The database and schema are fixed once a destination exists. Everything already synced sits
-                            in the current one, so pointing it somewhere else would leave that behind and need a full
-                            resync. Add a second destination instead.
+                            The connection, database and schema are fixed once a destination exists. Everything already
+                            synced sits where it is now, so pointing this somewhere else would leave that behind and
+                            need a full resync. Add a second destination instead.
                         </LemonBanner>
                     ) : null}
                 </Form>
