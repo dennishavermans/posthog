@@ -19,6 +19,7 @@ from products.warehouse_sources.backend.temporal.data_imports.pipelines.pipeline
     UnrelatedTableExistsError,
     _owned_marker,
     _scoped_identifier,
+    merge_stage_name,
     staging_table_name,
 )
 
@@ -85,6 +86,22 @@ def _ctx(
 def _read(dsn: str, table: str) -> list[tuple]:
     with psycopg.connect(dsn, autocommit=True) as conn:
         return conn.execute(f'SELECT id, name FROM public."{table}" ORDER BY id').fetchall()
+
+
+def _table_exists(dsn: str, table: str) -> bool:
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        return (
+            conn.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=%s",
+                (table,),
+            ).fetchone()
+            is not None
+        )
+
+
+def _row_count(dsn: str, table: str) -> int:
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        return conn.execute(f'SELECT count(*) FROM public."{table}"').fetchone()[0]
 
 
 def _drop(dsn: str, *tables: str) -> None:
@@ -359,6 +376,32 @@ class TestFullRefreshTableOwnership:
 
 
 class TestIncremental:
+    async def test_batches_share_one_merge_stage_that_finalize_drops(self, dsn, table_name) -> None:
+        # A stage table per batch writes catalog rows a customer's server then has to vacuum,
+        # so the run keeps one and empties it between batches.
+        ctx = _ctx(table_name, "incremental", primary_keys=("id",))
+        writer = LocalPostgresWriter(ctx, dsn)
+        stage = merge_stage_name(table_name, ctx)
+        try:
+            await writer.write_batch(
+                _batches(_rows(["a"], [1])),
+                DestinationBatchContext(run=ctx, batch_index=0, is_final_batch=False),
+            )
+            assert _table_exists(dsn, stage)
+
+            await writer.write_batch(
+                _batches(_rows(["b"], [2])),
+                DestinationBatchContext(run=ctx, batch_index=1, is_final_batch=True),
+            )
+            # Emptied between batches, so it never accumulates the run's rows.
+            assert _row_count(dsn, stage) == 1
+            assert _read(dsn, table_name) == [(1, "a"), (2, "b")]
+
+            await writer.finalize_run(ctx)
+            assert not _table_exists(dsn, stage)
+        finally:
+            _drop(dsn, table_name, stage)
+
     async def test_rows_are_merged_on_the_primary_key(self, dsn, table_name) -> None:
         ctx = _ctx(table_name, "incremental", primary_keys=("id",))
         writer = LocalPostgresWriter(ctx, dsn)

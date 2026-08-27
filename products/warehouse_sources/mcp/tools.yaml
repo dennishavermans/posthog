@@ -89,6 +89,11 @@ tools:
             the connect page, take the newest credential_id for the source type and call 'data-warehouse-source-setup'
             with {'credential_id': '<uuid>'} in the payload. Stored credentials are single-use — they are deleted as
             soon as setup consumes them — and expire after 24 hours if never used.
+    # Destination writes stay off. Rerouting a source is not a read: a destination added through the
+    # API holds none of the history already synced, and nothing here resyncs to fill it in, so an
+    # agent flipping this would leave a silently partial table. The read tools above are gated on
+    # the same flag as the product, so a team without it sees none of this and every sync keeps
+    # landing in the PostHog warehouse.
     external-data-destinations-create:
         operation: external_data_destinations_create
         enabled: false
@@ -97,13 +102,36 @@ tools:
         enabled: false
     external-data-destinations-list:
         operation: external_data_destinations_list
-        enabled: false
+        enabled: true
+        scopes:
+            - external_data_source:read
+        annotations:
+            readOnly: true
+            destructive: false
+            idempotent: true
+        feature_flag: warehouse-multi-destination
+        title: List warehouse destinations
+        description: >
+            List the places this project's warehouse sources can write synced rows to. The PostHog warehouse is one of
+            them, and it is where a source writes when nothing else is configured.
     external-data-destinations-partial-update:
         operation: external_data_destinations_partial_update
         enabled: false
     external-data-destinations-retrieve:
         operation: external_data_destinations_retrieve
-        enabled: false
+        enabled: true
+        scopes:
+            - external_data_source:read
+        annotations:
+            readOnly: true
+            destructive: false
+            idempotent: true
+        feature_flag: warehouse-multi-destination
+        enrich_url: '{id}'
+        title: Get a warehouse destination
+        description: >
+            Read one warehouse destination, including the target database or schema it writes to. Credentials live on
+            the linked integration and are never returned here.
     external-data-destinations-update:
         operation: external_data_destinations_update
         enabled: false
@@ -138,7 +166,18 @@ tools:
         enabled: false
     external-data-schemas-destinations-retrieve:
         operation: external_data_schemas_destinations_retrieve
-        enabled: false
+        enabled: true
+        scopes:
+            - external_data_source:read
+        annotations:
+            readOnly: true
+            destructive: false
+            idempotent: true
+        feature_flag: warehouse-multi-destination
+        title: Get a table's destinations
+        description: >
+            Read one table's destination override. `inherits_from_source` tells you whether the table follows its
+            source; `effective_destination_ids` is where it actually syncs once inheritance is resolved.
     external-data-schemas-destroy:
         operation: external_data_schemas_destroy
         enabled: false
@@ -369,7 +408,18 @@ tools:
         enabled: false
     external-data-sources-destinations-retrieve:
         operation: external_data_sources_destinations_retrieve
-        enabled: false
+        enabled: true
+        scopes:
+            - external_data_source:read
+        annotations:
+            readOnly: true
+            destructive: false
+            idempotent: true
+        feature_flag: warehouse-multi-destination
+        title: Get a source's destinations
+        description: >
+            Read the destinations every table on this source syncs to. An empty list means the source writes to the
+            PostHog warehouse only, which is the default for any source nobody configured destinations for.
     external-data-sources-destroy:
         operation: external_data_sources_destroy
         enabled: true

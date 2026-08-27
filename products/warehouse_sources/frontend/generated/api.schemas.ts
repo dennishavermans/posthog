@@ -61,6 +61,8 @@ export interface ExternalDataDestinationApi {
     readonly created_at: string
     /** @nullable */
     readonly created_by: number | null
+    /** @nullable */
+    readonly updated_at: string | null
 }
 
 export interface PaginatedExternalDataDestinationListApi {
@@ -102,6 +104,8 @@ export interface PatchedExternalDataDestinationApi {
     readonly created_at?: string
     /** @nullable */
     readonly created_by?: number | null
+    /** @nullable */
+    readonly updated_at?: string | null
 }
 
 /**

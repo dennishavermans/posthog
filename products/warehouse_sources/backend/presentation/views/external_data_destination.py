@@ -67,8 +67,9 @@ class ExternalDataDestinationSerializer(serializers.ModelSerializer):
             "is_posthog_warehouse",
             "created_at",
             "created_by",
+            "updated_at",
         ]
-        read_only_fields = ["id", "is_posthog_warehouse", "created_at", "created_by"]
+        read_only_fields = ["id", "is_posthog_warehouse", "created_at", "created_by", "updated_at"]
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         destination_type = attrs.get("type", getattr(self.instance, "type", None))

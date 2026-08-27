@@ -59,21 +59,13 @@ from products.warehouse_sources.backend.temporal.data_imports.pipelines.pipeline
 # what its previous attempt wrote instead of the whole staging table.
 BATCH_INDEX_COLUMN = "_ph_batch_index"
 
-# Set on a full refresh's staging table as soon as it exists, and carried across the final
-# rename because a Postgres comment follows the table's OID, not its name. `finalize_run`
-# checks for this before it ever drops something named after the destination's live table, so
-# a full refresh can only ever replace a table this writer created. An incremental run marks
-# its live table the same way, the first time it creates one, and checks it before writing to
-# a table that already existed. `table_name` is derived from the source's resource name (see
-# `delivery.py`), which a custom-source manifest controls; without this check, naming a
-# resource after an unrelated table already sitting in the destination schema would be enough
-# to have it dropped, or merged into, on the next sync.
+# Proof this writer created a table, so a sync never drops or merges into one the customer
+# already had. `table_name` comes from the source's resource name, which a custom-source
+# manifest controls, so without it any table sharing that name is fair game.
 #
-# Scoped by schema id, not just a fixed literal: `table_name` collides across sources on
-# purpose (it's how a customer routes several tables to one name), but ownership must not. A
-# bare marker would let one schema's resource collide with another schema's table name on the
-# same destination and have `_is_owned` accept it as its own, since both sync writers stamp
-# the identical comment.
+# Stored as a Postgres comment because those follow the table's OID, surviving the rename in
+# `finalize_run`. Scoped by schema id because `table_name` collides across sources on purpose
+# and ownership must not.
 _OWNERSHIP_COMMENT = "posthog-warehouse-sync-owned"
 
 
@@ -91,16 +83,9 @@ class UnrelatedTableExistsError(RuntimeError):
     """A sync would have replaced or mutated a table this writer never created."""
 
 
-# Postgres silently truncates any identifier past this many bytes. Truncating the base name
-# ourselves, instead of leaving it to Postgres, guarantees a run- or batch-scoped suffix always
-# survives: Postgres's own truncation drops the *end* of the identifier first, which is
-# exactly that suffix, collapsing a long base identifier back onto its own (also truncated)
-# name. An editor who controls a custom source's resource name could otherwise pick one
-# sharing the first 63 bytes with an existing table on the destination and have a derived
-# identifier (a staging table, a merge stage, a unique index) alias it directly. `_is_owned`
-# is what actually stops such an alias being written to as a *table*; this keeps every derived
-# identifier from silently losing its uniqueness in the first place, which is the only thing
-# standing between a merge stage or index name and the table it was derived from.
+# Postgres truncates identifiers past this, dropping the end — which is where our suffixes go.
+# A long `table_name` would therefore collapse its staging table, merge stage and index back
+# onto the base name. Truncate the base ourselves so the suffix always survives.
 _MAX_PG_IDENTIFIER_BYTES = 63
 
 
@@ -114,6 +99,13 @@ def _scoped_identifier(base: str, suffix: str) -> str:
 def staging_table_name(ctx: DestinationRunContext) -> str:
     # Run-scoped, so two runs of the same table never share a staging table.
     return _scoped_identifier(ctx.table_name, f"__ph_stage_{ctx.run_uuid.replace('-', '')[:12]}")
+
+
+def merge_stage_name(target: str, ctx: DestinationRunContext) -> str:
+    # `target` is the live table on an incremental run, so it can already be at the identifier
+    # limit. Reserve room for the suffix or the stage name truncates onto the live table, and
+    # dropping the stage would drop it.
+    return _scoped_identifier(target, f"__ph_merge_{ctx.run_uuid.replace('-', '')[:8]}")
 
 
 def _to_json_text(value: Any, *, from_map: bool) -> str | None:
@@ -409,30 +401,36 @@ class PostgresDestinationWriter:
     async def _merge_batch(
         self, client: PostgreSQLClient, target: str, batch: pa.RecordBatch, column_names: list[str]
     ) -> int:
-        """Upsert a batch on the schema's primary keys, through a short-lived stage table."""
+        """Upsert a batch on the schema's primary keys, through a stage table."""
         run = self._ctx
-        # `target` can itself already be at Postgres's 63-byte identifier limit (it is not
-        # routed through `staging_table_name`'s truncation for an incremental run), so this
-        # suffix has to reserve its own room rather than trust Postgres to keep it: otherwise
-        # `stage` truncates to the exact same relation as `target`, and dropping "stage" on
-        # the way out of `_merge_stage` below drops the live table instead.
-        stage = _scoped_identifier(target, f"__ph_merge_{run.run_uuid.replace('-', '')[:8]}")
+        stage = merge_stage_name(target, run)
 
-        async with self._merge_stage(client, target, stage, batch.schema):
-            await self._load_batch(client, stage, batch, column_names)
-            await self._upsert_from_stage(client, target, stage, column_names, list(run.primary_keys))
+        await self._ensure_merge_stage(client, stage, batch.schema)
+        await self._load_batch(client, stage, batch, column_names)
+        await self._upsert_from_stage(client, target, stage, column_names, list(run.primary_keys))
 
         return batch.num_rows
 
-    @asynccontextmanager
-    async def _merge_stage(
-        self, client: PostgreSQLClient, target: str, stage: str, schema: pa.Schema
-    ) -> AsyncIterator[str]:
-        """Hold one batch in a table of its own for the upsert to merge from."""
-        async with client.managed_table(
-            self._schema, stage, self._fields_for(schema, with_batch_index=False), delete=True
-        ) as name:
-            yield name
+    async def _ensure_merge_stage(self, client: PostgreSQLClient, stage: str, schema: pa.Schema) -> None:
+        """Ready the run's stage table to receive one batch.
+
+        Created once per run and emptied between batches rather than created and dropped per
+        batch. A table per batch is not free on someone else's server: each one writes catalog
+        rows that later have to be vacuumed, and vacuuming catalog tables can need locks.
+        `abort_run` and `finalize_run` drop it.
+        """
+        await client.acreate_table(
+            self._schema, stage, self._fields_for(schema, with_batch_index=False), exists_ok=True
+        )
+        # The stage outlives the batch that created it, so a column the source grew mid-run has
+        # to reach it too, or the COPY names a column the stage does not have.
+        await self._evolve_table(client, stage, schema)
+        async with self._write_cursor(client) as cursor:
+            # Not DELETE: the stage is rewritten wholesale every batch, so truncating skips the
+            # dead rows a delete would leave for autovacuum.
+            await cursor.execute(
+                sql.SQL("TRUNCATE TABLE {}.{}").format(sql.Identifier(self._schema), sql.Identifier(stage))
+            )
 
     async def _upsert_from_stage(
         self,
@@ -570,6 +568,10 @@ class PostgresDestinationWriter:
     async def finalize_run(self, ctx: DestinationRunContext) -> None:
         """Publish a full refresh by swapping the staging table into place."""
         if not ctx.is_full_refresh:
+            # An incremental run publishes as it goes, but its merge stage lives for the whole
+            # run, so this is the point where it stops being needed.
+            async with self._client() as client:
+                await client.adelete_table(self._schema, merge_stage_name(ctx.table_name, ctx), not_found_ok=True)
             return
 
         staging = staging_table_name(ctx)
@@ -636,4 +638,9 @@ class PostgresDestinationWriter:
     async def abort_run(self, ctx: DestinationRunContext) -> None:
         """Drop whatever a run that will not finish left staged."""
         async with self._client() as client:
-            await client.adelete_table(self._schema, staging_table_name(ctx), not_found_ok=True)
+            await self._drop_run_scratch(client, ctx)
+
+    async def _drop_run_scratch(self, client: PostgreSQLClient, ctx: DestinationRunContext) -> None:
+        """Drop the scratch tables a run owns, once it can no longer need them."""
+        await client.adelete_table(self._schema, staging_table_name(ctx), not_found_ok=True)
+        await client.adelete_table(self._schema, merge_stage_name(ctx.table_name, ctx), not_found_ok=True)
