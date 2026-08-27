@@ -45,6 +45,7 @@ import { MetricNameFilter } from './MetricNameFilter'
 import { metricNamePickerLogic } from './metricNamePickerLogic'
 import { type MetricsExemplar } from './MetricsExemplarMarkers'
 import { MetricsLogsSourceTag } from './MetricsLogsSourceTag'
+import { MetricsRelatedMenu } from './MetricsRelatedMenu'
 import { metricsSamplesLogic } from './metricsSamplesLogic'
 import { MetricsSamplesPanel } from './MetricsSamplesPanel'
 import { MetricsSeriesChart } from './MetricsSeriesChart'
@@ -275,6 +276,7 @@ export const MetricsViewer = (): JSX.Element => {
                             disabledReason={metricsViewerDisabledReason}
                         />
                         <MetricsGroupByButton disabledReason={metricsViewerDisabledReason} />
+                        <MetricsRelatedMenu />
                         {anomalyBadge && <MetricsAnomalyTag anomaly={anomalyBadge} />}
                         <MetricsLogsSourceTag metricName={metricName} />
                     </div>
