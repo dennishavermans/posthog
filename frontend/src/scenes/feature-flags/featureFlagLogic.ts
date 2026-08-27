@@ -752,6 +752,8 @@ export interface featureFlagLogicValues {
     activeRecurringSchedules: ScheduledChangeType[]
     activeSchedules: ScheduledChangeType[]
     activeTab: FeatureFlagsTab
+    advancedExpanded: boolean | null
+    advancedPanelOpen: boolean
     aggregationTargetName: string
     availableTabs: FeatureFlagsTab[]
     breadcrumbs: Breadcrumb[]
@@ -1396,6 +1398,9 @@ export interface featureFlagLogicActions {
     setAccessDeniedToFeatureFlag: () => {
         value: true
     }
+    setAdvancedExpanded: (expanded: boolean) => {
+        expanded: boolean
+    }
     setBucketingIdentifier: (bucketingIdentifier: FeatureFlagBucketingIdentifier | null) => {
         bucketingIdentifier: FeatureFlagBucketingIdentifier | null
     }
@@ -1927,6 +1932,12 @@ export interface featureFlagLogicMeta {
         recordingFilterForFlag: (featureFlag: FeatureFlagType) => Partial<RecordingUniversalFilters>
         hasEarlyAccessFeatures: (featureFlag: FeatureFlagType) => boolean
         tagsRequired: (currentTeam: TeamPublicType | TeamType | null) => boolean
+        advancedPanelOpen: (
+            advancedExpanded: any,
+            expandAdvancedOnEdit: boolean,
+            tagsRequired: boolean,
+            featureFlag: FeatureFlagType
+        ) => boolean
         earlyAccessFeaturesList: (featureFlag: FeatureFlagType) => MinimalEarlyAccessFeatureType[]
         featureFlagKey: (featureFlag: FeatureFlagType) => string
         canCreateEarlyAccessFeature: (featureFlag: FeatureFlagType, variants: MultivariateFlagVariant[]) => boolean
@@ -2090,6 +2101,7 @@ export const featureFlagLogic = kea<featureFlagLogicType>([
         // V2 form UI actions
         setShowImplementation: (show: boolean) => ({ show }),
         setOpenVariants: (openVariants: string[]) => ({ openVariants }),
+        setAdvancedExpanded: (expanded: boolean) => ({ expanded }),
         setPayloadExpanded: (expanded: boolean) => ({ expanded }),
         setTemplateExpanded: (expanded: boolean) => ({ expanded }),
         applyUrlTemplate: (templateId: string) => ({ templateId }),
@@ -2596,6 +2608,16 @@ export const featureFlagLogic = kea<featureFlagLogicType>([
                     // Remap openVariants when variants are reordered
                     return remapOpenVariantsAfterReorder(state, fromIndex, toIndex)
                 },
+            },
+        ],
+        advancedExpanded: [
+            // `null` means the person has not touched the panel yet, so `advancedPanelOpen` still
+            // decides for them. Re-entering edit mode returns to that, so the overview pencil can
+            // reopen the panel after they collapsed it in an earlier edit.
+            null as boolean | null,
+            {
+                setAdvancedExpanded: (_, { expanded }) => expanded,
+                editFeatureFlag: () => null,
             },
         ],
         payloadExpanded: [
@@ -3512,6 +3534,9 @@ export const featureFlagLogic = kea<featureFlagLogicType>([
             if (filtersErrors?.payloads?.true && !values.payloadExpanded) {
                 actions.setPayloadExpanded(true)
             }
+            if (formErrors?.tags && !values.advancedPanelOpen) {
+                actions.setAdvancedExpanded(true)
+            }
             // Yield so React flushes the expand-actions re-render before scrollToFormError schedules
             // its requestAnimationFrame callback — otherwise on browsers/scheduler combinations where
             // the render lands after RAF, `.Field--error` isn't in the DOM yet and the fallback toast
@@ -4357,6 +4382,18 @@ export const featureFlagLogic = kea<featureFlagLogicType>([
             (s) => [s.currentTeam],
             (currentTeam: TeamPublicType | TeamType | null): boolean =>
                 !!currentTeam?.feature_flag_policy_config?.require_tags,
+        ],
+        advancedPanelOpen: [
+            (s) => [s.advancedExpanded, s.expandAdvancedOnEdit, s.tagsRequired, s.featureFlag],
+            (
+                advancedExpanded: boolean | null,
+                expandAdvancedOnEdit: boolean,
+                tagsRequired: boolean,
+                featureFlag: FeatureFlagType
+            ): boolean =>
+                // A new flag that needs a tag opens the panel up front, so the person sees the tag
+                // input before they submit rather than after a rejected save.
+                advancedExpanded ?? (expandAdvancedOnEdit || (!featureFlag.id && tagsRequired)),
         ],
         earlyAccessFeaturesList: [
             (s) => [s.featureFlag],
