@@ -4,6 +4,7 @@ from posthog.test.base import BaseTest
 from unittest.mock import MagicMock, patch
 
 from parameterized import parameterized
+from temporalio.testing import ActivityEnvironment
 
 from products.tasks.backend.temporal.process_task.activities.send_followup_to_sandbox import (
     STEER_DECLINE_REASON_UNREPORTED,
@@ -81,7 +82,9 @@ class TestSendFollowupToSandbox(BaseTest):
         mock_conn = MagicMock()
         mock_get_tasks_stream_redis_sync.return_value = mock_conn
 
-        send_followup_to_sandbox(SendFollowupToSandboxInput(run_id="run-123", message="hello"))
+        ActivityEnvironment().run(
+            send_followup_to_sandbox, SendFollowupToSandboxInput(run_id="run-123", message="hello")
+        )
 
         payload = mock_conn.xadd.call_args.args[1]["data"]
         event = json.loads(payload)
@@ -125,13 +128,14 @@ class TestSendFollowupToSandbox(BaseTest):
                 return_value=None,
             ),
         ):
-            send_followup_to_sandbox(
+            ActivityEnvironment().run(
+                send_followup_to_sandbox,
                 SendFollowupToSandboxInput(
                     run_id="run-123",
                     message="change direction",
                     actor_user_id=42,
                     steer=True,
-                )
+                ),
             )
 
         mock_refresh_sandbox_mcp.assert_not_called()
