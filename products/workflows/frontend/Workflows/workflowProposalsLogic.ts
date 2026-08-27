@@ -263,7 +263,13 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
                 actions.loadProposals()
             } catch (error) {
                 if (error instanceof ApiError && error.status === 409) {
-                    lemonToast.error('The staged draft changed while you were confirming. Review it and try again.')
+                    // The backend refuses a suggestion whose step list predates the live workflow, and
+                    // says why. Its wording is more useful here than a generic draft-changed message.
+                    lemonToast.error(
+                        error.code === 'proposal_out_of_date' && error.detail
+                            ? error.detail
+                            : 'The staged draft changed while you were confirming. Review it and try again.'
+                    )
                     workflowLogic({ id: props.id }).actions.loadWorkflow()
                     actions.loadProposals()
                 } else {

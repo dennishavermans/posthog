@@ -9,6 +9,8 @@ from django.test import SimpleTestCase
 from parameterized import parameterized
 
 from posthog.cdp.templates.hog_function_template import sync_template_to_db
+from posthog.models.personal_api_key import PersonalAPIKey
+from posthog.models.utils import generate_random_token_personal, hash_key_value
 
 from products.cdp.backend.api.test.test_hog_function_templates import MOCK_NODE_TEMPLATES
 from products.workflows.backend.api.hog_flow import DRAFT_CONTENT_FIELDS
@@ -129,6 +131,74 @@ class TestWorkflowProposals(APIBaseTest):
         assert stored.status == "applied"
         assert stored.applied_version == HogFlow.objects.get(id=flow_id).version == 2
 
+    def test_only_the_suggestion_still_staged_is_recorded_as_applied(self, _mock_flag):
+        flow_id = self._create_active_flow()
+        first = self._propose(flow_id, source_id="stub:first")
+        second = self._propose(
+            flow_id,
+            source_id="stub:second",
+            content={"actions": [_trigger_action(), _webhook_action(url="https://second.example.com")]},
+        )
+
+        self.client.post(f"/api/projects/{self.team.id}/hog_flows/{flow_id}/proposals/{first['id']}/approve/", {})
+        approve_second = self.client.post(
+            f"/api/projects/{self.team.id}/hog_flows/{flow_id}/proposals/{second['id']}/approve/", {"overwrite": True}
+        )
+        assert approve_second.status_code == 200, approve_second.json()
+
+        self._publish(flow_id)
+
+        # The second approval replaced the first one's content in the draft, so only the second went
+        # live. Recording both as applied would give the first a measured outcome it never earned.
+        assert WorkflowProposal.objects.for_team(self.team.id).get(id=second["id"]).status == "applied"
+        replaced = WorkflowProposal.objects.for_team(self.team.id).get(id=first["id"])
+        assert replaced.status == "suggested"
+        assert replaced.applied_version is None
+        assert HogFlow.objects.get(id=flow_id).actions[1]["config"]["inputs"]["url"]["value"] == (
+            "https://second.example.com"
+        )
+
+    def test_discarding_the_draft_returns_the_suggestion_to_the_queue(self, _mock_flag):
+        flow_id = self._create_active_flow()
+        proposal = self._propose(flow_id)
+        self.client.post(f"/api/projects/{self.team.id}/hog_flows/{flow_id}/proposals/{proposal['id']}/approve/", {})
+
+        discard = self.client.post(f"/api/projects/{self.team.id}/hog_flows/{flow_id}/discard_draft", {})
+        assert discard.status_code == 200, discard.json()
+
+        stored = WorkflowProposal.objects.for_team(self.team.id).get(id=proposal["id"])
+        assert stored.status == "suggested"
+        assert stored.resolved_at is None
+
+        # An unrelated later publish must not adopt it: its change was never in that draft.
+        self.client.patch(
+            f"/api/projects/{self.team.id}/hog_flows/{flow_id}/graph",
+            {"operations": [{"op": "update_action", "id": "action_1", "patch": {"name": "renamed"}}]},
+            HTTP_X_POSTHOG_CLIENT="mcp",
+        )
+        self._publish(flow_id)
+        assert WorkflowProposal.objects.for_team(self.team.id).get(id=proposal["id"]).status == "suggested"
+
+    def test_a_suggestion_older_than_the_live_workflow_is_refused(self, _mock_flag):
+        flow_id = self._create_active_flow()
+        proposal = self._propose(flow_id)
+        # Someone publishes a step change after the suggestion was written. Its action list is now the
+        # older shape, so staging it would drop that edit.
+        self.client.patch(
+            f"/api/projects/{self.team.id}/hog_flows/{flow_id}/graph",
+            {"operations": [{"op": "update_action", "id": "action_1", "patch": {"name": "renamed"}}]},
+            HTTP_X_POSTHOG_CLIENT="mcp",
+        )
+        self._publish(flow_id)
+
+        response = self.client.post(
+            f"/api/projects/{self.team.id}/hog_flows/{flow_id}/proposals/{proposal['id']}/approve/", {"overwrite": True}
+        )
+        assert response.status_code == 409, response.json()
+        assert response.json()["code"] == "proposal_out_of_date"
+        assert WorkflowProposal.objects.for_team(self.team.id).get(id=proposal["id"]).status == "suggested"
+        assert HogFlow.objects.get(id=flow_id).draft is None
+
     def test_provenance_comes_from_the_transport_not_the_payload(self, _mock_flag):
         flow_id = self._create_active_flow()
         response = self.client.post(
@@ -230,6 +300,28 @@ class TestWorkflowProposals(APIBaseTest):
             "bounce rate",
         ]
         assert body["unavailable_guardrails"] == ["unsubscribe rate"]
+
+    def test_an_api_key_can_read_the_outcome_of_what_it_proposed(self, _mock_flag):
+        # The producer is an agent authenticating with a personal API key, so every endpoint it needs
+        # has to declare a scope. An action missing from the scope lists is rejected before it runs,
+        # whatever scopes the key holds.
+        flow_id = self._create_active_flow()
+        proposal = self._propose(flow_id)
+        self.client.post(f"/api/projects/{self.team.id}/hog_flows/{flow_id}/proposals/{proposal['id']}/approve/", {})
+        self._publish(flow_id)
+
+        value = generate_random_token_personal()
+        PersonalAPIKey.objects.create(
+            label="scout", user=self.user, secure_value=hash_key_value(value), scopes=["hog_flow:read"]
+        )
+        self.client.logout()
+
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/hog_flows/{flow_id}/proposals/{proposal['id']}/outcome",
+            headers={"authorization": f"Bearer {value}"},
+        )
+        assert response.status_code == 200, response.json()
+        assert response.json()["after"]["version"] == 2
 
     def test_a_partial_action_list_is_refused(self, _mock_flag):
         flow_id = self._create_active_flow()

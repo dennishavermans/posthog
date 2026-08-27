@@ -3224,6 +3224,34 @@ class ProposalAlreadyResolvedError(exceptions.APIException):
     default_code = "proposal_already_resolved"
 
 
+class ProposalOutOfDateError(exceptions.APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = (
+        "The workflow changed since this was suggested, and the suggestion carries whole steps, so "
+        "approving it would drop the edits made since. Ask for a fresh suggestion."
+    )
+    default_code = "proposal_out_of_date"
+
+
+# Fields a proposal replaces wholesale rather than merging into: carrying a stale copy of one of
+# these puts the workflow's older shape back. Harmless while the live version still matches what
+# the proposal was written against, which is what approve checks.
+PROPOSAL_WHOLE_LIST_FIELDS = ("actions", "edges", "abort_action")
+
+
+def unstage_workflow_proposals(hog_flow: HogFlow) -> None:
+    """Put back in the queue any suggestion whose content is no longer the staged draft.
+
+    Approved means one thing here: this suggestion's content is what sits in the draft. Discarding
+    the draft, restoring a revision or approving a different suggestion replaces that content, so
+    the earlier one is pending again - and publish, which reads approved as "this is what shipped",
+    must not record it as applied against a version that never carried it.
+    """
+    WorkflowProposal.objects.filter(hog_flow=hog_flow, status=WorkflowProposal.Status.APPROVED).update(
+        status=WorkflowProposal.Status.SUGGESTED, resolved_at=None, resolved_by=None
+    )
+
+
 class CommaSeparatedListFilter(BaseInFilter, CharFilter):
     pass
 
@@ -3335,6 +3363,7 @@ class HogFlowViewSet(
         "revisions",
         "revision_detail",
         "proposal_detail",
+        "proposal_outcome",
     ]
     scope_object_write_actions = [
         "create",
@@ -4219,9 +4248,10 @@ class HogFlowViewSet(
             locked.draft_updated_at = None
             locked.draft_encrypted_inputs = None
             locked.save(update_fields=["draft", "draft_updated_at", "draft_encrypted_inputs"])
-            # An approved proposal is what was just published, so close the loop here. One indexed
-            # UPDATE, and a no-op for every workflow that has no proposals — which is why it needs no
-            # flag check of its own.
+            # Approved means "staged in this draft", and every path that replaces the draft unstages
+            # what it replaced, so at most one suggestion is approved here and it is the one that just
+            # went live. One indexed UPDATE, and a no-op for every workflow that has no proposals -
+            # which is why it needs no flag check of its own.
             WorkflowProposal.objects.filter(hog_flow=locked, status=WorkflowProposal.Status.APPROVED).update(
                 status=WorkflowProposal.Status.APPLIED, applied_version=locked.version
             )
@@ -4255,6 +4285,7 @@ class HogFlowViewSet(
             locked.draft = None
             locked.draft_updated_at = None
             locked.draft_encrypted_inputs = None
+            unstage_workflow_proposals(locked)
             # updated_at (auto_now) is deliberately bumped: without a fresh live stamp the
             # resource_edited broadcast carries the old updated_at — older than the draft stamp
             # concurrent editors loaded, so they'd ignore the discard, and their next draft save
@@ -4332,6 +4363,7 @@ class HogFlowViewSet(
             before_update = HogFlow.objects.get(pk=instance.pk)
             locked.draft = dict(revision.content)
             locked.draft_updated_at = timezone.now()
+            unstage_workflow_proposals(locked)
             # Revision snapshots carry no secrets (they're stripped before snapshotting), so the
             # restored draft re-attaches from the live encrypted_inputs on the follow-up publish.
             # Clear any stale draft secrets from a prior draft so they can't bleed into this one.
@@ -4542,6 +4574,13 @@ class HogFlowViewSet(
                 raise ProposalAlreadyResolvedError()
             if locked.draft and not param_serializer.validated_data["overwrite"]:
                 raise DraftExistsError()
+            # A suggestion written against an older version carries whole step lists, so staging it
+            # would put that older graph back and drop whatever was published since. The banner
+            # already tags it out of date; this is the block behind that warning.
+            if locked.version != locked_proposal.base_version and any(
+                field in locked_proposal.content for field in PROPOSAL_WHOLE_LIST_FIELDS
+            ):
+                raise ProposalOutOfDateError()
             expected_draft_updated_at = param_serializer.validated_data.get("expected_draft_updated_at")
             if (
                 locked.draft
@@ -4560,6 +4599,10 @@ class HogFlowViewSet(
             # re-attaches from the live encrypted_inputs on the follow-up publish.
             locked.draft_encrypted_inputs = None
             locked.save(update_fields=["draft", "draft_updated_at", "draft_encrypted_inputs"])
+
+            # This suggestion's content replaces whatever was staged, so any previously approved one
+            # goes back to the queue rather than sitting approved over content that is no longer there.
+            unstage_workflow_proposals(locked)
 
             locked_proposal.status = WorkflowProposal.Status.APPROVED
             locked_proposal.resolved_at = timezone.now()
@@ -4600,6 +4643,8 @@ class HogFlowViewSet(
         proposal = self._get_proposal_or_404(instance, proposal_id)
         window = request.query_params.get("window") or "-7d"
         after_date, _, _ = relative_date_parse_with_delta_mapping(window, self.team.timezone_info)
+        # Both reads below go to ClickHouse, which refuses an untagged query.
+        tag_queries(product=ProductKey.WORKFLOWS, feature=Feature.QUERY)
 
         return Response(
             WorkflowProposalOutcomeSerializer(

@@ -3,7 +3,10 @@ from typing import Any, Optional
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
+from posthog.schema import ProductKey
+
 from posthog.api.app_metrics2 import fetch_app_metric_totals
+from posthog.clickhouse.query_tagging import Feature, tag_queries
 from posthog.dataclasses import frozen
 from posthog.models.scoping import team_scope
 from posthog.utils import relative_date_parse_with_delta_mapping
@@ -140,6 +143,8 @@ class Command(BaseCommand):
         self.stdout.write(f"Done. {written} proposal(s) written.")
 
     def _pick_candidate(self, flow: HogFlow, after: Any, force: bool) -> Optional[_SubjectCandidate]:
+        # ClickHouse refuses an untagged query, and this runs outside a request that would tag it.
+        tag_queries(product=ProductKey.WORKFLOWS, feature=Feature.QUERY)
         for action in flow.actions or []:
             if not isinstance(action, dict) or action.get("type") != "function_email":
                 continue
