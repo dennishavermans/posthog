@@ -952,7 +952,7 @@ _RELATIONSHIP_PROPOSALS_DESCRIPTION = (
 )
 
 
-def _references_denied_table(referenced_table_names: Optional[list[str]], denied: set[str]) -> bool:
+def references_denied_table(referenced_table_names: Optional[list[str]], denied: set[str]) -> bool:
     """Whether any of a metric's referenced tables is in the caller's denied set.
 
     `referenced_table_names` stores the surface identifier the author typed (bare `charges` or dotted
@@ -1015,7 +1015,7 @@ def _catalog_metrics(context: "HogQLContext", allowed: Optional[frozenset[str]])
         drift = compute_drift(metrics)
         rows: list[list[Any]] = []
         for metric in metrics:
-            if _references_denied_table(metric.referenced_table_names, denied):
+            if references_denied_table(metric.referenced_table_names, denied):
                 continue
             rows.append(
                 [
@@ -1064,78 +1064,12 @@ def _access_control(context: "HogQLContext") -> Any:
     return from_database if from_database is not None else context.user_access_control
 
 
-def _denial_applies(context: "HogQLContext", denied: set[str]) -> bool:
-    """Whether the data quality gates have anything to decide for this caller.
-
-    A non-empty denial set settles it. So does an empty one held by a member of an organization with
-    access controls, because deleting the subject they were denied is what empties it -- which is the
-    case the gates withhold for. Only a caller who could never be denied a single object skips them.
-    """
-    from products.data_quality.backend.facade import api as data_quality  # noqa: PLC0415
-
-    return bool(denied) or data_quality.can_be_object_denied(_access_control(context))
-
-
-def _visible_data_quality_checks(
-    context: "HogQLContext", team_id: int, checks: list[Any], denied: set[str]
-) -> list[Any]:
-    """The checks a caller may see, by the rule the REST surfaces apply.
-
-    A check is out of reach on any of three counts: its own subject is denied, the definition it
-    would run next reads one that is, or the run behind its ``last_status`` read one. The row is both
-    tenses at once, so the definition is judged by the names it resolves today and the run by the
-    identities it pinned.
-
-    Subject names come from the subjects themselves rather than the copy denormalized onto the check,
-    which only a run rewrites, so a rename cannot carry a denied subject back into a list.
-    """
-    from products.data_quality.backend.facade import api as data_quality  # noqa: PLC0415
-
-    if not _denial_applies(context, denied):
-        return checks
-    recordings = data_quality.latest_run_recordings(team_id, [check.id for check in checks])
-    current_names = data_quality.resolve_subject_names(
-        team_id,
-        [
-            data_quality.subject_identity(check.subject_type, check.subject_uuid)
-            for check in checks
-            if check.subject_uuid
-        ]
-        + data_quality.pinned_subject_refs(recording.referenced_subjects for recording in recordings.values()),
-    )
-    return [
-        check
-        for check in checks
-        if not _references_denied_table(
-            [
-                current_names.get(
-                    data_quality.subject_identity(check.subject_type, check.subject_uuid), check.subject_name
-                )
-            ],
-            denied,
-        )
-        and not data_quality.check_reads_denied_subject(team_id, check.check_type, check.config, denied)
-        and not _last_run_read_a_denied_subject(recordings.get(check.id), current_names, denied)
-    ]
-
-
-def _last_run_read_a_denied_subject(recording: Any, current_names: dict[Any, str], denied: set[str]) -> bool:
-    from products.data_quality.backend.facade import api as data_quality  # noqa: PLC0415
-
-    # A check that never ran carries no verdict, so there is nothing here to authorize.
-    if recording is None:
-        return False
-    return data_quality.run_reads_unreadable_subject(
-        recording.check_type, recording.referenced_subjects, current_names, denied
-    )
-
-
 def _data_quality_checks(context: "HogQLContext", allowed: Optional[frozenset[str]]) -> list[list[Any]]:
     """Load the team's data quality check definitions as information_schema rows (fail-soft).
 
     Hides checks whose subject table or view the caller is denied: the row carries the compiled
     ``config`` and the denormalized subject name, so leaking it leaks the shape of a table the member
-    cannot read. Mirrors the metric loader's ``_references_denied_table`` pass.
+    cannot read. Mirrors the metric loader's ``references_denied_table`` pass.
     """
     team_id = context.team_id
     if team_id is None or not _can_read_data_quality(context):
@@ -1143,6 +1077,8 @@ def _data_quality_checks(context: "HogQLContext", allowed: Optional[frozenset[st
     from products.data_quality.backend.facade.models import DataQualityCheck  # noqa: PLC0415
 
     try:
+        from products.data_quality.backend.facade import api as data_quality  # noqa: PLC0415
+
         denied = context.database._denied_tables if context.database is not None else set()
         queryset = DataQualityCheck.objects.for_team(team_id).filter(deleted=False).order_by("-created_at")
         if allowed is not None:
@@ -1164,45 +1100,11 @@ def _data_quality_checks(context: "HogQLContext", allowed: Optional[frozenset[st
                 check.last_run_at.isoformat() if check.last_run_at else None,
                 check.created_at.isoformat(),
             ]
-            for check in _visible_data_quality_checks(context, team_id, list(queryset), denied)
+            for check in data_quality.visible_checks(team_id, list(queryset), denied, _access_control(context))
         ]
     except Exception:
         logger.exception("information_schema: failed to load data quality checks", team_id=team_id)
         return []
-
-
-def _without_denied_runs(team_id: int, runs: Any, denied: set[str]) -> Any:
-    """Exclude, in SQL, every run that read a subject the caller is denied.
-
-    A run is judged on the identities it pinned as it executed, by the same rule the REST routes
-    apply, so the two surfaces cannot come to different answers about the same run. Editing a check
-    therefore cannot rewrite what its history discloses, and deleting a subject cannot free its name
-    for something else to answer for it. A referencing run that pinned nothing predates the
-    recording and is withheld rather than assumed harmless.
-
-    Both halves resolve identities rather than aggregating over what each run recorded, so the cost
-    tracks the number of subjects the project has rather than the length of its retained history --
-    which matters here, because this runs before the window that bounds the rows served.
-    """
-    from products.data_quality.backend.facade import api as data_quality  # noqa: PLC0415
-
-    subjects = set(runs.values_list("subject_type", "subject_uuid", "subject_name").distinct())
-    current_names = data_quality.resolve_subject_names(
-        team_id,
-        [data_quality.subject_identity(subject_type, subject_uuid) for subject_type, subject_uuid, _ in subjects],
-    )
-    blocked_subjects = [
-        subject_uuid
-        for subject_type, subject_uuid, stamped in subjects
-        if _references_denied_table(
-            [current_names.get(data_quality.subject_identity(subject_type, subject_uuid), stamped)], denied
-        )
-    ]
-    if blocked_subjects:
-        runs = runs.exclude(subject_uuid__in=blocked_subjects)
-
-    runs = runs.exclude(data_quality.unreadable_runs_q(team_id, denied))
-    return runs
 
 
 def _data_quality_check_runs(context: "HogQLContext", allowed: Optional[frozenset[str]]) -> list[list[Any]]:
@@ -1218,6 +1120,8 @@ def _data_quality_check_runs(context: "HogQLContext", allowed: Optional[frozense
     from products.data_quality.backend.facade.models import DataQualityCheckRun  # noqa: PLC0415
 
     try:
+        from products.data_quality.backend.facade import api as data_quality  # noqa: PLC0415
+
         denied = context.database._denied_tables if context.database is not None else set()
         base = DataQualityCheckRun.objects.for_team(team_id)
         if allowed is not None:
@@ -1226,10 +1130,7 @@ def _data_quality_check_runs(context: "HogQLContext", allowed: Optional[frozense
         # LIMIT rather than a full-history scan that skips denied rows one by one. The distinct set of
         # subjects and of referencing definitions is small, so deciding which are denied is cheap;
         # excluding them before the window still drops denied rows before it applies.
-        # Never on the denied set alone: deleting the subject a caller was denied is what empties it,
-        # which is the case this withholds runs for.
-        if _denial_applies(context, denied):
-            base = _without_denied_runs(team_id, base, denied)
+        readable = data_quality.without_denied_runs(team_id, base, denied, _access_control(context))
         return [
             [
                 str(run.id),
@@ -1247,7 +1148,7 @@ def _data_quality_check_runs(context: "HogQLContext", allowed: Optional[frozense
                 run.duration_ms,
                 run.created_at.isoformat(),
             ]
-            for run in base.order_by("-created_at")[:_CHECK_RUNS_WINDOW]
+            for run in readable.order_by("-created_at")[:_CHECK_RUNS_WINDOW]
         ]
     except Exception:
         logger.exception("information_schema: failed to load data quality check runs", team_id=team_id)
@@ -1267,12 +1168,14 @@ def _data_quality_health(context: "HogQLContext", allowed: Optional[frozenset[st
     from products.data_quality.backend.facade.models import DataQualityCheck  # noqa: PLC0415
 
     try:
+        from products.data_quality.backend.facade import api as data_quality  # noqa: PLC0415
+
         denied = context.database._denied_tables if context.database is not None else set()
         checks_qs = DataQualityCheck.objects.for_team(team_id).filter(deleted=False, enabled=True)
         if allowed is not None:
             checks_qs = checks_qs.filter(subject_name__in=allowed)
         by_subject: dict[tuple[str, str], list[Any]] = defaultdict(list)
-        for check in _visible_data_quality_checks(context, team_id, list(checks_qs), denied):
+        for check in data_quality.visible_checks(team_id, list(checks_qs), denied, _access_control(context)):
             # A hard-deleted subject has no id to key a rollup on, and its checks only skip.
             if check.subject_uuid is None:
                 continue
@@ -1384,7 +1287,7 @@ def _catalog_certifications(
 
 def _catalog_table_visible(context: "HogQLContext", table_name: str) -> bool:
     database = context.database
-    if database is None or _references_denied_table([table_name], database._denied_tables):
+    if database is None or references_denied_table([table_name], database._denied_tables):
         return False
     record_catalog_read("table_visibility")
     try:

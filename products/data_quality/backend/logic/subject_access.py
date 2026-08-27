@@ -8,24 +8,25 @@ values, which together act as a count oracle over rows the member cannot read di
 """
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 
 from posthog.hogql.database.database import Database
-from posthog.hogql.database.schema.information_schema import _references_denied_table
+from posthog.hogql.database.schema.information_schema import references_denied_table
 
 from posthog.dataclasses import frozen
 from posthog.exceptions_capture import capture_exception
 
 from ..facade.enums import SubjectType
-from ..models import DataQualityCheckRunSubject
+from ..models import DataQualityCheck, DataQualityCheckRun, DataQualityCheckRunSubject
+from .checks import RunRecording, latest_run_recordings
 from .contracts import SubjectIdentity
 from .registry import all_specs, get_spec
 from .spec import CheckTypeSpec
-from .subjects import resolve_subject, resolve_subject_by_name, resolve_subject_names
+from .subjects import resolve_subject, resolve_subject_by_name, resolve_subject_names, subject_identity
 
 if TYPE_CHECKING:
     from posthog.models import Team, User
@@ -46,7 +47,7 @@ def denied_subject_names(
 
 def is_subject_denied(subject_name: str, denied: set[str]) -> bool:
     """Whether a check's subject is in the caller's denied set, matched the same way the loaders match."""
-    return _references_denied_table([subject_name], denied)
+    return references_denied_table([subject_name], denied)
 
 
 def can_be_object_denied(user_access_control: Optional["UserAccessControl"]) -> bool:
@@ -263,6 +264,114 @@ def _blocked_subjects(team_id: int, denied: set[str]) -> Q:
     for subject_type, uuids in by_type.items():
         blocked |= Q(subject_type=subject_type, subject_uuid__in=uuids)
     return blocked
+
+
+def visible_checks(
+    team_id: int,
+    checks: Sequence[DataQualityCheck],
+    denied: set[str],
+    user_access_control: Optional["UserAccessControl"],
+    definition_unreadable: Callable[[str, dict[str, Any]], bool] | None = None,
+) -> list[DataQualityCheck]:
+    """The checks this caller may see, over a page of them. The one rule every listing surface applies.
+
+    A check is out of reach on any of three counts: its own subject is denied, the definition it
+    would run next reads one that is, or the run behind its ``last_status`` read one. The row is
+    both tenses at once -- a definition and the verdict of a past run -- so each is judged by the
+    rule for its own tense, the definition by the names it resolves today and the run by the
+    identities it pinned.
+
+    Subject names come from the subjects themselves rather than from the copy denormalized onto
+    the check, which only a run rewrites, so a rename cannot carry a denied subject back into a
+    list.
+
+    Never gated on the denied set alone: deleting the subject a caller was denied is what empties
+    it, which is the case the gates withhold for. Only a caller who could never be denied a single
+    object skips them.
+
+    ``definition_unreadable`` overrides the definition-tense test; the REST viewsets pass their
+    stricter fail-closed one, which also refuses references that neither resolve nor are denied.
+    """
+    if not denied and not can_be_object_denied(user_access_control):
+        return list(checks)
+    if definition_unreadable is None:
+        definition_unreadable = _denied_definition_test(team_id, denied)
+    recordings = latest_run_recordings(team_id, [check.id for check in checks])
+    subjects = [subject_identity(check.subject_type, check.subject_uuid) for check in checks if check.subject_uuid]
+    subjects += pinned_subject_refs(recording.referenced_subjects for recording in recordings.values())
+    current_names = resolve_subject_names(team_id, subjects)
+    return [
+        check
+        for check in checks
+        if not is_subject_denied(current_subject_name(check, current_names), denied)
+        and not definition_unreadable(check.check_type, check.config)
+        and not _last_run_read_unreadable_subject(recordings.get(check.id), current_names, denied)
+    ]
+
+
+def _denied_definition_test(team_id: int, denied: set[str]) -> Callable[[str, dict[str, Any]], bool]:
+    def reads_denied_subject(check_type: str, config: dict[str, Any]) -> bool:
+        return check_reads_denied_subject(team_id, check_type, config, denied)
+
+    return reads_denied_subject
+
+
+def current_subject_name(check: DataQualityCheck, current_names: Mapping[SubjectIdentity, str]) -> str:
+    """The name a check's subject carries now, from a :func:`resolve_subject_names` lookup.
+
+    A hard-deleted subject nulls the FK, leaving nothing to resolve and only the name the last run
+    stamped on the check.
+    """
+    if check.subject_uuid is None:
+        return check.subject_name
+    return current_names.get(subject_identity(check.subject_type, check.subject_uuid), check.subject_name)
+
+
+def _last_run_read_unreadable_subject(
+    recording: RunRecording | None, current_names: Mapping[SubjectIdentity, str], denied: set[str]
+) -> bool:
+    # A check that never ran carries no verdict, so there is nothing here to authorize.
+    if recording is None:
+        return False
+    return run_reads_unreadable_subject(recording.check_type, recording.referenced_subjects, current_names, denied)
+
+
+def without_denied_runs(
+    team_id: int,
+    runs: QuerySet[DataQualityCheckRun],
+    denied: set[str],
+    user_access_control: Optional["UserAccessControl"],
+) -> QuerySet[DataQualityCheckRun]:
+    """Exclude, in SQL, every run that read a subject the caller is denied.
+
+    A run is judged on the identities it pinned as it executed, by the same rule the REST routes
+    apply, so the two surfaces cannot come to different answers about the same run. Editing a check
+    therefore cannot rewrite what its history discloses, and deleting a subject cannot free its name
+    for something else to answer for it. A referencing run that pinned nothing predates the
+    recording and is withheld rather than assumed harmless.
+
+    Both halves resolve identities rather than aggregating over what each run recorded, so the cost
+    tracks the number of subjects the project has rather than the length of its retained history --
+    which matters here, because this runs before the window that bounds the rows served.
+
+    Never gated on the denied set alone: deleting the subject a caller was denied is what empties
+    it, which is the case this withholds runs for.
+    """
+    if not denied and not can_be_object_denied(user_access_control):
+        return runs
+    subjects = set(runs.values_list("subject_type", "subject_uuid", "subject_name").distinct())
+    current_names = resolve_subject_names(
+        team_id,
+        [subject_identity(subject_type, subject_uuid) for subject_type, subject_uuid, _ in subjects],
+    )
+    blocked_subjects = [
+        subject_uuid
+        for subject_type, subject_uuid, stamped in subjects
+        if is_subject_denied(current_names.get(subject_identity(subject_type, subject_uuid), stamped), denied)
+    ]
+    if blocked_subjects:
+        runs = runs.exclude(subject_uuid__in=blocked_subjects)
+    return runs.exclude(unreadable_runs_q(team_id, denied))
 
 
 def _is_resolvable(subject_type: str, subject_uuid: str) -> bool:
