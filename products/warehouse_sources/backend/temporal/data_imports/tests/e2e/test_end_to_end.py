@@ -5064,8 +5064,13 @@ async def _postgres_destination(team: Team, postgres_config: dict) -> ExternalDa
     return await sync_to_async(create)()
 
 
+# The destination names its table the way the PostHog warehouse does, so a Stripe charge resource
+# lands as `stripe_charge` on both sides rather than as the connector's raw `Charge`.
+DESTINATION_TABLE_NAME = f"stripe_{STRIPE_CHARGE_RESOURCE_NAME}".lower()
+
+
 async def _destination_rows(postgres_config: dict, table: str) -> list[tuple]:
-    """Rows at the destination. Identifiers are quoted, so the table keeps the resource's case."""
+    """Rows at the destination. Identifiers are quoted, so the table keeps its exact name."""
     async with _destination_connection(postgres_config) as connection:
         async with connection.cursor() as cursor:
             await cursor.execute(f'SELECT id FROM "{DESTINATION_SCHEMA}"."{table}" ORDER BY id')
@@ -5097,7 +5102,7 @@ async def test_a_source_syncs_to_a_postgres_destination(
     res = await sync_to_async(execute_hogql_query)("SELECT id FROM stripe_charge", team)
     assert len(res.results) > 0
 
-    rows = await _destination_rows(postgres_config, STRIPE_CHARGE_RESOURCE_NAME)
+    rows = await _destination_rows(postgres_config, DESTINATION_TABLE_NAME)
     assert len(rows) == len(res.results)
 
 
@@ -5150,13 +5155,13 @@ async def test_a_second_sync_merges_into_the_destination_rather_than_duplicating
     }
 
     _, first_inputs = await _run(**run_kwargs)
-    after_first = await _destination_rows(postgres_config, STRIPE_CHARGE_RESOURCE_NAME)
+    after_first = await _destination_rows(postgres_config, DESTINATION_TABLE_NAME)
 
     # Re-syncs the same schema, not a fresh one of the same name: a writer's ownership
     # check is scoped to the schema id, and a second sync of the same source must still
     # recognize the table it created the first time.
     await _run(**run_kwargs, existing_schema_id=first_inputs.external_data_schema_id)
-    after_second = await _destination_rows(postgres_config, STRIPE_CHARGE_RESOURCE_NAME)
+    after_second = await _destination_rows(postgres_config, DESTINATION_TABLE_NAME)
 
     # Same source rows delivered twice must not double up at the destination.
     assert after_second == after_first
@@ -5191,7 +5196,7 @@ async def test_a_source_can_sync_to_a_destination_and_not_to_posthog(
         ignore_assertions=True,
     )
 
-    rows = await _destination_rows(postgres_config, STRIPE_CHARGE_RESOURCE_NAME)
+    rows = await _destination_rows(postgres_config, DESTINATION_TABLE_NAME)
     assert len(rows) > 0
 
     # Nothing was registered in PostHog, so there is no table to query.
