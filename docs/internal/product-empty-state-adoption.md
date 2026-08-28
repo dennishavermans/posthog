@@ -59,7 +59,7 @@ Rows marked "in review" are not on `master` yet. See "Regenerating the lists" fo
 | Web vitals             | `frontend/src/scenes/web-analytics/WebAnalyticsScene.tsx`                           | on master             |
 | Data warehouse sources | `products/data_warehouse/frontend/scenes/SourcesScene/SourcesScene.tsx`             | on master             |
 | Workflows              | `products/workflows/frontend/WorkflowsScene.tsx`                                    | on master             |
-| Marketing analytics    | `frontend/src/scenes/marketing-analytics/MarketingAnalyticsScene.tsx`               | in review             |
+| Marketing analytics    | `frontend/src/scenes/marketing-analytics/MarketingAnalyticsScene.tsx`               | on master             |
 | Customer analytics     | `products/customer_analytics/frontend/CustomerAnalyticsScene.tsx`                   | in review             |
 
 Only four products resolve their status at app boot, via a `setupProbe` in their manifest:
