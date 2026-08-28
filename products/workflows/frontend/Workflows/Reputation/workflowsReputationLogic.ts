@@ -16,9 +16,9 @@ import type {
 export interface workflowsReputationLogicValues {
     currentProjectId: number | null // projectLogic
     awsReputation: AwsTenantReputationApi | null
+    ispSendingHealth: readonly IspSendingHealthApi[]
     reputationResponse: TeamEmailReputationResponseApi | null
     reputationResponseLoading: boolean
-    ispSendingHealth: readonly IspSendingHealthApi[]
     search: string
     teamReputation: EmailSendingRatesApi | null
     workflowSnapshots: readonly WorkflowEmailSendingRatesApi[]
@@ -56,8 +56,8 @@ export interface workflowsReputationLogicActions {
 export interface workflowsReputationLogicMeta {
     __keaTypeGenInternalSelectorTypes: {
         awsReputation: (reputationResponse: TeamEmailReputationResponseApi | null) => AwsTenantReputationApi | null
-        ispSendingHealth: (reputationResponse: TeamEmailReputationResponseApi | null) => readonly IspSendingHealthApi[]
         teamReputation: (reputationResponse: TeamEmailReputationResponseApi | null) => EmailSendingRatesApi | null
+        ispSendingHealth: (reputationResponse: TeamEmailReputationResponseApi | null) => readonly IspSendingHealthApi[]
         workflowSnapshots: (
             reputationResponse: TeamEmailReputationResponseApi | null
         ) => readonly WorkflowEmailSendingRatesApi[]
