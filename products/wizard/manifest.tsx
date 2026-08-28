@@ -1,23 +1,34 @@
-/**
- * Product manifest for wizard.
- *
- * Defines scenes, routes, URLs, and navigation for this product.
- */
+import { FileSystemIconType, ProductItemCategory } from '../../frontend/src/queries/schema/schema-general'
 import { ProductManifest } from '../../frontend/src/types'
 
 export const manifest: ProductManifest = {
     name: 'Wizard',
     scenes: {
-        // Define scenes here
+        Wizard: {
+            import: () => import('./frontend/WizardRunsScene'),
+            projectBased: true,
+            name: 'Wizard',
+            layout: 'app-container',
+        },
     },
     routes: {
-        // Define routes here
+        '/wizard': ['Wizard', 'wizard'],
     },
     redirects: {},
     urls: {
-        // Define URL helpers here
+        wizard: (): string => '/wizard',
     },
     fileSystemTypes: {},
     treeItemsNew: [],
-    treeItemsProducts: [],
+    treeItemsProducts: [
+        {
+            path: 'Wizard',
+            intents: [],
+            category: ProductItemCategory.ANALYTICS,
+            type: 'wizard',
+            iconType: 'llm_prompts' as FileSystemIconType,
+            href: '/wizard',
+            sceneKey: 'Wizard',
+        },
+    ],
 }

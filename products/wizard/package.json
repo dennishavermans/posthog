@@ -6,6 +6,7 @@
     },
     "dependencies": {
         "kea": "catalog:",
+        "kea-loaders": "catalog:",
         "posthog-js": "catalog:"
     },
     "devDependencies": {

@@ -203,7 +203,6 @@ export enum Scene {
     Endpoint = 'Endpoint',
     Workflow = 'Workflow',
     Workflows = 'Workflows',
-    Wizard = 'Wizard',
     EarlyAccessFeature = 'EarlyAccessFeature',
     EndpointsScene = 'EndpointsScene',
     Game368Hedgehogs = 'Game368Hedgehogs',
