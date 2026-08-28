@@ -55,15 +55,15 @@ class Migration(migrations.Migration):
             ],
             options={
                 "db_table": "posthog_dashboard_saved_view",
-                "ordering": ["name", "id"],
+                "ordering": ["id"],
                 "indexes": [
                     models.Index(
-                        fields=["team", "name", "id"],
+                        fields=["team", "id"],
                         condition=models.Q(scope="team"),
                         name="dash_saved_view_team_idx",
                     ),
                     models.Index(
-                        fields=["team", "created_by", "name", "id"],
+                        fields=["team", "created_by", "id"],
                         condition=models.Q(scope="private"),
                         name="dash_saved_view_private_idx",
                     ),

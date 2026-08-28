@@ -7,6 +7,24 @@
  * PostHog API - generated
  * OpenAPI spec version: 1.0.0
  */
+export interface DashboardSavedViewFiltersApi {
+    /** @maxLength 200 */
+    search?: string
+    createdBy?: number[] | 'All users'
+    pinned?: boolean
+    shared?: boolean
+    /**
+     * @maxItems 50
+     * @items.maxLength 100
+     */
+    tags?: string[]
+    /**
+     * @maxLength 4000
+     * @nullable
+     */
+    folder?: string | null
+}
+
 /**
  * * `private` - Private
  * * `team` - Team
@@ -19,11 +37,6 @@ export const DashboardSavedViewScopeEnumApi = {
     Team: 'team',
 } as const
 
-/**
- * Dashboard list filters stored by this view.
- */
-export type DashboardSavedViewApiFilters = { [key: string]: unknown }
-
 export interface DashboardSavedViewApi {
     readonly id: string
     /**
@@ -32,7 +45,7 @@ export interface DashboardSavedViewApi {
      */
     name: string
     /** Dashboard list filters stored by this view. */
-    filters: DashboardSavedViewApiFilters
+    filters: DashboardSavedViewFiltersApi
     /** Whether only the creator or all team members can use this view.
      *
      * * `private` - Private
@@ -53,11 +66,6 @@ export interface PaginatedDashboardSavedViewListApi {
     results: DashboardSavedViewApi[]
 }
 
-/**
- * Dashboard list filters stored by this view.
- */
-export type DashboardSavedViewWriteApiFilters = { [key: string]: unknown }
-
 export interface DashboardSavedViewWriteApi {
     /**
      * Name shown in the dashboard list view picker.
@@ -65,18 +73,13 @@ export interface DashboardSavedViewWriteApi {
      */
     name: string
     /** Dashboard list filters stored by this view. */
-    filters: DashboardSavedViewWriteApiFilters
+    filters: DashboardSavedViewFiltersApi
     /** Whether only the creator or all team members can use this view.
      *
      * * `private` - Private
      * * `team` - Team */
     scope?: DashboardSavedViewScopeEnumApi
 }
-
-/**
- * Dashboard list filters stored by this view.
- */
-export type PatchedDashboardSavedViewApiFilters = { [key: string]: unknown }
 
 export interface PatchedDashboardSavedViewApi {
     readonly id?: string
@@ -86,7 +89,7 @@ export interface PatchedDashboardSavedViewApi {
      */
     name?: string
     /** Dashboard list filters stored by this view. */
-    filters?: PatchedDashboardSavedViewApiFilters
+    filters?: DashboardSavedViewFiltersApi
     /** Whether only the creator or all team members can use this view.
      *
      * * `private` - Private
@@ -10254,7 +10257,23 @@ export type DashboardSavedViewsListParams = {
      * Number of results to return per page.
      */
     limit?: number
+    /**
+     * Return saved views with this visibility scope.
+     *
+     * * `private` - Private
+     * * `team` - Team
+     * @minLength 1
+     */
+    scope?: DashboardSavedViewsListScope
 }
+
+export type DashboardSavedViewsListScope =
+    (typeof DashboardSavedViewsListScope)[keyof typeof DashboardSavedViewsListScope]
+
+export const DashboardSavedViewsListScope = {
+    Private: 'private',
+    Team: 'team',
+} as const
 
 export type DashboardTemplatesListParams = {
     /**

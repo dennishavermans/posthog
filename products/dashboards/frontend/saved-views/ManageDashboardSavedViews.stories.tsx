@@ -90,7 +90,7 @@ type Story = StoryObj<typeof ManageDashboardSavedViews>
 export const Default: Story = {
     args: {
         views: savedViews,
-        nextCursor: null,
+        nextCursors: { private: null, team: null },
         currentUserId: 1,
         editDisabledReason: null,
         onUpdate: async (view, update) => ({ ...view, ...update }),

@@ -84,7 +84,7 @@ export const Default: Story = {
         activeSavedViewHasUnsavedChanges: false,
         isFiltering: true,
         savedViews,
-        hasMore: false,
+        nextCursors: { private: null, team: null },
         loadingMore: false,
         updatingSavedView: false,
         loading: false,
@@ -101,13 +101,21 @@ export const Default: Story = {
     play: openPicker,
 }
 
+export const MoreResults: Story = {
+    args: {
+        ...Default.args,
+        nextCursors: { private: 'next-private-page', team: null },
+    },
+    play: openPicker,
+}
+
 export const UnsavedChanges: Story = {
     args: {
         activeSavedView: savedViews[0],
         activeSavedViewHasUnsavedChanges: true,
         isFiltering: true,
         savedViews,
-        hasMore: false,
+        nextCursors: { private: null, team: null },
         loadingMore: false,
         updatingSavedView: false,
         loading: false,
@@ -130,7 +138,7 @@ export const ReadOnly: Story = {
         activeSavedViewHasUnsavedChanges: true,
         isFiltering: true,
         savedViews,
-        hasMore: false,
+        nextCursors: { private: null, team: null },
         loadingMore: false,
         updatingSavedView: false,
         loading: false,

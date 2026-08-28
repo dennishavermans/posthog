@@ -5,14 +5,18 @@ import { LemonButton, Popover } from '@posthog/lemon-ui'
 
 import { LemonTabs } from 'lib/lemon-ui/LemonTabs'
 
-import type { DashboardListSavedView, DashboardSavedViewScope } from './dashboardSavedViewsLogic'
+import type {
+    DashboardListSavedView,
+    DashboardSavedViewCursors,
+    DashboardSavedViewScope,
+} from './dashboardSavedViewsLogic'
 
 export interface SavedDashboardViewsPickerProps {
     activeSavedView: DashboardListSavedView | undefined
     activeSavedViewHasUnsavedChanges: boolean
     isFiltering: boolean
     savedViews: DashboardListSavedView[]
-    hasMore: boolean
+    nextCursors: DashboardSavedViewCursors
     loadingMore: boolean
     updatingSavedView: boolean
     loading: boolean
@@ -24,7 +28,7 @@ export interface SavedDashboardViewsPickerProps {
     onSaveChanges: (view: DashboardListSavedView) => void
     onSelectView: (view: DashboardListSavedView) => void
     onManageViews: () => void
-    onLoadMore: () => void
+    onLoadMore: (scope: DashboardSavedViewScope) => void
     onRetryLoad: () => void
 }
 
@@ -33,7 +37,7 @@ export function SavedDashboardViewsPicker({
     activeSavedViewHasUnsavedChanges,
     isFiltering,
     savedViews,
-    hasMore,
+    nextCursors,
     loadingMore,
     updatingSavedView,
     loading,
@@ -50,9 +54,14 @@ export function SavedDashboardViewsPicker({
 }: SavedDashboardViewsPickerProps): JSX.Element {
     const [scope, setScope] = useState<DashboardSavedViewScope>(activeSavedView?.scope ?? 'private')
     const [visible, setVisible] = useState(defaultOpen)
-    const privateSavedViews = savedViews.filter((view) => view.scope === 'private')
-    const teamSavedViews = savedViews.filter((view) => view.scope === 'team')
+    const privateSavedViews = savedViews
+        .filter((view) => view.scope === 'private')
+        .sort((left, right) => left.name.localeCompare(right.name))
+    const teamSavedViews = savedViews
+        .filter((view) => view.scope === 'team')
+        .sort((left, right) => left.name.localeCompare(right.name))
     const selectedSavedViews = scope === 'private' ? privateSavedViews : teamSavedViews
+    const hasMore = nextCursors[scope] !== null
     const hasSavedViews = savedViews.length > 0
     const tooltip = activeSavedView?.name || 'Saved views'
     const emptyScopeMessage = scope === 'private' ? 'No private views yet.' : 'No team views yet.'
@@ -187,16 +196,19 @@ export function SavedDashboardViewsPicker({
                                     ))
                                 )}
                                 {hasMore && (
-                                    <LemonButton
-                                        fullWidth
-                                        size="small"
-                                        type="tertiary"
-                                        className="justify-start rounded-none px-3"
-                                        loading={loadingMore}
-                                        onClick={onLoadMore}
-                                    >
-                                        {loadMoreFailed ? 'Could not load more views. Retry' : 'Load more views'}
-                                    </LemonButton>
+                                    <div className="border-t p-2">
+                                        <LemonButton
+                                            fullWidth
+                                            center
+                                            size="small"
+                                            type="secondary"
+                                            loading={loadingMore}
+                                            onClick={() => onLoadMore(scope)}
+                                            data-attr="load-more-dashboard-saved-views"
+                                        >
+                                            {loadMoreFailed ? 'Could not load more views. Retry' : 'Load more views'}
+                                        </LemonButton>
+                                    </div>
                                 )}
                             </div>
                             {canEdit && (

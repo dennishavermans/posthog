@@ -29,11 +29,12 @@ import {
     dashboardSavedViewsDestroy,
     dashboardSavedViewsPartialUpdate,
 } from '../generated/api'
-import type { DashboardSavedViewWriteApiFilters, PatchedDashboardSavedViewApi } from '../generated/api.schemas'
+import type { PatchedDashboardSavedViewApi } from '../generated/api.schemas'
 import {
     DashboardListSavedView,
     DashboardSavedViewScope,
     DashboardSavedViewsPage,
+    dashboardListSavedView,
     dashboardSavedViewsLogic,
     loadDashboardSavedViews,
 } from './dashboardSavedViewsLogic'
@@ -92,7 +93,7 @@ function SavedViewVisibilityPicker({
                 options={[
                     {
                         value: 'private',
-                        label: 'Private (only visible to me)',
+                        label: 'Private',
                     },
                     {
                         value: 'team',
@@ -118,7 +119,7 @@ export function DashboardSavedViews(): JSX.Element | null {
     const {
         dashboardSavedViewsEnabled,
         savedViews,
-        savedViewsNextCursor,
+        savedViewsNextCursors,
         loadMoreSavedViewsLoading,
         savedViewsLoading,
         savedViewsLoadError,
@@ -222,13 +223,13 @@ export function DashboardSavedViews(): JSX.Element | null {
                 try {
                     const savedView = await dashboardSavedViewsCreate(teamId.toString(), {
                         name: trimmedName,
-                        filters: filters as unknown as DashboardSavedViewWriteApiFilters,
+                        filters,
                         scope,
                     })
-                    if (teamId === currentTeamId) {
-                        savedViewCreated(savedView as unknown as DashboardListSavedView)
+                    if (teamId === teamLogic.values.currentTeamId) {
+                        savedViewCreated(dashboardListSavedView(savedView))
                         setActiveSavedViewId(savedView.id)
-                        lemonToast.success(`Saved ${scope} view`)
+                        lemonToast.success(scope === 'private' ? 'Saved private view' : 'Saved view shared with team')
                     }
                 } catch (error) {
                     const detail = error instanceof ApiError ? error.detail : null
@@ -252,7 +253,7 @@ export function DashboardSavedViews(): JSX.Element | null {
         const teamId = currentTeamId
         try {
             await dashboardSavedViewsDestroy(teamId.toString(), view.id)
-            if (teamId === currentTeamId) {
+            if (teamId === teamLogic.values.currentTeamId) {
                 savedViewDeleted(view.id)
                 setActiveSavedViewId((activeId) => (activeId === view.id ? null : activeId))
                 lemonToast.success('Saved view deleted')
@@ -274,8 +275,8 @@ export function DashboardSavedViews(): JSX.Element | null {
         const teamId = currentTeamId
         try {
             const savedView = await dashboardSavedViewsPartialUpdate(teamId.toString(), view.id, update)
-            const updatedView = savedView as unknown as DashboardListSavedView
-            if (teamId === currentTeamId) {
+            const updatedView = dashboardListSavedView(savedView)
+            if (teamId === teamLogic.values.currentTeamId) {
                 savedViewUpdated(updatedView)
                 lemonToast.success('Saved view updated')
             }
@@ -315,11 +316,18 @@ export function DashboardSavedViews(): JSX.Element | null {
         return descriptions.length > 0 ? descriptions.join(', ') : 'No filters'
     }
 
-    const loadMoreSavedViewsForManagement = async (cursor: string): Promise<DashboardSavedViewsPage | null> => {
+    const loadMoreSavedViewsForManagement = async (
+        scope: DashboardSavedViewScope,
+        cursor: string
+    ): Promise<DashboardSavedViewsPage | null> => {
         if (currentTeamId == null) {
             return null
         }
-        const page = await loadDashboardSavedViews(currentTeamId, cursor)
+        const teamId = currentTeamId
+        const page = await loadDashboardSavedViews(teamId, scope, cursor)
+        if (teamId !== teamLogic.values.currentTeamId) {
+            return null
+        }
         loadMoreSavedViewsSuccess(page)
         return page
     }
@@ -330,7 +338,7 @@ export function DashboardSavedViews(): JSX.Element | null {
             content: (
                 <ManageDashboardSavedViews
                     views={savedViews}
-                    nextCursor={savedViewsNextCursor}
+                    nextCursors={savedViewsNextCursors}
                     currentUserId={user?.id ?? null}
                     editDisabledReason={savedViewsEditDisabledReason}
                     onUpdate={updateSavedViewMetadata}
@@ -364,10 +372,10 @@ export function DashboardSavedViews(): JSX.Element | null {
         setUpdatingSavedView(true)
         try {
             const savedView = await dashboardSavedViewsPartialUpdate(teamId.toString(), view.id, {
-                filters: filters as unknown as DashboardSavedViewWriteApiFilters,
+                filters,
             })
-            if (teamId === currentTeamId) {
-                savedViewUpdated(savedView as unknown as DashboardListSavedView)
+            if (teamId === teamLogic.values.currentTeamId) {
+                savedViewUpdated(dashboardListSavedView(savedView))
                 lemonToast.success('Saved view updated')
             }
         } catch (error) {
@@ -389,7 +397,7 @@ export function DashboardSavedViews(): JSX.Element | null {
             activeSavedViewHasUnsavedChanges={activeSavedViewHasUnsavedChanges}
             isFiltering={isFiltering}
             savedViews={savedViews}
-            hasMore={savedViewsNextCursor !== null}
+            nextCursors={savedViewsNextCursors}
             loadingMore={loadMoreSavedViewsLoading}
             updatingSavedView={updatingSavedView}
             loading={savedViewsLoading}

@@ -60,6 +60,11 @@ class TestDashboardSavedViews(APIBaseTest):
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.json()["filters"] == ["Search must be 200 characters or fewer."]
 
+    def test_accepts_long_folder_paths(self) -> None:
+        response = self.client.post(self.base_url, self._payload(filters={"folder": "a" * 201}), format="json")
+
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+
     def test_rejects_updating_a_saved_view_without_filters(self) -> None:
         response = self.client.post(self.base_url, self._payload(), format="json")
         assert response.status_code == status.HTTP_201_CREATED, response.json()
@@ -100,30 +105,54 @@ class TestDashboardSavedViews(APIBaseTest):
             filters={"shared": True},
             created_by=self.user,
         )
+        DashboardSavedView.all_teams.create(
+            team=self.team,
+            name="Team view",
+            filters={"shared": True},
+            scope=DashboardSavedView.Scope.TEAM,
+            created_by=self.user,
+        )
 
-        first_page = self.client.get(self.base_url, {"limit": 1})
+        first_page = self.client.get(self.base_url, {"limit": 1, "scope": DashboardSavedView.Scope.PRIVATE})
 
         assert first_page.status_code == status.HTTP_200_OK, first_page.json()
         assert first_page.json()["next"] is not None
         assert [view["name"] for view in first_page.json()["results"]] == ["Alpha view"]
         cursor = parse_qs(urlparse(first_page.json()["next"]).query)["cursor"][0]
-        second_page = self.client.get(self.base_url, {"limit": 1, "cursor": cursor})
+        second_page = self.client.get(
+            self.base_url,
+            {"limit": 1, "cursor": cursor, "scope": DashboardSavedView.Scope.PRIVATE},
+        )
         assert second_page.status_code == status.HTTP_200_OK, second_page.json()
         assert [view["name"] for view in second_page.json()["results"]] == ["Bravo view"]
 
-    def test_child_environment_reads_saved_views_from_parent_project(self) -> None:
-        response = self.client.post(self.base_url, self._payload(), format="json")
-        assert response.status_code == status.HTTP_201_CREATED, response.json()
+        team_page = self.client.get(self.base_url, {"scope": DashboardSavedView.Scope.TEAM})
+        assert team_page.status_code == status.HTTP_200_OK, team_page.json()
+        assert [view["name"] for view in team_page.json()["results"]] == ["Team view"]
 
+    def test_child_environment_manages_parent_project_saved_views(self) -> None:
         child_team = Team.objects.create(
             organization=self.organization, parent_team=self.team, name="Child environment"
         )
         child_url = f"/api/projects/{child_team.pk}/dashboard_saved_views/"
 
+        response = self.client.post(child_url, self._payload(), format="json")
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+        saved_view_id = response.json()["id"]
+        assert DashboardSavedView.all_teams.filter(id=saved_view_id, team=self.team).exists()
+
         response = self.client.get(child_url)
 
         assert response.status_code == status.HTTP_200_OK, response.json()
         assert [view["name"] for view in response.json()["results"]] == ["Product dashboards"]
+
+        response = self.client.patch(f"{child_url}{saved_view_id}/", {"name": "Updated view"}, format="json")
+        assert response.status_code == status.HTTP_200_OK, response.json()
+        assert response.json()["name"] == "Updated view"
+
+        response = self.client.delete(f"{child_url}{saved_view_id}/")
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not DashboardSavedView.all_teams.filter(id=saved_view_id).exists()
 
     def test_project_member_can_list_saved_views(self) -> None:
         response = self.client.post(self.base_url, self._payload(), format="json")

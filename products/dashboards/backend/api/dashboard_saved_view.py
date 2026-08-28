@@ -5,7 +5,6 @@ from typing import Literal, TypedDict, cast
 from django.db import models, transaction
 from django.db.models import QuerySet
 
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_field
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -27,6 +26,7 @@ from products.dashboards.backend.models.dashboard_saved_view import DashboardSav
 SAVED_VIEW_FILTER_KEYS = {"search", "createdBy", "pinned", "shared", "tags", "folder"}
 MAX_SAVED_VIEW_FILTER_BYTES = 16 * 1024
 MAX_SAVED_VIEW_FILTER_STRING_LENGTH = MAX_SEARCH_LENGTH
+MAX_SAVED_VIEW_FOLDER_LENGTH = 4000
 MAX_SAVED_VIEW_TAGS = 50
 MAX_SAVED_VIEW_TAG_LENGTH = 100
 MAX_SAVED_VIEW_CREATORS = 100
@@ -87,14 +87,96 @@ def saved_view_creator_properties(*, team_id: int, user_id: int) -> dict[str, in
     }
 
 
-@extend_schema_field(OpenApiTypes.OBJECT)
-class DashboardSavedViewFiltersField(serializers.JSONField):
-    pass
+@extend_schema_field(
+    {
+        "oneOf": [
+            {"type": "array", "items": {"type": "integer"}, "maxItems": MAX_SAVED_VIEW_CREATORS},
+            {"type": "string", "enum": ["All users"]},
+        ]
+    }
+)
+class DashboardSavedViewCreatorsField(serializers.Field):
+    def to_internal_value(self, data: object) -> list[int] | Literal["All users"]:
+        if data == "All users":
+            return "All users"
+        if not isinstance(data, list) or any(type(creator) is not int for creator in data):
+            raise serializers.ValidationError("Creators must be a list of user IDs.")
+        if len(data) > MAX_SAVED_VIEW_CREATORS:
+            raise serializers.ValidationError("You can select up to 100 creators.")
+        return cast(list[int], data)
+
+    def to_representation(self, value: object) -> object:
+        return value
+
+
+class DashboardSavedViewFiltersSerializer(serializers.Serializer):
+    search = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=MAX_SAVED_VIEW_FILTER_STRING_LENGTH,
+        trim_whitespace=False,
+        error_messages={"max_length": "Search must be 200 characters or fewer."},
+    )
+    createdBy = DashboardSavedViewCreatorsField(required=False)
+    pinned = serializers.BooleanField(required=False)
+    shared = serializers.BooleanField(required=False)
+    tags = serializers.ListField(
+        child=serializers.CharField(max_length=MAX_SAVED_VIEW_TAG_LENGTH, trim_whitespace=False),
+        required=False,
+        max_length=MAX_SAVED_VIEW_TAGS,
+        error_messages={"max_length": "You can select up to 50 tags."},
+    )
+    folder = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        max_length=MAX_SAVED_VIEW_FOLDER_LENGTH,
+        trim_whitespace=False,
+        error_messages={"max_length": "Folder must be 4000 characters or fewer."},
+    )
+
+    def to_internal_value(self, data: object) -> dict[str, object]:
+        if not isinstance(data, dict):
+            raise serializers.ValidationError("Filters must be an object")
+        unsupported_keys = data.keys() - SAVED_VIEW_FILTER_KEYS
+        if unsupported_keys:
+            raise serializers.ValidationError("Filters contain unsupported fields.")
+        if "search" in data and not isinstance(data["search"], str):
+            raise serializers.ValidationError("Search must be a string.")
+        if isinstance(data.get("search"), str) and len(cast(str, data["search"])) > MAX_SAVED_VIEW_FILTER_STRING_LENGTH:
+            raise serializers.ValidationError("Search must be 200 characters or fewer.")
+        if "pinned" in data and not isinstance(data["pinned"], bool):
+            raise serializers.ValidationError("Pinned must be true or false.")
+        if "shared" in data and not isinstance(data["shared"], bool):
+            raise serializers.ValidationError("Shared must be true or false.")
+        if "tags" in data and (
+            not isinstance(data["tags"], list) or any(not isinstance(tag, str) for tag in data["tags"])
+        ):
+            raise serializers.ValidationError("Tags must be a list of strings.")
+        if isinstance(data.get("tags"), list):
+            tags = cast(list[str], data["tags"])
+            if len(tags) > MAX_SAVED_VIEW_TAGS:
+                raise serializers.ValidationError("You can select up to 50 tags.")
+            if any(len(tag) > MAX_SAVED_VIEW_TAG_LENGTH for tag in tags):
+                raise serializers.ValidationError("Tags must be 100 characters or fewer.")
+        if "folder" in data and data["folder"] is not None and not isinstance(data["folder"], str):
+            raise serializers.ValidationError("Folder must be a string or null.")
+        if isinstance(data.get("folder"), str) and len(cast(str, data["folder"])) > MAX_SAVED_VIEW_FOLDER_LENGTH:
+            raise serializers.ValidationError("Folder must be 4000 characters or fewer.")
+        attrs = cast(dict[str, object], super().to_internal_value(data))
+        if not has_saved_view_filters(attrs):
+            raise serializers.ValidationError("Add at least one filter before saving a view.")
+        if (
+            len(json.dumps(attrs, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            > MAX_SAVED_VIEW_FILTER_BYTES
+        ):
+            raise serializers.ValidationError("Saved view filters are too large.")
+        return attrs
 
 
 class DashboardSavedViewWriteSerializer(serializers.ModelSerializer):
     name = serializers.CharField(max_length=200, help_text="Name shown in the dashboard list view picker.")
-    filters = DashboardSavedViewFiltersField(help_text="Dashboard list filters stored by this view.")
+    filters = DashboardSavedViewFiltersSerializer(help_text="Dashboard list filters stored by this view.")
     scope = serializers.ChoiceField(
         choices=DashboardSavedView.Scope.choices,
         default=DashboardSavedView.Scope.PRIVATE,
@@ -105,56 +187,6 @@ class DashboardSavedViewWriteSerializer(serializers.ModelSerializer):
         model = DashboardSavedView
         fields = ["name", "filters", "scope"]
 
-    def validate_filters(self, value: object) -> DashboardSavedViewFilters:
-        if not isinstance(value, dict):
-            raise serializers.ValidationError("Filters must be an object")
-        filters = cast(dict[str, object], value)
-        unsupported_keys = filters.keys() - SAVED_VIEW_FILTER_KEYS
-        if unsupported_keys:
-            raise serializers.ValidationError("Filters contain unsupported fields.")
-        if "search" in filters and not isinstance(filters["search"], str):
-            raise serializers.ValidationError("Search must be a string.")
-        if (
-            isinstance(filters.get("search"), str)
-            and len(cast(str, filters["search"])) > MAX_SAVED_VIEW_FILTER_STRING_LENGTH
-        ):
-            raise serializers.ValidationError("Search must be 200 characters or fewer.")
-        if "createdBy" in filters and filters["createdBy"] != "All users":
-            creators = filters["createdBy"]
-            if not isinstance(creators, list) or any(type(creator) is not int for creator in creators):
-                raise serializers.ValidationError("Creators must be a list of user IDs.")
-            if len(creators) > MAX_SAVED_VIEW_CREATORS:
-                raise serializers.ValidationError("You can select up to 100 creators.")
-        if "pinned" in filters and not isinstance(filters["pinned"], bool):
-            raise serializers.ValidationError("Pinned must be true or false.")
-        if "shared" in filters and not isinstance(filters["shared"], bool):
-            raise serializers.ValidationError("Shared must be true or false.")
-        if "tags" in filters and (
-            not isinstance(filters["tags"], list) or any(not isinstance(tag, str) for tag in filters["tags"])
-        ):
-            raise serializers.ValidationError("Tags must be a list of strings.")
-        if isinstance(filters.get("tags"), list):
-            tags = cast(list[str], filters["tags"])
-            if len(tags) > MAX_SAVED_VIEW_TAGS:
-                raise serializers.ValidationError("You can select up to 50 tags.")
-            if any(len(tag) > MAX_SAVED_VIEW_TAG_LENGTH for tag in tags):
-                raise serializers.ValidationError("Tags must be 100 characters or fewer.")
-        if "folder" in filters and filters["folder"] is not None and not isinstance(filters["folder"], str):
-            raise serializers.ValidationError("Folder must be a string or null.")
-        if (
-            isinstance(filters.get("folder"), str)
-            and len(cast(str, filters["folder"])) > MAX_SAVED_VIEW_FILTER_STRING_LENGTH
-        ):
-            raise serializers.ValidationError("Folder must be 200 characters or fewer.")
-        if not has_saved_view_filters(filters):
-            raise serializers.ValidationError("Add at least one filter before saving a view.")
-        if (
-            len(json.dumps(filters, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-            > MAX_SAVED_VIEW_FILTER_BYTES
-        ):
-            raise serializers.ValidationError("Saved view filters are too large.")
-        return cast(DashboardSavedViewFilters, filters)
-
 
 class DashboardSavedViewSerializer(DashboardSavedViewWriteSerializer):
     class Meta(DashboardSavedViewWriteSerializer.Meta):
@@ -162,11 +194,19 @@ class DashboardSavedViewSerializer(DashboardSavedViewWriteSerializer):
         read_only_fields = ["id", "created_at", "updated_at", "created_by"]
 
 
+class DashboardSavedViewListQuerySerializer(serializers.Serializer):
+    scope = serializers.ChoiceField(
+        choices=DashboardSavedView.Scope.choices,
+        required=False,
+        help_text="Return saved views with this visibility scope.",
+    )
+
+
 class DashboardSavedViewPagination(CursorPagination):
     page_size = 100
     page_size_query_param = "limit"
     max_page_size = 100
-    ordering = ("name", "id")
+    ordering = ("id",)
 
 
 class DashboardSavedViewPermission(BasePermission):
@@ -208,6 +248,12 @@ class DashboardSavedViewViewSet(
             return DashboardSavedViewWriteSerializer
         return DashboardSavedViewSerializer
 
+    @extend_schema(parameters=[DashboardSavedViewListQuerySerializer])
+    def list(self, request: Request, *args: object, **kwargs: object) -> Response:
+        query = DashboardSavedViewListQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        return super().list(request, *args, **kwargs)
+
     @extend_schema(
         request=DashboardSavedViewWriteSerializer, responses={status.HTTP_201_CREATED: DashboardSavedViewSerializer}
     )
@@ -219,14 +265,12 @@ class DashboardSavedViewViewSet(
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     def safely_get_queryset(self, queryset: QuerySet[DashboardSavedView]) -> QuerySet[DashboardSavedView]:
-        return (
-            queryset.filter(team_id=self.canonical_team_id)
-            .filter(
-                models.Q(scope=DashboardSavedView.Scope.TEAM)
-                | models.Q(scope=DashboardSavedView.Scope.PRIVATE, created_by=cast(User, self.request.user))
-            )
-            .select_related("created_by")
+        queryset = queryset.filter(team_id=self.canonical_team_id).filter(
+            models.Q(scope=DashboardSavedView.Scope.TEAM)
+            | models.Q(scope=DashboardSavedView.Scope.PRIVATE, created_by=cast(User, self.request.user))
         )
+        scope = self.request.query_params.get("scope")
+        return queryset.filter(scope=scope) if scope else queryset
 
     @property
     def canonical_team_id(self) -> int:
@@ -236,7 +280,7 @@ class DashboardSavedViewViewSet(
         return True
 
     def perform_create(self, serializer: DashboardSavedViewWriteSerializer) -> None:
-        instance = serializer.save(team=self.team, created_by=self.request.user)
+        instance = serializer.save(team_id=self.canonical_team_id, created_by=self.request.user)
         report_user_action(
             self.request.user,
             "dashboard saved view created",

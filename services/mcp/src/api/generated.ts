@@ -20819,10 +20819,23 @@ export namespace Schemas {
       widget?: DashboardPatchWidgetOpenApi;
     }
 
-    /**
-     * Dashboard list filters stored by this view.
-     */
-    export type DashboardSavedViewFilters = { [key: string]: unknown };
+    export interface DashboardSavedViewFilters {
+      /** @maxLength 200 */
+      search?: string;
+      createdBy?: number[] | 'All users';
+      pinned?: boolean;
+      shared?: boolean;
+      /**
+         * @maxItems 50
+         * @items.maxLength 100
+         */
+      tags?: string[];
+      /**
+         * @maxLength 4000
+         * @nullable
+         */
+      folder?: string | null;
+    }
 
     /**
      * * `private` - Private
@@ -20857,11 +20870,6 @@ export namespace Schemas {
       readonly created_by: number | null;
     }
 
-    /**
-     * Dashboard list filters stored by this view.
-     */
-    export type DashboardSavedViewWriteFilters = { [key: string]: unknown };
-
     export interface DashboardSavedViewWrite {
       /**
          * Name shown in the dashboard list view picker.
@@ -20869,7 +20877,7 @@ export namespace Schemas {
          */
       name: string;
       /** Dashboard list filters stored by this view. */
-      filters: DashboardSavedViewWriteFilters;
+      filters: DashboardSavedViewFilters;
       /** Whether only the creator or all team members can use this view.
        *
        * * `private` - Private
@@ -60307,11 +60315,6 @@ export namespace Schemas {
       readonly updated_at?: string | null;
     }
 
-    /**
-     * Dashboard list filters stored by this view.
-     */
-    export type PatchedDashboardSavedViewFilters = { [key: string]: unknown };
-
     export interface PatchedDashboardSavedView {
       readonly id?: string;
       /**
@@ -60320,7 +60323,7 @@ export namespace Schemas {
          */
       name?: string;
       /** Dashboard list filters stored by this view. */
-      filters?: PatchedDashboardSavedViewFilters;
+      filters?: DashboardSavedViewFilters;
       /** Whether only the creator or all team members can use this view.
        *
        * * `private` - Private
@@ -90759,7 +90762,23 @@ export namespace Schemas {
      * Number of results to return per page.
      */
     limit?: number;
+    /**
+     * Return saved views with this visibility scope.
+     *
+     * * `private` - Private
+     * * `team` - Team
+     * @minLength 1
+     */
+    scope?: DashboardSavedViewsListScope;
     };
+
+    export type DashboardSavedViewsListScope = typeof DashboardSavedViewsListScope[keyof typeof DashboardSavedViewsListScope];
+
+
+    export const DashboardSavedViewsListScope = {
+      Private: 'private',
+      Team: 'team',
+    } as const;
 
     export type DashboardTemplatesListParams = {
     /**
