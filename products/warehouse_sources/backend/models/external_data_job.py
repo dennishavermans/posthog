@@ -2,8 +2,7 @@ from uuid import UUID
 
 from django.conf import settings
 from django.db import models
-from django.db.models import F, Func, IntegerField, Prefetch, Value
-from django.db.models.functions import Greatest
+from django.db.models import Prefetch
 
 from posthog.models.utils import CreatedMetaFields, UpdatedMetaFields, UUIDTModel, sane_repr
 from posthog.sync import database_sync_to_async
@@ -96,6 +95,10 @@ def get_latest_run_if_exists(team_id: int, pipeline_id: UUID) -> ExternalDataJob
     )
 
     return job
+
+
+from django.db.models import F, Func, IntegerField, Value  # noqa: E402
+from django.db.models.functions import Greatest  # noqa: E402
 
 
 def billable_destination_multiplier() -> Greatest:
