@@ -189,6 +189,8 @@ class WizardRunGitDiffArtifactDTO:
     artifact_type: Literal[WizardRunArtifactType.GIT_DIFF]
     size_bytes: int
     content_hash: str
+    additions: int | None
+    removals: int | None
     created_at: datetime
 
 

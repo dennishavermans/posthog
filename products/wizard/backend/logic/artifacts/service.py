@@ -28,6 +28,7 @@ def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> Wiza
         return None
 
     storage_path = _git_diff_storage_path(team_id, run_id)
+    additions, removals = _diff_line_counts(content)
 
     object_storage.write(
         storage_path,
@@ -42,6 +43,8 @@ def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> Wiza
         storage_path=storage_path,
         size_bytes=len(content),
         content_hash=sha256(content).hexdigest(),
+        additions=additions,
+        removals=removals,
     )
 
     run_observability.artifact_created(run, artifact)
@@ -69,6 +72,19 @@ def list_run_artifacts(team_id: int, run_id: UUID) -> list[WizardRunArtifactDTO]
     run = run_store.get_run(team_id, run_id)
 
     return store.list_artifacts(team_id, run.id)
+
+
+def _diff_line_counts(content: bytes) -> tuple[int, int]:
+    additions = 0
+    removals = 0
+    for line in content.split(b"\n"):
+        if line.startswith(b"+++") or line.startswith(b"---"):
+            continue
+        if line.startswith(b"+"):
+            additions += 1
+        elif line.startswith(b"-"):
+            removals += 1
+    return additions, removals
 
 
 def _git_diff_storage_path(team_id: int, run_id: UUID) -> str:

@@ -290,7 +290,7 @@ def test_execute_wizard_surfaces_wizard_error_code(get_sandbox_class: MagicMock)
 
 
 @patch("products.wizard.backend.logic.workers.service.repository_facade.create_pull_request")
-@patch("products.wizard.backend.logic.workers.service.repository_facade.create_signed_commit")
+@patch("products.wizard.backend.logic.workers.service.create_signed_commit")
 @patch("products.wizard.backend.logic.workers.service.get_sandbox_class")
 def test_git_repository_handoff_captures_diff_and_publishes_pull_request(
     get_sandbox_class: MagicMock,
@@ -327,9 +327,12 @@ def test_git_repository_handoff_captures_diff_and_publishes_pull_request(
     assert wizard_handoff_output_path(request.run_id) in sandbox.execute.call_args_list[1].args[0]
     create_signed_commit.assert_called_once_with(
         sandbox,
+        team_id=request.team_id,
+        integration_id=request.github_integration_id,
         repository=request.repository,
         branch=branch,
         message="Set up PostHog",
+        source="wizard",
     )
     create_pull_request.assert_called_once_with(
         team_id=request.team_id,
@@ -350,7 +353,7 @@ def test_git_repository_handoff_captures_diff_and_publishes_pull_request(
     ),
 )
 @patch("products.wizard.backend.logic.workers.service.repository_facade.create_pull_request")
-@patch("products.wizard.backend.logic.workers.service.repository_facade.create_signed_commit")
+@patch("products.wizard.backend.logic.workers.service.create_signed_commit")
 @patch("products.wizard.backend.logic.workers.service.get_sandbox_class")
 @patch("products.wizard.backend.logic.workers.service.wizard_observability.handoff_body_fallback")
 def test_git_repository_handoff_uses_generic_body_when_handoff_is_unavailable(

@@ -11,6 +11,7 @@ from products.wizard.backend.facade.contracts import (
     CreateWizardRunInput,
     LocalFolderWorkspace,
     WizardRunDTO,
+    WizardRunGitDiffArtifactDTO,
     WizardRunPullRequestArtifactDTO,
 )
 from products.wizard.backend.facade.enums import WizardRunArtifactType, WizardRunEnvironment
@@ -62,6 +63,49 @@ def test_empty_git_diff_creates_no_artifact(team, user) -> None:
     assert artifact is None
     assert wizard_facade.list_run_artifacts(team.id, run.id) == []
     write.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_git_diff_artifact_stores_line_change_counts(team, user) -> None:
+    run = _create_run(team.id, user.id)
+    diff = (
+        b"diff --git a/app.py b/app.py\n"
+        b"+++ b/app.py\n"
+        b"--- a/app.py\n"
+        b"@@ -1,2 +1,3 @@\n"
+        b"+added one\n"
+        b"+added two\n"
+        b"-removed one\n"
+        b" kept line\n"
+    )
+
+    with patch("products.wizard.backend.logic.artifacts.service.object_storage.write"):
+        artifact = wizard_facade.create_git_diff_artifact(team.id, run.id, diff)
+
+    assert artifact is not None
+    assert artifact.additions == 2
+    assert artifact.removals == 1
+
+    listed = wizard_facade.list_run_artifacts(team.id, run.id)[0]
+    assert isinstance(listed, WizardRunGitDiffArtifactDTO)
+    assert listed.additions == 2
+    assert listed.removals == 1
+
+
+@pytest.mark.django_db
+def test_git_diff_artifact_without_stored_counts_maps_to_none(team, user) -> None:
+    run = _create_run(team.id, user.id)
+
+    with patch("products.wizard.backend.logic.artifacts.service.object_storage.write"):
+        artifact = wizard_facade.create_git_diff_artifact(team.id, run.id, b"diff --git a/app.py b/app.py\n")
+
+    assert artifact is not None
+    WizardRunArtifact.objects.for_team(team.id).filter(id=artifact.id).update(metadata=None)
+
+    listed = wizard_facade.list_run_artifacts(team.id, run.id)[0]
+    assert isinstance(listed, WizardRunGitDiffArtifactDTO)
+    assert listed.additions is None
+    assert listed.removals is None
 
 
 @pytest.mark.django_db

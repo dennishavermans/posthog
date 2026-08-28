@@ -11,6 +11,9 @@ def artifact_from_record(artifact: WizardRunArtifact) -> WizardRunArtifactDTO:
     if WizardRunArtifactType(artifact.type) == WizardRunArtifactType.GIT_DIFF:
         if artifact.size_bytes is None or artifact.content_hash is None:
             raise ValueError("Git diff artifact is missing stored content metadata.")
+        metadata = artifact.metadata or {}
+        additions = metadata.get("additions")
+        removals = metadata.get("removals")
         return WizardRunGitDiffArtifactDTO(
             id=artifact.id,
             team_id=artifact.team_id,
@@ -18,6 +21,8 @@ def artifact_from_record(artifact: WizardRunArtifact) -> WizardRunArtifactDTO:
             artifact_type=WizardRunArtifactType.GIT_DIFF,
             size_bytes=artifact.size_bytes,
             content_hash=artifact.content_hash,
+            additions=additions if isinstance(additions, int) else None,
+            removals=removals if isinstance(removals, int) else None,
             created_at=artifact.created_at,
         )
 

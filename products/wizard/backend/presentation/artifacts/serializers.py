@@ -25,6 +25,12 @@ class WizardRunGitDiffArtifactSerializer(WizardRunArtifactSerializer):
     )
     size_bytes = serializers.IntegerField(read_only=True, help_text="Stored artifact size in bytes.")
     content_hash = serializers.CharField(read_only=True, help_text="SHA-256 hash of the stored artifact content.")
+    additions = serializers.IntegerField(
+        read_only=True, allow_null=True, help_text="Number of added lines in the diff."
+    )
+    removals = serializers.IntegerField(
+        read_only=True, allow_null=True, help_text="Number of removed lines in the diff."
+    )
     created_at = serializers.DateTimeField(read_only=True, help_text="Time when the artifact was stored.")
 
 

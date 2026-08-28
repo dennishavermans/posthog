@@ -10,14 +10,15 @@ import { apiMutator } from '../../../../frontend/src/lib/api-orval-mutator'
  */
 import type {
     PaginatedWizardProgramListApi,
+    PaginatedWizardRunArtifactListApi,
     PaginatedWizardRunListApi,
     PaginatedWizardSessionDTOListApi,
     PatchedWizardRunStatusUpdateRequestApi,
     UpsertWizardSessionRequestApi,
     WizardRegistryListParams,
     WizardRunApi,
-    WizardRunArtifactApi,
     WizardRunCreateRequestApi,
+    WizardRunsArtifactsListParams,
     WizardRunsListParams,
     WizardSessionDTOApi,
     WizardSessionsLatestRetrieveParams,
@@ -144,8 +145,24 @@ export const wizardRunsPartialUpdate = async (
     })
 }
 
-export const getWizardRunsArtifactsListUrl = (projectId: string, runId: string) => {
-    return `/api/projects/${projectId}/wizard/runs/${runId}/artifacts/`
+export const getWizardRunsArtifactsListUrl = (
+    projectId: string,
+    runId: string,
+    params?: WizardRunsArtifactsListParams
+) => {
+    const normalizedParams = new URLSearchParams()
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? 'null' : String(value))
+        }
+    })
+
+    const stringifiedParams = normalizedParams.toString()
+
+    return stringifiedParams.length > 0
+        ? `/api/projects/${projectId}/wizard/runs/${runId}/artifacts/?${stringifiedParams}`
+        : `/api/projects/${projectId}/wizard/runs/${runId}/artifacts/`
 }
 
 /**
@@ -154,9 +171,10 @@ export const getWizardRunsArtifactsListUrl = (projectId: string, runId: string) 
 export const wizardRunsArtifactsList = async (
     projectId: string,
     runId: string,
+    params?: WizardRunsArtifactsListParams,
     options?: RequestInit
-): Promise<WizardRunArtifactApi[]> => {
-    return apiMutator<WizardRunArtifactApi[]>(getWizardRunsArtifactsListUrl(projectId, runId), {
+): Promise<PaginatedWizardRunArtifactListApi> => {
+    return apiMutator<PaginatedWizardRunArtifactListApi>(getWizardRunsArtifactsListUrl(projectId, runId, params), {
         ...options,
         method: 'GET',
     })

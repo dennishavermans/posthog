@@ -48,11 +48,17 @@ export const WizardRunsCreateBody = /* @__PURE__ */ zod.object({
         .max(wizardRunsCreateBodyIdempotencyKeyMax)
         .optional()
         .describe('Unique key that makes cloud run creation safe to retry.'),
+    wizard_version: zod
+        .string()
+        .optional()
+        .describe('Wizard package version to run. Defaults to the backend pin and accepts latest explicitly.'),
 })
 
 /**
  * Change the terminal status of a local Wizard run.
  */
+export const wizardRunsPartialUpdateBodyErrorCodeMax = 50
+
 export const WizardRunsPartialUpdateBody = /* @__PURE__ */ zod.object({
     status: zod
         .enum(['completed', 'failed', 'cancelled'])
@@ -62,26 +68,10 @@ export const WizardRunsPartialUpdateBody = /* @__PURE__ */ zod.object({
             'New terminal status for the Wizard run.\n\n\* `completed` - completed\n\* `failed` - failed\n\* `cancelled` - cancelled'
         ),
     error_code: zod
-        .union([
-            zod
-                .enum([
-                    'timeout',
-                    'provisioning_failed',
-                    'repository_access_failed',
-                    'workspace_preparation_failed',
-                    'execution_failed',
-                    'artifact_creation_failed',
-                    'dispatch_failed',
-                ])
-                .describe(
-                    '\* `timeout` - timeout\n\* `provisioning_failed` - provisioning_failed\n\* `repository_access_failed` - repository_access_failed\n\* `workspace_preparation_failed` - workspace_preparation_failed\n\* `execution_failed` - execution_failed\n\* `artifact_creation_failed` - artifact_creation_failed\n\* `dispatch_failed` - dispatch_failed'
-                ),
-            zod.null(),
-        ])
-        .optional()
-        .describe(
-            'Machine-readable reason the Wizard run failed.\n\n\* `timeout` - timeout\n\* `provisioning_failed` - provisioning_failed\n\* `repository_access_failed` - repository_access_failed\n\* `workspace_preparation_failed` - workspace_preparation_failed\n\* `execution_failed` - execution_failed\n\* `artifact_creation_failed` - artifact_creation_failed\n\* `dispatch_failed` - dispatch_failed'
-        ),
+        .string()
+        .max(wizardRunsPartialUpdateBodyErrorCodeMax)
+        .nullish()
+        .describe('Machine-readable reason the Wizard run failed.'),
 })
 
 /**

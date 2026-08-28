@@ -11,7 +11,14 @@ from products.wizard.backend.models import WizardRunArtifact
 
 
 def upsert_git_diff(
-    *, team_id: int, run_id: UUID, storage_path: str, size_bytes: int, content_hash: str
+    *,
+    team_id: int,
+    run_id: UUID,
+    storage_path: str,
+    size_bytes: int,
+    content_hash: str,
+    additions: int,
+    removals: int,
 ) -> WizardRunGitDiffArtifactDTO:
     artifact, _ = WizardRunArtifact.objects.for_team(team_id).update_or_create(
         run_id=run_id,
@@ -20,7 +27,7 @@ def upsert_git_diff(
             "team_id": team_id,
             "storage_path": storage_path,
             "external_url": None,
-            "metadata": None,
+            "metadata": {"additions": additions, "removals": removals},
             "size_bytes": size_bytes,
             "content_hash": content_hash,
         },

@@ -58,10 +58,12 @@ def build_local_wizard_preparation_command() -> str:
     install_path = shlex.quote(LOCAL_WIZARD_INSTALL_PATH)
     return " && ".join(
         (
+            "apt-get update -qq && apt-get install -y --no-install-recommends build-essential python3",
             f"rm -rf {install_path}",
             f"mkdir -p {install_path}",
             f"tar -xzf {archive_path} -C {install_path}",
             f"cd {install_path}",
+            "corepack enable pnpm",
             "HUSKY=0 pnpm install --frozen-lockfile",
             "pnpm run prebuild",
             "pnpm exec tsdown",

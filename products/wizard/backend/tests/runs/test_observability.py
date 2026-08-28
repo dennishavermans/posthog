@@ -351,6 +351,8 @@ def test_reliability_metrics_record_artifacts_cleanup_and_deadlines() -> None:
         artifact_type=WizardRunArtifactType.GIT_DIFF,
         size_bytes=10,
         content_hash="hash",
+        additions=0,
+        removals=0,
         created_at=datetime(2026, 8, 25, 12, tzinfo=UTC),
     )
     artifact_labels = {"type": "git_diff"}

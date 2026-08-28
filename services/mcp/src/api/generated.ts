@@ -30688,28 +30688,6 @@ export namespace Schemas {
       readonly warehouse_origin: unknown;
     }
 
-    /**
-     * * `timeout` - timeout
-     * * `provisioning_failed` - provisioning_failed
-     * * `repository_access_failed` - repository_access_failed
-     * * `workspace_preparation_failed` - workspace_preparation_failed
-     * * `execution_failed` - execution_failed
-     * * `artifact_creation_failed` - artifact_creation_failed
-     * * `dispatch_failed` - dispatch_failed
-     */
-    export type ErrorCodeEnum = typeof ErrorCodeEnum[keyof typeof ErrorCodeEnum];
-
-
-    export const ErrorCodeEnum = {
-      Timeout: 'timeout',
-      ProvisioningFailed: 'provisioning_failed',
-      RepositoryAccessFailed: 'repository_access_failed',
-      WorkspacePreparationFailed: 'workspace_preparation_failed',
-      ExecutionFailed: 'execution_failed',
-      ArtifactCreationFailed: 'artifact_creation_failed',
-      DispatchFailed: 'dispatch_failed',
-    } as const;
-
     export interface ErrorResponse {
       /** Error message */
       error: string;
@@ -59227,6 +59205,95 @@ export namespace Schemas {
       results: WizardProgram[];
     }
 
+    /**
+     * Format of the changes produced by the run.
+     *
+     * * `git_diff` - git_diff
+     */
+    export type WizardRunGitDiffArtifactArtifactType = typeof WizardRunGitDiffArtifactArtifactType[keyof typeof WizardRunGitDiffArtifactArtifactType];
+
+
+    export const WizardRunGitDiffArtifactArtifactType = {
+      GitDiff: 'git_diff',
+    } as const;
+
+    export interface WizardRunGitDiffArtifact {
+      /** Unique ID of the run artifact. */
+      readonly id: string;
+      /** Project that owns the run artifact. */
+      readonly team_id: number;
+      /** Wizard run that produced the artifact. */
+      readonly run_id: string;
+      /** Format of the changes produced by the run.
+       *
+       * * `git_diff` - git_diff */
+      readonly artifact_type: WizardRunGitDiffArtifactArtifactType;
+      /** Stored artifact size in bytes. */
+      readonly size_bytes: number;
+      /** SHA-256 hash of the stored artifact content. */
+      readonly content_hash: string;
+      /**
+         * Number of added lines in the diff.
+         * @nullable
+         */
+      readonly additions: number | null;
+      /**
+         * Number of removed lines in the diff.
+         * @nullable
+         */
+      readonly removals: number | null;
+      /** Time when the artifact was stored. */
+      readonly created_at: string;
+    }
+
+    /**
+     * Format of the changes produced by the run.
+     *
+     * * `pull_request` - pull_request
+     */
+    export type WizardRunPullRequestArtifactArtifactType = typeof WizardRunPullRequestArtifactArtifactType[keyof typeof WizardRunPullRequestArtifactArtifactType];
+
+
+    export const WizardRunPullRequestArtifactArtifactType = {
+      PullRequest: 'pull_request',
+    } as const;
+
+    export interface WizardRunPullRequestArtifact {
+      /** Unique ID of the run artifact. */
+      readonly id: string;
+      /** Project that owns the run artifact. */
+      readonly team_id: number;
+      /** Wizard run that produced the artifact. */
+      readonly run_id: string;
+      /** Format of the changes produced by the run.
+       *
+       * * `pull_request` - pull_request */
+      readonly artifact_type: WizardRunPullRequestArtifactArtifactType;
+      /** GitHub URL of the pull request. */
+      readonly url: string;
+      /** Repository-local pull request number. */
+      readonly number: number;
+      /** GitHub repository in owner/name format. */
+      readonly repository: string;
+      /** Branch containing the setup agent's changes. */
+      readonly head_branch: string;
+      /** Branch that the pull request targets. */
+      readonly base_branch: string;
+      /** Time when the artifact was stored. */
+      readonly created_at: string;
+    }
+
+    export type WizardRunArtifact = WizardRunGitDiffArtifact | WizardRunPullRequestArtifact;
+
+    export interface PaginatedWizardRunArtifactList {
+      count: number;
+      /** @nullable */
+      next?: string | null;
+      /** @nullable */
+      previous?: string | null;
+      results: WizardRunArtifact[];
+    }
+
     export type WizardWorkspace = LocalFolderWorkspace | GitRepositoryWorkspace;
 
     /**
@@ -59292,16 +59359,11 @@ export namespace Schemas {
        * * `failed` - failed
        * * `cancelled` - cancelled */
       readonly status: WizardRunStatusEnum;
-      /** Machine-readable failure reason, or null if the run has not failed.
-       *
-       * * `timeout` - timeout
-       * * `provisioning_failed` - provisioning_failed
-       * * `repository_access_failed` - repository_access_failed
-       * * `workspace_preparation_failed` - workspace_preparation_failed
-       * * `execution_failed` - execution_failed
-       * * `artifact_creation_failed` - artifact_creation_failed
-       * * `dispatch_failed` - dispatch_failed */
-      readonly error_code: ErrorCodeEnum | null;
+      /**
+         * Machine-readable failure reason, or null if the run has not failed.
+         * @nullable
+         */
+      readonly error_code: string | null;
       /**
          * Safe failure explanation, or null if the run has not failed.
          * @nullable
@@ -67851,16 +67913,12 @@ export namespace Schemas {
        * * `failed` - failed
        * * `cancelled` - cancelled */
       status?: WizardRunStatusUpdateRequestStatusEnum;
-      /** Machine-readable reason the Wizard run failed.
-       *
-       * * `timeout` - timeout
-       * * `provisioning_failed` - provisioning_failed
-       * * `repository_access_failed` - repository_access_failed
-       * * `workspace_preparation_failed` - workspace_preparation_failed
-       * * `execution_failed` - execution_failed
-       * * `artifact_creation_failed` - artifact_creation_failed
-       * * `dispatch_failed` - dispatch_failed */
-      error_code?: ErrorCodeEnum | null;
+      /**
+         * Machine-readable reason the Wizard run failed.
+         * @maxLength 50
+         * @nullable
+         */
+      error_code?: string | null;
     }
 
     export interface PathCleaningPreviewExample {
@@ -86414,76 +86472,6 @@ export namespace Schemas {
     }
 
     /**
-     * Format of the changes produced by the run.
-     *
-     * * `git_diff` - git_diff
-     */
-    export type WizardRunGitDiffArtifactArtifactType = typeof WizardRunGitDiffArtifactArtifactType[keyof typeof WizardRunGitDiffArtifactArtifactType];
-
-
-    export const WizardRunGitDiffArtifactArtifactType = {
-      GitDiff: 'git_diff',
-    } as const;
-
-    export interface WizardRunGitDiffArtifact {
-      /** Unique ID of the run artifact. */
-      readonly id: string;
-      /** Project that owns the run artifact. */
-      readonly team_id: number;
-      /** Wizard run that produced the artifact. */
-      readonly run_id: string;
-      /** Format of the changes produced by the run.
-       *
-       * * `git_diff` - git_diff */
-      readonly artifact_type: WizardRunGitDiffArtifactArtifactType;
-      /** Stored artifact size in bytes. */
-      readonly size_bytes: number;
-      /** SHA-256 hash of the stored artifact content. */
-      readonly content_hash: string;
-      /** Time when the artifact was stored. */
-      readonly created_at: string;
-    }
-
-    /**
-     * Format of the changes produced by the run.
-     *
-     * * `pull_request` - pull_request
-     */
-    export type WizardRunPullRequestArtifactArtifactType = typeof WizardRunPullRequestArtifactArtifactType[keyof typeof WizardRunPullRequestArtifactArtifactType];
-
-
-    export const WizardRunPullRequestArtifactArtifactType = {
-      PullRequest: 'pull_request',
-    } as const;
-
-    export interface WizardRunPullRequestArtifact {
-      /** Unique ID of the run artifact. */
-      readonly id: string;
-      /** Project that owns the run artifact. */
-      readonly team_id: number;
-      /** Wizard run that produced the artifact. */
-      readonly run_id: string;
-      /** Format of the changes produced by the run.
-       *
-       * * `pull_request` - pull_request */
-      readonly artifact_type: WizardRunPullRequestArtifactArtifactType;
-      /** GitHub URL of the pull request. */
-      readonly url: string;
-      /** Repository-local pull request number. */
-      readonly number: number;
-      /** GitHub repository in owner/name format. */
-      readonly repository: string;
-      /** Branch containing the setup agent's changes. */
-      readonly head_branch: string;
-      /** Branch that the pull request targets. */
-      readonly base_branch: string;
-      /** Time when the artifact was stored. */
-      readonly created_at: string;
-    }
-
-    export type WizardRunArtifact = WizardRunGitDiffArtifact | WizardRunPullRequestArtifact;
-
-    /**
      * * `git_diff` - git_diff
      */
     export type WizardRunArtifactTypeEnum = typeof WizardRunArtifactTypeEnum[keyof typeof WizardRunArtifactTypeEnum];
@@ -86511,6 +86499,8 @@ export namespace Schemas {
          * @maxLength 255
          */
       idempotency_key?: string;
+      /** Wizard package version to run. Defaults to the backend pin and accepts latest explicitly. */
+      wizard_version?: string;
     }
 
     export interface WizardRunError {
@@ -99443,6 +99433,17 @@ export namespace Schemas {
     };
 
     export type WizardRunsListParams = {
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number;
+    /**
+     * The initial index from which to return the results.
+     */
+    offset?: number;
+    };
+
+    export type WizardRunsArtifactsListParams = {
     /**
      * Number of results to return per page.
      */

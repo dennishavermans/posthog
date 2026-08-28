@@ -3,6 +3,7 @@ from uuid import UUID
 from posthog.test.base import APIBaseTest
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.test import override_settings
 
 from parameterized import parameterized
@@ -12,6 +13,7 @@ from posthog.models import PersonalAPIKey, Team, User
 from posthog.models.utils import generate_random_token_personal, hash_key_value
 
 from products.wizard.backend.facade import api as wizard_facade
+from products.wizard.backend.facade.config import DEFAULT_WIZARD_VERSION
 from products.wizard.backend.facade.contracts import (
     CreatePullRequestArtifactInput,
     CreateWizardRunInput,
@@ -71,7 +73,7 @@ class TestWizardRunViewSet(APIBaseTest):
                     "id": "posthog-integration",
                     "name": "PostHog integration",
                     "description": "Set up PostHog SDK integration",
-                    "wizard_version": "2.60.0",
+                    "wizard_version": DEFAULT_WIZARD_VERSION,
                     "command": [],
                     "tags": [],
                     "required_programs": [],
@@ -88,6 +90,42 @@ class TestWizardRunViewSet(APIBaseTest):
                 "deadline_at": None,
             },
         )
+
+    @override_settings(WIZARD_RUN_CREATE_THROTTLE_RATE="1/hour")
+    def test_create_is_rate_limited_per_user(self) -> None:
+        cache.clear()
+
+        first = self.client.post(
+            self._url(),
+            {
+                "program_id": "posthog-integration",
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "rate-limit-project"},
+            },
+            format="json",
+        )
+        second = self.client.post(
+            self._url(),
+            {
+                "program_id": "posthog-integration",
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "rate-limit-project-two"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    @override_settings(WIZARD_RUN_READ_THROTTLE_RATE="1/minute")
+    def test_list_is_rate_limited_per_user(self) -> None:
+        cache.clear()
+
+        first = self.client.get(self._url())
+        second = self.client.get(self._url())
+
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
     def test_create_requires_program_id(self) -> None:
         response = self.client.post(

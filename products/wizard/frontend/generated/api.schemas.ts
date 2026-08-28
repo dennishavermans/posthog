@@ -105,27 +105,6 @@ export const WizardRunStatusEnumApi = {
 } as const
 
 /**
- * * `timeout` - timeout
- * * `provisioning_failed` - provisioning_failed
- * * `repository_access_failed` - repository_access_failed
- * * `workspace_preparation_failed` - workspace_preparation_failed
- * * `execution_failed` - execution_failed
- * * `artifact_creation_failed` - artifact_creation_failed
- * * `dispatch_failed` - dispatch_failed
- */
-export type ErrorCodeEnumApi = (typeof ErrorCodeEnumApi)[keyof typeof ErrorCodeEnumApi]
-
-export const ErrorCodeEnumApi = {
-    Timeout: 'timeout',
-    ProvisioningFailed: 'provisioning_failed',
-    RepositoryAccessFailed: 'repository_access_failed',
-    WorkspacePreparationFailed: 'workspace_preparation_failed',
-    ExecutionFailed: 'execution_failed',
-    ArtifactCreationFailed: 'artifact_creation_failed',
-    DispatchFailed: 'dispatch_failed',
-} as const
-
-/**
  * * `dispatching` - dispatching
  * * `provisioning` - provisioning
  * * `preparing_workspace` - preparing_workspace
@@ -169,16 +148,11 @@ export interface WizardRunApi {
      * * `failed` - failed
      * * `cancelled` - cancelled */
     readonly status: WizardRunStatusEnumApi
-    /** Machine-readable failure reason, or null if the run has not failed.
-     *
-     * * `timeout` - timeout
-     * * `provisioning_failed` - provisioning_failed
-     * * `repository_access_failed` - repository_access_failed
-     * * `workspace_preparation_failed` - workspace_preparation_failed
-     * * `execution_failed` - execution_failed
-     * * `artifact_creation_failed` - artifact_creation_failed
-     * * `dispatch_failed` - dispatch_failed */
-    readonly error_code: ErrorCodeEnumApi | null
+    /**
+     * Machine-readable failure reason, or null if the run has not failed.
+     * @nullable
+     */
+    readonly error_code: string | null
     /**
      * Safe failure explanation, or null if the run has not failed.
      * @nullable
@@ -243,6 +217,8 @@ export interface WizardRunCreateRequestApi {
      * @maxLength 255
      */
     idempotency_key?: string
+    /** Wizard package version to run. Defaults to the backend pin and accepts latest explicitly. */
+    wizard_version?: string
 }
 
 export interface WizardRunErrorApi {
@@ -280,16 +256,12 @@ export interface PatchedWizardRunStatusUpdateRequestApi {
      * * `failed` - failed
      * * `cancelled` - cancelled */
     status?: WizardRunStatusUpdateRequestStatusEnumApi
-    /** Machine-readable reason the Wizard run failed.
-     *
-     * * `timeout` - timeout
-     * * `provisioning_failed` - provisioning_failed
-     * * `repository_access_failed` - repository_access_failed
-     * * `workspace_preparation_failed` - workspace_preparation_failed
-     * * `execution_failed` - execution_failed
-     * * `artifact_creation_failed` - artifact_creation_failed
-     * * `dispatch_failed` - dispatch_failed */
-    error_code?: ErrorCodeEnumApi | null
+    /**
+     * Machine-readable reason the Wizard run failed.
+     * @maxLength 50
+     * @nullable
+     */
+    error_code?: string | null
 }
 
 /**
@@ -319,6 +291,16 @@ export interface WizardRunGitDiffArtifactApi {
     readonly size_bytes: number
     /** SHA-256 hash of the stored artifact content. */
     readonly content_hash: string
+    /**
+     * Number of added lines in the diff.
+     * @nullable
+     */
+    readonly additions: number | null
+    /**
+     * Number of removed lines in the diff.
+     * @nullable
+     */
+    readonly removals: number | null
     /** Time when the artifact was stored. */
     readonly created_at: string
 }
@@ -361,6 +343,15 @@ export interface WizardRunPullRequestArtifactApi {
 }
 
 export type WizardRunArtifactApi = WizardRunGitDiffArtifactApi | WizardRunPullRequestArtifactApi
+
+export interface PaginatedWizardRunArtifactListApi {
+    count: number
+    /** @nullable */
+    next?: string | null
+    /** @nullable */
+    previous?: string | null
+    results: WizardRunArtifactApi[]
+}
 
 /**
  * The in-flight `wizard_ask` question. Typed rather than a free-form dict so the shape the
@@ -575,6 +566,17 @@ export type WizardRegistryListParams = {
 }
 
 export type WizardRunsListParams = {
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number
+    /**
+     * The initial index from which to return the results.
+     */
+    offset?: number
+}
+
+export type WizardRunsArtifactsListParams = {
     /**
      * Number of results to return per page.
      */

@@ -30,6 +30,7 @@ from products.wizard.backend.presentation.runs.serializers import (
     WizardRunSerializer,
     WizardRunStatusUpdateRequestSerializer,
 )
+from products.wizard.backend.presentation.throttles import WizardRunCreateThrottle, WizardRunReadThrottle
 
 
 class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
@@ -41,6 +42,11 @@ class WizardRunViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
     lookup_field = "run_id"
     lookup_value_regex = "[0-9a-fA-F-]{36}"
     pagination_class = WizardRunPagination
+
+    def get_throttles(self) -> list:
+        if self.action == "create":
+            return [WizardRunCreateThrottle()]
+        return [WizardRunReadThrottle()]
 
     @extend_schema(
         responses={200: WizardRunSerializer(many=True)},

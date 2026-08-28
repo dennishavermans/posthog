@@ -7,6 +7,7 @@ from parameterized import parameterized
 from posthoganalytics.request import APIError
 
 from products.wizard.backend.facade import api as wizard_facade
+from products.wizard.backend.facade.config import DEFAULT_WIZARD_VERSION
 from products.wizard.backend.facade.contracts import WizardProgram
 from products.wizard.backend.facade.enums import WizardRunEnvironment
 from products.wizard.backend.logic.programs import program_from_mapping, program_to_mapping
@@ -16,7 +17,7 @@ POSTHOG_INTEGRATION_PROGRAM = WizardProgram(
     id="posthog-integration",
     name="PostHog integration",
     description="Set up PostHog SDK integration",
-    wizard_version="2.60.0",
+    wizard_version=DEFAULT_WIZARD_VERSION,
     command=(),
     tags=(),
     required_programs=(),

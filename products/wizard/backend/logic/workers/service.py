@@ -51,6 +51,8 @@ from products.wizard.backend.logic.workers.local_package import build_local_wiza
 from products.wizard.backend.logic.workers.wizard_error_output import wizard_error_code_from_stderr
 from products.wizard.backend.observability.service import wizard_observability
 
+from .repository_publisher import create_signed_commit
+
 logger = logging.getLogger(__name__)
 
 
@@ -237,11 +239,14 @@ def create_git_repository_handoff(request: GitRepositoryHandoffRequest) -> Wizar
         handoff_body = PULL_REQUEST_BODY
 
     try:
-        repository_facade.create_signed_commit(
+        create_signed_commit(
             sandbox,
+            team_id=request.team_id,
+            integration_id=request.github_integration_id,
             repository=request.repository,
             branch=branch,
             message=PULL_REQUEST_COMMIT_MESSAGE,
+            source="wizard",
         )
 
         pull_request = repository_facade.create_pull_request(
