@@ -31,6 +31,8 @@ import {
     SignalsScoutEmitReportParams,
     SignalsScoutEmitSignalBody,
     SignalsScoutEmitSignalParams,
+    SignalsScoutLighthouseAuditBody,
+    SignalsScoutLighthouseAuditParams,
     SignalsScoutMembersListQueryParams,
     SignalsScoutNotesCreateBody,
     SignalsScoutNotesDestroyParams,
@@ -1005,6 +1007,31 @@ const scoutProjectProfileGet = (): ToolBase<typeof ScoutProjectProfileGetSchema,
     },
 })
 
+const ScoutLighthouseAuditSchema = SignalsScoutLighthouseAuditParams.omit({ project_id: true }).extend(
+    SignalsScoutLighthouseAuditBody.shape
+)
+
+const scoutLighthouseAudit = (): ToolBase<typeof ScoutLighthouseAuditSchema, Schemas.LighthouseAuditResponse> => ({
+    name: 'scout-lighthouse-audit',
+    schema: ScoutLighthouseAuditSchema,
+    handler: async (context: Context, params: z.infer<typeof ScoutLighthouseAuditSchema>) => {
+        const projectId = await context.stateManager.getProjectId()
+        const body: Record<string, unknown> = {}
+        if (params.url !== undefined) {
+            body['url'] = params.url
+        }
+        if (params.form_factor !== undefined) {
+            body['form_factor'] = params.form_factor
+        }
+        const result = await context.api.request<Schemas.LighthouseAuditResponse>({
+            method: 'POST',
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/signals/scout/runs/${encodeURIComponent(String(params.run_id))}/lighthouse-audit/`,
+            body,
+        })
+        return result
+    },
+})
+
 const ScoutRecordOutputSchema = SignalsScoutRecordOutputParams.omit({ project_id: true }).extend(
     SignalsScoutRecordOutputBody.shape
 )
@@ -1799,6 +1826,7 @@ export const GENERATED_TOOLS: Record<string, () => ToolBase<ZodObjectAny>> = {
     'scout-notes-delete': scoutNotesDelete,
     'scout-notes-list': scoutNotesList,
     'scout-project-profile-get': scoutProjectProfileGet,
+    'scout-lighthouse-audit': scoutLighthouseAudit,
     'scout-record-output': scoutRecordOutput,
     'scout-run-now': scoutRunNow,
     'scout-runs-emission-reports': scoutRunsEmissionReports,
