@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { IconCheck, IconChevronDown, IconPeople, IconPlus, IconUser } from '@posthog/icons'
-import { LemonButton, Popover } from '@posthog/lemon-ui'
+import { LemonButton, LemonSkeleton, Popover } from '@posthog/lemon-ui'
 
 import { LemonTabs } from 'lib/lemon-ui/LemonTabs'
 
@@ -120,7 +120,11 @@ export function SavedDashboardViewsPicker({
                         </LemonButton>
                     )}
                     {(activeSavedView || isFiltering) && <div className="mx-3 border-t" />}
-                    {loading && <div className="px-3 py-2 text-sm text-secondary">Loading saved views…</div>}
+                    {loading && (
+                        <div className="space-y-2 px-3 py-2" role="status" aria-label="Loading saved views">
+                            <LemonSkeleton repeat={3} className="h-8" />
+                        </div>
+                    )}
                     {!loading && loadError && (
                         <LemonButton
                             fullWidth

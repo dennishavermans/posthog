@@ -101,6 +101,16 @@ export const Default: Story = {
     play: openPicker,
 }
 
+export const Loading: Story = {
+    args: {
+        ...Default.args,
+        activeSavedView: undefined,
+        savedViews: [],
+        loading: true,
+        defaultOpen: true,
+    },
+}
+
 export const MoreResults: Story = {
     args: {
         ...Default.args,
