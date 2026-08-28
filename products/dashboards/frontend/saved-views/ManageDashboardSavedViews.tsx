@@ -218,14 +218,6 @@ export function ManageDashboardSavedViews({
             },
         },
         {
-            title: 'Created',
-            key: 'created_at',
-            width: 130,
-            render: function renderCreated(_, view) {
-                return <TZLabel time={view.created_at} />
-            },
-        },
-        {
             title: 'Last updated',
             key: 'updated_at',
             width: 130,
