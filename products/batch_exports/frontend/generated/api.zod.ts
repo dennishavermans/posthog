@@ -192,7 +192,7 @@ export const BatchExportsCreateBody = /* @__PURE__ */ zod
                         integration_id: zod
                             .number()
                             .describe(
-                                'ID of an aws-s3-kind Integration providing AWS credentials. Required when creating a batch export. Use the integrations-list MCP tool to find one.'
+                                'ID of an aws-s3-kind Integration providing AWS credentials. Use the integrations-list MCP tool to find one.'
                             ),
                         config: zod
                             .object({
@@ -248,7 +248,7 @@ export const BatchExportsCreateBody = /* @__PURE__ */ zod
                         integration_id: zod
                             .number()
                             .describe(
-                                'ID of an s3-compatible-kind Integration providing credentials and the provider endpoint URL. Required when creating a batch export. Use the integrations-list MCP tool to find one.'
+                                'ID of an s3-compatible-kind Integration providing credentials and the provider endpoint URL. Use the integrations-list MCP tool to find one.'
                             ),
                         config: zod
                             .object({
@@ -890,7 +890,7 @@ export const BatchExportsUpdateBody = /* @__PURE__ */ zod
                         integration_id: zod
                             .number()
                             .describe(
-                                'ID of an aws-s3-kind Integration providing AWS credentials. Required when creating a batch export. Use the integrations-list MCP tool to find one.'
+                                'ID of an aws-s3-kind Integration providing AWS credentials. Use the integrations-list MCP tool to find one.'
                             ),
                         config: zod
                             .object({
@@ -946,7 +946,7 @@ export const BatchExportsUpdateBody = /* @__PURE__ */ zod
                         integration_id: zod
                             .number()
                             .describe(
-                                'ID of an s3-compatible-kind Integration providing credentials and the provider endpoint URL. Required when creating a batch export. Use the integrations-list MCP tool to find one.'
+                                'ID of an s3-compatible-kind Integration providing credentials and the provider endpoint URL. Use the integrations-list MCP tool to find one.'
                             ),
                         config: zod
                             .object({
@@ -1343,7 +1343,7 @@ export const BatchExportsPartialUpdateBody = /* @__PURE__ */ zod
                         integration_id: zod
                             .number()
                             .describe(
-                                'ID of an aws-s3-kind Integration providing AWS credentials. Required when creating a batch export. Use the integrations-list MCP tool to find one.'
+                                'ID of an aws-s3-kind Integration providing AWS credentials. Use the integrations-list MCP tool to find one.'
                             ),
                         config: zod
                             .object({
@@ -1399,7 +1399,7 @@ export const BatchExportsPartialUpdateBody = /* @__PURE__ */ zod
                         integration_id: zod
                             .number()
                             .describe(
-                                'ID of an s3-compatible-kind Integration providing credentials and the provider endpoint URL. Required when creating a batch export. Use the integrations-list MCP tool to find one.'
+                                'ID of an s3-compatible-kind Integration providing credentials and the provider endpoint URL. Use the integrations-list MCP tool to find one.'
                             ),
                         config: zod
                             .object({
@@ -1987,7 +1987,7 @@ export const BatchExportsPauseCreateBody = /* @__PURE__ */ zod
                     .number()
                     .nullish()
                     .describe(
-                        'ID of a team-scoped Integration providing credentials. Required when creating Databricks, AzureBlob, BigQuery, Postgres, AwsS3, and S3Compatible destinations; optional for Snowflake and Redshift (inline credentials remain supported); unused for other types.'
+                        'ID of a team-scoped Integration providing credentials. Required for AwsS3 and S3Compatible destinations, and when creating Databricks, AzureBlob, BigQuery and Postgres destinations; optional for Snowflake and Redshift (inline credentials remain supported); unused for other types.'
                     ),
             })
             .describe(
@@ -2432,7 +2432,7 @@ export const BatchExportsRunTestStepCreateBody = /* @__PURE__ */ zod
                     .number()
                     .nullish()
                     .describe(
-                        'ID of a team-scoped Integration providing credentials. Required when creating Databricks, AzureBlob, BigQuery, Postgres, AwsS3, and S3Compatible destinations; optional for Snowflake and Redshift (inline credentials remain supported); unused for other types.'
+                        'ID of a team-scoped Integration providing credentials. Required for AwsS3 and S3Compatible destinations, and when creating Databricks, AzureBlob, BigQuery and Postgres destinations; optional for Snowflake and Redshift (inline credentials remain supported); unused for other types.'
                     ),
             })
             .describe(
@@ -2866,7 +2866,7 @@ export const BatchExportsUnpauseCreateBody = /* @__PURE__ */ zod
                     .number()
                     .nullish()
                     .describe(
-                        'ID of a team-scoped Integration providing credentials. Required when creating Databricks, AzureBlob, BigQuery, Postgres, AwsS3, and S3Compatible destinations; optional for Snowflake and Redshift (inline credentials remain supported); unused for other types.'
+                        'ID of a team-scoped Integration providing credentials. Required for AwsS3 and S3Compatible destinations, and when creating Databricks, AzureBlob, BigQuery and Postgres destinations; optional for Snowflake and Redshift (inline credentials remain supported); unused for other types.'
                     ),
             })
             .describe(
@@ -3321,7 +3321,7 @@ export const BatchExportsRunTestStepNewCreateBody = /* @__PURE__ */ zod
                     .number()
                     .nullish()
                     .describe(
-                        'ID of a team-scoped Integration providing credentials. Required when creating Databricks, AzureBlob, BigQuery, Postgres, AwsS3, and S3Compatible destinations; optional for Snowflake and Redshift (inline credentials remain supported); unused for other types.'
+                        'ID of a team-scoped Integration providing credentials. Required for AwsS3 and S3Compatible destinations, and when creating Databricks, AzureBlob, BigQuery and Postgres destinations; optional for Snowflake and Redshift (inline credentials remain supported); unused for other types.'
                     ),
             })
             .describe(
