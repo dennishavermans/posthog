@@ -26,10 +26,6 @@ export interface SavedDashboardViewsPickerProps {
     onRetryLoad: () => void
 }
 
-function savedViewScopeIcon(scope: DashboardSavedViewScope | undefined): JSX.Element {
-    return scope === 'private' ? <IconUser /> : <IconPeople />
-}
-
 export function SavedDashboardViewsPicker({
     activeSavedView,
     activeSavedViewHasUnsavedChanges,
@@ -56,6 +52,10 @@ export function SavedDashboardViewsPicker({
     const hasSavedViews = savedViews.length > 0
     const tooltip = activeSavedView?.name || 'Saved views'
     const emptyScopeMessage = scope === 'private' ? 'No private views yet.' : 'No team views yet.'
+    let triggerIcon: JSX.Element | undefined
+    if (activeSavedView) {
+        triggerIcon = activeSavedView.scope === 'private' ? <IconUser /> : <IconPeople />
+    }
 
     const closePicker = (): void => {
         setVisible(false)
@@ -218,7 +218,7 @@ export function SavedDashboardViewsPicker({
             <LemonButton
                 size="small"
                 type="secondary"
-                icon={activeSavedView ? savedViewScopeIcon(activeSavedView.scope) : undefined}
+                icon={triggerIcon}
                 sideIcon={<IconChevronDown />}
                 tooltip={tooltip}
                 aria-label={tooltip}
