@@ -135,7 +135,7 @@ function LogsViewerContent({
         hasMoreLogsToLoad,
         totalLogsMatchingFilters,
     } = useValues(logsViewerDataLogic)
-    const { runQuery, fetchNextLogsPage } = useActions(logsViewerDataLogic)
+    const { refreshQuery, fetchNextLogsPage } = useActions(logsViewerDataLogic)
     const { setDateRange, zoomDateRange } = useActions(logsViewerFiltersLogic)
     const { cellScrollLefts } = useValues(virtualizedLogsListLogic({ id }))
     const { setCellScrollLeft } = useActions(virtualizedLogsListLogic({ id }))
@@ -251,7 +251,7 @@ function LogsViewerContent({
                 action: () => {
                     if (!logsLoading) {
                         resetCursor()
-                        runQuery()
+                        refreshQuery()
                     }
                 },
                 disabled: !isFocused,
@@ -292,7 +292,7 @@ function LogsViewerContent({
             parsedLogs,
             openLogDetails,
             closeLogDetails,
-            runQuery,
+            refreshQuery,
             logsLoading,
             resetCursor,
             moveCursorDown,
