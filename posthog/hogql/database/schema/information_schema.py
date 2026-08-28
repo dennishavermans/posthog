@@ -19,8 +19,6 @@ import hashlib
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, NamedTuple, Optional
 
-from django.db.models import Q
-
 import structlog
 
 from posthog.hogql import ast
