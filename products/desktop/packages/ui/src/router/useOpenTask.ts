@@ -140,6 +140,9 @@ export function openTaskInput(
     !!options.initialMode ||
     !!options.agentActionAttribution ||
     !!options.reportAssociation;
+  const requestId = hasTransientState
+    ? (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`)
+    : undefined;
 
   useTaskInputPrefillStore.setState({
     prefill: {
@@ -151,10 +154,11 @@ export function openTaskInput(
       initialMode: options.initialMode,
       folderRunEnvironment: options.folderRunEnvironment,
       reportAssociation: options.reportAssociation,
-      agentActionAttribution: options.agentActionAttribution,
-      requestId: hasTransientState
-        ? (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`)
-        : undefined,
+      agentAction:
+        options.agentActionAttribution && requestId
+          ? { requestId, attribution: options.agentActionAttribution }
+          : undefined,
+      requestId,
     },
   });
   // In the channels layout every entry point (⌘N, the command menu, the "+")

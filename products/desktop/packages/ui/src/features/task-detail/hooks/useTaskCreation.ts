@@ -95,6 +95,8 @@ interface UseTaskCreationOptions {
   sandboxEnvironmentId?: string;
   customImageId?: string;
   signalReportId?: string;
+  agentActionAttribution?: AgentActionAttribution;
+  agentActionRequestId?: string;
   channelContext?: string;
   channelContextPath?: string;
   submissionBlocked?: boolean;
@@ -210,6 +212,8 @@ export function useTaskCreation({
   sandboxEnvironmentId,
   customImageId,
   signalReportId,
+  agentActionAttribution,
+  agentActionRequestId,
   channelContext,
   channelContextPath,
   submissionBlocked = false,
@@ -287,6 +291,8 @@ export function useTaskCreation({
       const plainPromptText = contentToPlainText(content).trim();
       const serializedContent = contentToXml(content).trim();
       const filePaths = extractFilePaths(content);
+      const submittedAgentActionAttribution = agentActionAttribution;
+      const submittedAgentActionRequestId = agentActionRequestId;
 
       // Held for the whole submit, pre-flight awaits included, so a second
       // Enter lands after `canSubmitBase` has already gone false.
@@ -548,15 +554,17 @@ export function useTaskCreation({
             if (allowNoRepo && channelId) {
               useTaskRepositoryDraftStore.getState().clearDraft(channelId);
             }
-            const agentActionAttribution = useTaskInputPrefillStore
-              .getState()
-              .takeAgentActionAttribution();
+            if (submittedAgentActionRequestId) {
+              useTaskInputPrefillStore
+                .getState()
+                .consumeAgentAction(submittedAgentActionRequestId);
+            }
             void trackTaskCreated(
               input,
               selectedDirectory,
               hostClient,
               result.data.task.id,
-              agentActionAttribution,
+              submittedAgentActionAttribution,
             );
             // Repo-less channel tasks create no workspace row (the agent runs in
             // a scratch dir surfaced as a synthetic workspace), so the normal
@@ -638,6 +646,8 @@ export function useTaskCreation({
       sandboxEnvironmentId,
       customImageId,
       signalReportId,
+      agentActionAttribution,
+      agentActionRequestId,
       additionalDirectories,
       channelContext,
       channelContextPath,
