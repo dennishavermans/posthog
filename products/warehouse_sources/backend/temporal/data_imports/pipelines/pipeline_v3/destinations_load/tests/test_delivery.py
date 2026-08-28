@@ -77,7 +77,9 @@ class DeliveryTestCase(BaseTest):
     def _mark(self, team_id, schema_id, run_uuid, batch_index, destination_id=None) -> None:
         self._seen.add(f"{run_uuid}:{batch_index}:{destination_id}")
 
-    def _destination(self, name: str, type_: str = ExternalDataDestination.Type.REDSHIFT) -> ExternalDataDestination:
+    def _destination(
+        self, name: str, type_: str = str(ExternalDataDestination.Type.REDSHIFT)
+    ) -> ExternalDataDestination:
         return ExternalDataDestination.objects.for_team(self.team.pk).create(
             team_id=self.team.pk, type=type_, name=name, config={"table_name": "charges"}
         )
@@ -144,7 +146,7 @@ class TestDelivery(DeliveryTestCase):
         # would make the test depend on which uuid happened to sort first.
         last = max((a, b), key=lambda d: str(d.id))
         first = min((a, b), key=lambda d: str(d.id))
-        RecordingWriter.fail_for = {last.name}
+        RecordingWriter.fail_for = {str(last.name)}
 
         with self.assertRaises(delivery.DestinationDeliveryError):
             delivery.deliver_batch_to_destinations(signal)
