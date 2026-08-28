@@ -52,6 +52,17 @@ export const DEFAULT_FILTERS: DashboardsFilters = {
     folder: null,
 }
 
+export function hasDashboardFilters(filters: DashboardsFilters): boolean {
+    return Boolean(
+        filters.search ||
+        filters.pinned ||
+        filters.shared ||
+        (filters.createdBy !== 'All users' && filters.createdBy.length > 0) ||
+        filters.tags?.length ||
+        filters.folder != null
+    )
+}
+
 function moveTargetFor(dashboard: DashboardBasicType | undefined): FileSystemEntry | null {
     if (!dashboard?.file_system_id || !dashboard.file_system_path) {
         return null
@@ -336,15 +347,7 @@ export const dashboardsLogic = kea<dashboardsLogicType>([
     }),
 
     selectors({
-        isFiltering: [
-            (s) => [s.filters],
-            (filters: DashboardsFilters) => {
-                return Object.keys(filters).some((key) => {
-                    const filterKey = key as keyof DashboardsFilters
-                    return filters[filterKey] !== DEFAULT_FILTERS[filterKey]
-                })
-            },
-        ],
+        isFiltering: [(s) => [s.filters], (filters: DashboardsFilters) => hasDashboardFilters(filters)],
         filteredTags: [
             (s) => [s.tags, s.tagSearch],
             (tags: string[], search: string) => {

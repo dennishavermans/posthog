@@ -124,6 +124,7 @@ export function DashboardSavedViews(): JSX.Element | null {
         savedViewsLoading,
         savedViewsLoadError,
         savedViewsLoadMoreFailed,
+        activeSavedViewId,
     } = useValues(savedViewsLogic)
     const {
         loadSavedViews,
@@ -132,9 +133,9 @@ export function DashboardSavedViews(): JSX.Element | null {
         savedViewCreated,
         savedViewDeleted,
         savedViewUpdated,
+        setActiveSavedViewId,
     } = useActions(savedViewsLogic)
     const { user } = useValues(userLogic)
-    const [activeSavedViewId, setActiveSavedViewId] = useState<string | null>(null)
     const [updatingSavedView, setUpdatingSavedView] = useState(false)
     const activeSavedView = savedViews.find((view) => view.id === activeSavedViewId)
     const activeSavedViewHasUnsavedChanges =
@@ -255,7 +256,6 @@ export function DashboardSavedViews(): JSX.Element | null {
             await dashboardSavedViewsDestroy(teamId.toString(), view.id)
             if (teamId === teamLogic.values.currentTeamId) {
                 savedViewDeleted(view.id)
-                setActiveSavedViewId((activeId) => (activeId === view.id ? null : activeId))
                 lemonToast.success('Saved view deleted')
             }
         } catch (error) {

@@ -2,6 +2,7 @@ import { expectLogic } from 'kea-test-utils'
 
 import { FEATURE_FLAGS } from 'lib/constants'
 import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
+import { dashboardsLogic } from 'scenes/dashboard/dashboards/dashboardsLogic'
 
 import { initKeaTests } from '~/test/init'
 
@@ -101,6 +102,22 @@ describe('dashboardSavedViewsLogic', () => {
 
         await expectLogic(logic).toFinishAllListeners().toMatchValues({ dashboardSavedViewsEnabled: true })
         expect(dashboardSavedViewsList).toHaveBeenCalledTimes(2)
+
+        logic.unmount()
+    })
+
+    it('unselects the active saved view when the final filter is removed', async () => {
+        dashboardSavedViewsList.mockImplementation(async () => page([], null))
+        const logic = dashboardSavedViewsLogic({ teamId: 1 })
+        logic.mount()
+        await expectLogic(logic).toFinishAllListeners()
+        dashboardsLogic.actions.setFilters({ pinned: true, tags: ['product'] })
+        logic.actions.setActiveSavedViewId('private-1')
+
+        expectLogic(logic).toMatchValues({ activeSavedViewId: 'private-1' })
+        await expectLogic(logic, () => dashboardsLogic.actions.setFilters({ pinned: false, tags: [] }))
+            .toFinishAllListeners()
+            .toMatchValues({ activeSavedViewId: null })
 
         logic.unmount()
     })

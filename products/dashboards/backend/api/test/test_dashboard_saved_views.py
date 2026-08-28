@@ -113,7 +113,7 @@ class TestDashboardSavedViews(APIBaseTest):
             created_by=self.user,
         )
 
-        first_page = self.client.get(self.base_url, {"limit": 1, "scope": DashboardSavedView.Scope.PRIVATE})
+        first_page = self.client.get(self.base_url, {"limit": "1", "scope": "private"})
 
         assert first_page.status_code == status.HTTP_200_OK, first_page.json()
         assert first_page.json()["next"] is not None
@@ -153,6 +153,18 @@ class TestDashboardSavedViews(APIBaseTest):
         response = self.client.delete(f"{child_url}{saved_view_id}/")
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert not DashboardSavedView.all_teams.filter(id=saved_view_id).exists()
+
+    @patch("products.dashboards.backend.api.dashboard_saved_view.UserAccessControl")
+    def test_child_environment_authorizes_against_parent_project(self, user_access_control) -> None:
+        user_access_control.return_value.check_access_level_for_resource.return_value = True
+        child_team = Team.objects.create(
+            organization=self.organization, parent_team=self.team, name="Child environment"
+        )
+
+        response = self.client.get(f"/api/projects/{child_team.pk}/dashboard_saved_views/")
+
+        assert response.status_code == status.HTTP_200_OK, response.json()
+        user_access_control.assert_called_once_with(user=self.user, team=self.team)
 
     def test_project_member_can_list_saved_views(self) -> None:
         response = self.client.post(self.base_url, self._payload(), format="json")

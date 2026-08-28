@@ -1,6 +1,6 @@
 import json
 from collections.abc import Mapping
-from typing import Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict, cast
 
 from django.db import models, transaction
 from django.db.models import QuerySet
@@ -12,13 +12,16 @@ from rest_framework.pagination import CursorPagination
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.serializers import BaseSerializer
+from rest_framework.views import APIView
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.event_usage import report_user_action
 from posthog.helpers.trigram_search import MAX_SEARCH_LENGTH
+from posthog.models.team import Team
 from posthog.models.user import User
 
-from products.access_control.backend.facade.user_access_control import UserAccessControl
+from products.access_control.backend.facade.user_access_control import AccessControlLevel, UserAccessControl
 from products.dashboards.backend.feature_flags import dashboard_saved_views_enabled
 from products.dashboards.backend.models.dashboard import Dashboard
 from products.dashboards.backend.models.dashboard_saved_view import DashboardSavedView
@@ -212,21 +215,25 @@ class DashboardSavedViewPagination(CursorPagination):
 class DashboardSavedViewPermission(BasePermission):
     message = "You don't have permission to access dashboard saved views."
 
-    def has_permission(self, request: Request, view: "DashboardSavedViewViewSet") -> bool:
-        if not dashboard_saved_views_enabled(team=view.team):
+    @staticmethod
+    def _saved_views_team(view: APIView) -> Team:
+        viewset = cast("DashboardSavedViewViewSet", view)
+        return viewset.team.parent_team or viewset.team
+
+    def has_permission(self, request: Request, view: APIView) -> bool:
+        team = self._saved_views_team(view)
+        if not dashboard_saved_views_enabled(team=team):
             return False
-        access_level = "viewer" if request.method in SAFE_METHODS else "editor"
-        return UserAccessControl(user=cast(User, request.user), team=view.team).check_access_level_for_resource(
+        access_level: AccessControlLevel = "viewer" if request.method in SAFE_METHODS else "editor"
+        return UserAccessControl(user=cast(User, request.user), team=team).check_access_level_for_resource(
             "dashboard", access_level
         )
 
-    def has_object_permission(
-        self, request: Request, view: "DashboardSavedViewViewSet", obj: DashboardSavedView
-    ) -> bool:
-        access_level = "viewer" if request.method in SAFE_METHODS else "editor"
-        return UserAccessControl(user=cast(User, request.user), team=view.team).check_access_level_for_resource(
-            "dashboard", access_level
-        )
+    def has_object_permission(self, request: Request, view: APIView, obj: DashboardSavedView) -> bool:
+        access_level: AccessControlLevel = "viewer" if request.method in SAFE_METHODS else "editor"
+        return UserAccessControl(
+            user=cast(User, request.user), team=self._saved_views_team(view)
+        ).check_access_level_for_resource("dashboard", access_level)
 
 
 class DashboardSavedViewViewSet(
@@ -279,7 +286,8 @@ class DashboardSavedViewViewSet(
     def _should_skip_parents_filter(self) -> bool:
         return True
 
-    def perform_create(self, serializer: DashboardSavedViewWriteSerializer) -> None:
+    def perform_create(self, serializer: BaseSerializer[Any]) -> None:
+        serializer = cast(DashboardSavedViewWriteSerializer, serializer)
         instance = serializer.save(team_id=self.canonical_team_id, created_by=self.request.user)
         report_user_action(
             self.request.user,
@@ -296,7 +304,8 @@ class DashboardSavedViewViewSet(
             request=self.request,
         )
 
-    def perform_update(self, serializer: DashboardSavedViewWriteSerializer) -> None:
+    def perform_update(self, serializer: BaseSerializer[Any]) -> None:
+        serializer = cast(DashboardSavedViewWriteSerializer, serializer)
         existing_view = cast(DashboardSavedView, serializer.instance)
         try:
             with transaction.atomic():
