@@ -139,6 +139,10 @@ def list_run_artifacts(team_id: int, run_id: UUID) -> list[WizardRunArtifactDTO]
     return artifacts.list_run_artifacts(team_id, run_id)
 
 
+def get_git_diff_artifact_content(team_id: int, run_id: UUID, artifact_id: UUID) -> bytes:
+    return artifacts.get_git_diff_artifact_content(team_id, run_id, artifact_id)
+
+
 def validate_git_repository(repository: str) -> None:
     run_service.validate_git_repository_name(repository)
 

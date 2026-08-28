@@ -5,14 +5,16 @@ from django.conf import settings
 
 from posthog.storage import object_storage
 
+from products.wizard.backend.facade.config import WIZARD_GIT_DIFF_CONTENT_TYPE
 from products.wizard.backend.facade.contracts import (
     CreatePullRequestArtifactInput,
     WizardRunArtifactDTO,
     WizardRunGitDiffArtifactDTO,
     WizardRunPullRequestArtifactDTO,
 )
+from products.wizard.backend.facade.errors import WizardRunArtifactNotFoundError
 from products.wizard.backend.logic.artifacts import store
-from products.wizard.backend.logic.artifacts.config import GIT_DIFF_CONTENT_TYPE, MAX_GIT_DIFF_BYTES
+from products.wizard.backend.logic.artifacts.config import MAX_GIT_DIFF_BYTES
 from products.wizard.backend.logic.runs import store as run_store
 from products.wizard.backend.observability.service import wizard_observability as run_observability
 
@@ -33,7 +35,7 @@ def create_git_diff_artifact(team_id: int, run_id: UUID, content: bytes) -> Wiza
     object_storage.write(
         storage_path,
         content,
-        extras={"ContentType": GIT_DIFF_CONTENT_TYPE},
+        extras={"ContentType": WIZARD_GIT_DIFF_CONTENT_TYPE},
         bucket=settings.WIZARD_RUN_ARTIFACTS_S3_BUCKET,
     )
 
@@ -72,6 +74,23 @@ def list_run_artifacts(team_id: int, run_id: UUID) -> list[WizardRunArtifactDTO]
     run = run_store.get_run(team_id, run_id)
 
     return store.list_artifacts(team_id, run.id)
+
+
+def get_git_diff_artifact_content(team_id: int, run_id: UUID, artifact_id: UUID) -> bytes:
+    run = run_store.get_run(team_id, run_id)
+    storage_path = store.get_git_diff_storage_path(team_id, run.id, artifact_id)
+    if storage_path is None:
+        raise WizardRunArtifactNotFoundError
+
+    content = object_storage.read_bytes(
+        storage_path,
+        bucket=settings.WIZARD_RUN_ARTIFACTS_S3_BUCKET,
+        missing_ok=True,
+    )
+    if content is None:
+        raise WizardRunArtifactNotFoundError
+
+    return content
 
 
 def _diff_line_counts(content: bytes) -> tuple[int, int]:

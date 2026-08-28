@@ -3,6 +3,7 @@ from uuid import UUID
 from posthog.test.base import APIBaseTest
 from unittest.mock import patch
 
+from django.conf import settings
 from django.core.cache import cache
 from django.test import override_settings
 
@@ -339,6 +340,7 @@ class TestWizardRunViewSet(APIBaseTest):
             self._url(),
             self._url(str(run.id)),
             self._url(f"{run.id}/artifacts/"),
+            self._url(f"{run.id}/artifacts/00000000-0000-0000-0000-000000000000/content/"),
         ):
             with self.subTest(url=url):
                 response = self.client.get(url)
@@ -464,6 +466,71 @@ class TestWizardRunViewSet(APIBaseTest):
         self.assertEqual(response.json()["count"], 1)
         self.assertEqual(response.json()["results"][0]["run_id"], created["id"])
         self.assertEqual(response.json()["results"][0]["artifact_type"], "git_diff")
+
+    def test_get_git_diff_content(self) -> None:
+        created = self.client.post(
+            self._url(),
+            {
+                "program_id": "posthog-integration",
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "example-project"},
+            },
+            format="json",
+        ).json()
+        diff = b"diff --git a/app.py b/app.py\n-old\n+new\n"
+
+        with (
+            patch("products.wizard.backend.logic.artifacts.service.object_storage.write"),
+            patch(
+                "products.wizard.backend.logic.artifacts.service.object_storage.read_bytes", return_value=diff
+            ) as read_bytes,
+        ):
+            artifact = wizard_facade.create_git_diff_artifact(self.team.id, UUID(created["id"]), diff)
+            assert artifact is not None
+
+            response = self.client.get(self._url(f"{created['id']}/artifacts/{artifact.id}/content/"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.content, diff)
+        self.assertEqual(response["Content-Type"], "text/x-diff; charset=utf-8")
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        read_bytes.assert_called_once_with(
+            f"projects/{self.team.id}/wizard-runs/{created['id']}/artifacts/git-diff.patch",
+            bucket=settings.WIZARD_RUN_ARTIFACTS_S3_BUCKET,
+            missing_ok=True,
+        )
+
+    def test_get_git_diff_content_is_scoped_to_nested_run(self) -> None:
+        first = self.client.post(
+            self._url(),
+            {
+                "program_id": "posthog-integration",
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "first-project"},
+            },
+            format="json",
+        ).json()
+        second = self.client.post(
+            self._url(),
+            {
+                "program_id": "posthog-integration",
+                "environment": "local",
+                "workspace": {"type": "local_folder", "project_name": "second-project"},
+            },
+            format="json",
+        ).json()
+
+        with (
+            patch("products.wizard.backend.logic.artifacts.service.object_storage.write"),
+            patch("products.wizard.backend.logic.artifacts.service.object_storage.read_bytes") as read_bytes,
+        ):
+            artifact = wizard_facade.create_git_diff_artifact(self.team.id, UUID(first["id"]), b"diff")
+            assert artifact is not None
+
+            response = self.client.get(self._url(f"{second['id']}/artifacts/{artifact.id}/content/"))
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        read_bytes.assert_not_called()
 
     def test_list_pull_request_artifact(self) -> None:
         created = self.client.post(

@@ -1,8 +1,12 @@
 from typing import cast
 from uuid import UUID
 
+from django.http import HttpResponse
+
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -10,7 +14,8 @@ from rest_framework.response import Response
 from posthog.api.routing import TeamAndOrgViewSetMixin
 
 from products.wizard.backend.facade import api as wizard_facade
-from products.wizard.backend.facade.errors import WizardRunNotFoundError
+from products.wizard.backend.facade.config import WIZARD_GIT_DIFF_CONTENT_TYPE
+from products.wizard.backend.facade.errors import WizardRunArtifactNotFoundError, WizardRunNotFoundError
 from products.wizard.backend.presentation.artifacts.pagination import WizardRunArtifactPagination
 from products.wizard.backend.presentation.artifacts.serializers import (
     WizardRunArtifactSchema,
@@ -24,7 +29,7 @@ from products.wizard.backend.presentation.runs.serializers import WizardRunError
 class WizardRunArtifactViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
     permission_classes = [WizardRunSessionAuthenticationRequired]
     scope_object = "wizard_session"
-    scope_object_read_actions = ["list"]
+    scope_object_read_actions = ["list", "content"]
     http_method_names = ["get", "head", "options"]
     pagination_class = WizardRunArtifactPagination
     serializer_class = WizardRunArtifactSerializer
@@ -50,5 +55,32 @@ class WizardRunArtifactViewSet(TeamAndOrgViewSetMixin, viewsets.GenericViewSet):
 
         return self.get_paginated_response([serialize_wizard_run_artifact(artifact) for artifact in page])
 
+    @extend_schema(
+        operation_id="wizard_runs_artifacts_content_retrieve",
+        responses={
+            (200, "text/x-diff"): OpenApiTypes.STR,
+            404: OpenApiResponse(response=WizardRunErrorSerializer),
+        },
+        description="Get the unified git diff stored for a Wizard run artifact.",
+    )
+    @action(detail=True, methods=["get"], pagination_class=None)
+    def content(self, request: Request, *args: object, **kwargs: object) -> HttpResponse:
+        try:
+            content = wizard_facade.get_git_diff_artifact_content(
+                self.team_id,
+                self._run_id(),
+                self._artifact_id(),
+            )
+        except (WizardRunArtifactNotFoundError, WizardRunNotFoundError):
+            raise NotFound("No git diff artifact was found for this Wizard run.")
+
+        response = HttpResponse(content, content_type=WIZARD_GIT_DIFF_CONTENT_TYPE)
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
     def _run_id(self) -> UUID:
         return UUID(cast(str, self.kwargs["parent_lookup_run_id"]))
+
+    def _artifact_id(self) -> UUID:
+        return UUID(cast(str, self.kwargs["pk"]))

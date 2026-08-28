@@ -69,3 +69,13 @@ def upsert_pull_request(
 def list_artifacts(team_id: int, run_id: UUID) -> list[WizardRunArtifactDTO]:
     artifacts = WizardRunArtifact.objects.for_team(team_id).filter(run_id=run_id).order_by("created_at", "id")
     return [artifact_from_record(artifact) for artifact in artifacts]
+
+
+def get_git_diff_storage_path(team_id: int, run_id: UUID, artifact_id: UUID) -> str | None:
+    storage_path = (
+        WizardRunArtifact.objects.for_team(team_id)
+        .filter(id=artifact_id, run_id=run_id, type=WizardRunArtifactType.GIT_DIFF.value)
+        .values_list("storage_path", flat=True)
+        .first()
+    )
+    return storage_path if isinstance(storage_path, str) else None

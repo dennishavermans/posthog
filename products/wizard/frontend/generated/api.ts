@@ -180,6 +180,25 @@ export const wizardRunsArtifactsList = async (
     })
 }
 
+export const getWizardRunsArtifactsContentRetrieveUrl = (projectId: string, runId: string, id: string) => {
+    return `/api/projects/${projectId}/wizard/runs/${runId}/artifacts/${id}/content/`
+}
+
+/**
+ * Get the unified git diff stored for a Wizard run artifact.
+ */
+export const wizardRunsArtifactsContentRetrieve = async (
+    projectId: string,
+    runId: string,
+    id: string,
+    options?: RequestInit
+): Promise<string> => {
+    return apiMutator<string>(getWizardRunsArtifactsContentRetrieveUrl(projectId, runId, id), {
+        ...options,
+        method: 'GET',
+    })
+}
+
 export const getWizardSessionsListUrl = (projectId: string, params?: WizardSessionsListParams) => {
     const normalizedParams = new URLSearchParams()
 

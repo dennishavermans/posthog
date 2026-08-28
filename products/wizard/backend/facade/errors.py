@@ -38,6 +38,10 @@ class WizardRunNotFoundError(Exception):
     pass
 
 
+class WizardRunArtifactNotFoundError(Exception):
+    pass
+
+
 class WizardRunIdempotencyConflictError(Exception):
     pass
 
