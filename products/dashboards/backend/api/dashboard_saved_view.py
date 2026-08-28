@@ -1,6 +1,8 @@
-from typing import Any
+from collections.abc import Mapping
+from typing import Literal, TypedDict, cast
 
 from django.db import models
+from django.db.models import QuerySet
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_field
@@ -13,6 +15,7 @@ from rest_framework.response import Response
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.event_usage import report_user_action
+from posthog.models.user import User
 
 from products.access_control.backend.facade.user_access_control import UserAccessControl
 from products.dashboards.backend.feature_flags import dashboard_saved_views_enabled
@@ -22,7 +25,16 @@ from products.dashboards.backend.models.dashboard_saved_view import DashboardSav
 SAVED_VIEW_FILTER_KEYS = {"search", "createdBy", "pinned", "shared", "tags", "folder"}
 
 
-def saved_view_filter_properties(filters: dict[str, Any]) -> dict[str, bool | int]:
+class DashboardSavedViewFilters(TypedDict, total=False):
+    search: str
+    createdBy: list[int] | Literal["All users"]
+    pinned: bool
+    shared: bool
+    tags: list[str]
+    folder: str | None
+
+
+def saved_view_filter_properties(filters: Mapping[str, object]) -> dict[str, bool | int]:
     tags = filters.get("tags", [])
     tag_count = len(tags) if isinstance(tags, list) else 0
     has_search = bool(filters.get("search"))
@@ -45,7 +57,7 @@ def saved_view_filter_properties(filters: dict[str, Any]) -> dict[str, bool | in
     }
 
 
-def has_saved_view_filters(filters: dict[str, Any]) -> bool:
+def has_saved_view_filters(filters: Mapping[str, object]) -> bool:
     return any(
         saved_view_filter_properties(filters)[property]
         for property in [
@@ -86,31 +98,32 @@ class DashboardSavedViewWriteSerializer(serializers.ModelSerializer):
         model = DashboardSavedView
         fields = ["name", "filters", "scope"]
 
-    def validate_filters(self, value: dict) -> dict:
+    def validate_filters(self, value: object) -> DashboardSavedViewFilters:
         if not isinstance(value, dict):
             raise serializers.ValidationError("Filters must be an object")
-        unsupported_keys = value.keys() - SAVED_VIEW_FILTER_KEYS
+        filters = cast(dict[str, object], value)
+        unsupported_keys = filters.keys() - SAVED_VIEW_FILTER_KEYS
         if unsupported_keys:
             raise serializers.ValidationError("Filters contain unsupported fields.")
-        if "search" in value and not isinstance(value["search"], str):
+        if "search" in filters and not isinstance(filters["search"], str):
             raise serializers.ValidationError("Search must be a string.")
-        if "createdBy" in value and value["createdBy"] != "All users":
-            creators = value["createdBy"]
+        if "createdBy" in filters and filters["createdBy"] != "All users":
+            creators = filters["createdBy"]
             if not isinstance(creators, list) or any(type(creator) is not int for creator in creators):
                 raise serializers.ValidationError("Creators must be a list of user IDs.")
-        if "pinned" in value and not isinstance(value["pinned"], bool):
+        if "pinned" in filters and not isinstance(filters["pinned"], bool):
             raise serializers.ValidationError("Pinned must be true or false.")
-        if "shared" in value and not isinstance(value["shared"], bool):
+        if "shared" in filters and not isinstance(filters["shared"], bool):
             raise serializers.ValidationError("Shared must be true or false.")
-        if "tags" in value and (
-            not isinstance(value["tags"], list) or any(not isinstance(tag, str) for tag in value["tags"])
+        if "tags" in filters and (
+            not isinstance(filters["tags"], list) or any(not isinstance(tag, str) for tag in filters["tags"])
         ):
             raise serializers.ValidationError("Tags must be a list of strings.")
-        if "folder" in value and value["folder"] is not None and not isinstance(value["folder"], str):
+        if "folder" in filters and filters["folder"] is not None and not isinstance(filters["folder"], str):
             raise serializers.ValidationError("Folder must be a string or null.")
-        if not has_saved_view_filters(value):
+        if not has_saved_view_filters(filters):
             raise serializers.ValidationError("Add at least one filter before saving a view.")
-        return value
+        return cast(DashboardSavedViewFilters, filters)
 
 
 class DashboardSavedViewSerializer(DashboardSavedViewWriteSerializer):
@@ -129,17 +142,19 @@ class DashboardSavedViewPagination(CursorPagination):
 class DashboardSavedViewPermission(BasePermission):
     message = "You don't have permission to access dashboard saved views."
 
-    def has_permission(self, request: Request, view) -> bool:
+    def has_permission(self, request: Request, view: "DashboardSavedViewViewSet") -> bool:
         if not dashboard_saved_views_enabled(team=view.team):
             return False
         access_level = "viewer" if request.method in SAFE_METHODS else "editor"
-        return UserAccessControl(user=request.user, team=view.team).check_access_level_for_resource(
+        return UserAccessControl(user=cast(User, request.user), team=view.team).check_access_level_for_resource(
             "dashboard", access_level
         )
 
-    def has_object_permission(self, request: Request, view, obj: DashboardSavedView) -> bool:
+    def has_object_permission(
+        self, request: Request, view: "DashboardSavedViewViewSet", obj: DashboardSavedView
+    ) -> bool:
         access_level = "viewer" if request.method in SAFE_METHODS else "editor"
-        return UserAccessControl(user=request.user, team=view.team).check_access_level_for_resource(
+        return UserAccessControl(user=cast(User, request.user), team=view.team).check_access_level_for_resource(
             "dashboard", access_level
         )
 
@@ -155,10 +170,10 @@ class DashboardSavedViewViewSet(
     scope_object = "INTERNAL"
     permission_classes = [DashboardSavedViewPermission]
     pagination_class = DashboardSavedViewPagination
-    queryset = DashboardSavedView.all_teams.all()
+    queryset: QuerySet[DashboardSavedView] = DashboardSavedView.all_teams.all()
     serializer_class = DashboardSavedViewSerializer
 
-    def get_serializer_class(self):
+    def get_serializer_class(self) -> type[DashboardSavedViewWriteSerializer | DashboardSavedViewSerializer]:
         if self.action == "create":
             return DashboardSavedViewWriteSerializer
         return DashboardSavedViewSerializer
@@ -166,24 +181,24 @@ class DashboardSavedViewViewSet(
     @extend_schema(
         request=DashboardSavedViewWriteSerializer, responses={status.HTTP_201_CREATED: DashboardSavedViewSerializer}
     )
-    def create(self, request: Request, *args, **kwargs) -> Response:
-        serializer = self.get_serializer(data=request.data)
+    def create(self, request: Request, *args: object, **kwargs: object) -> Response:
+        serializer = DashboardSavedViewWriteSerializer(data=request.data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         response_serializer = DashboardSavedViewSerializer(serializer.instance, context=self.get_serializer_context())
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
-    def safely_get_queryset(self, queryset):
+    def safely_get_queryset(self, queryset: QuerySet[DashboardSavedView]) -> QuerySet[DashboardSavedView]:
         return (
             queryset.filter(team_id=self.team.id)
             .filter(
                 models.Q(scope=DashboardSavedView.Scope.TEAM)
-                | models.Q(scope=DashboardSavedView.Scope.PRIVATE, created_by=self.request.user)
+                | models.Q(scope=DashboardSavedView.Scope.PRIVATE, created_by=cast(User, self.request.user))
             )
             .select_related("created_by")
         )
 
-    def perform_create(self, serializer):
+    def perform_create(self, serializer: DashboardSavedViewWriteSerializer) -> None:
         instance = serializer.save(team=self.team, created_by=self.request.user)
         report_user_action(
             self.request.user,
@@ -191,16 +206,16 @@ class DashboardSavedViewViewSet(
             {
                 "saved_view_id": str(instance.id),
                 "scope": instance.scope,
-                **saved_view_filter_properties(instance.filters),
-                **saved_view_creator_properties(team_id=self.team.id, user_id=self.request.user.id),
+                **saved_view_filter_properties(cast(DashboardSavedViewFilters, instance.filters)),
+                **saved_view_creator_properties(team_id=self.team.id, user_id=cast(User, self.request.user).id),
             },
             team=self.team,
             request=self.request,
         )
 
     def perform_update(self, serializer: DashboardSavedViewWriteSerializer) -> None:
-        existing_view = serializer.instance
-        scope = serializer.validated_data.get("scope")
+        existing_view = cast(DashboardSavedView, serializer.instance)
+        scope = cast(DashboardSavedView.Scope | None, serializer.validated_data.get("scope"))
         if (
             scope is not None
             and scope != existing_view.scope
@@ -216,13 +231,13 @@ class DashboardSavedViewViewSet(
                 "saved_view_id": str(instance.id),
                 "scope": instance.scope,
                 "changed_fields": sorted(serializer.validated_data.keys()),
-                **saved_view_filter_properties(instance.filters),
+                **saved_view_filter_properties(cast(DashboardSavedViewFilters, instance.filters)),
             },
             team=self.team,
             request=self.request,
         )
 
-    def perform_destroy(self, instance):
+    def perform_destroy(self, instance: DashboardSavedView) -> None:
         report_user_action(
             self.request.user,
             "dashboard saved view deleted",
