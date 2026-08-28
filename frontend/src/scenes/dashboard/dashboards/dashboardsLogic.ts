@@ -528,9 +528,9 @@ export const dashboardsLogic = kea<dashboardsLogicType>([
                 actions.setCurrentTab(tab)
             }
 
-            const hasFilterParams = ['created_by', 'pinned', 'shared', 'tags', 'folder', 'search'].some(
-                (key) => key in searchParams
-            )
+            const hasFilterParams =
+                requestedTab === DashboardsTab.Pinned ||
+                ['created_by', 'pinned', 'shared', 'tags', 'folder', 'search'].some((key) => key in searchParams)
             if (tab === DashboardsTab.Yours && values.filters.createdBy !== DEFAULT_FILTERS.createdBy) {
                 actions.setFilters({ createdBy: DEFAULT_FILTERS.createdBy })
             }

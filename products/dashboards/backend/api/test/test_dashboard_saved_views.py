@@ -40,25 +40,25 @@ class TestDashboardSavedViews(APIBaseTest):
         response = self.client.post(self.base_url, self._payload(filters={}), format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.json()["filters"] == ["Add at least one filter before saving a view."]
+        assert response.json()["detail"] == "Add at least one filter before saving a view."
 
     def test_rejects_saved_views_with_an_empty_creator_filter(self) -> None:
         response = self.client.post(self.base_url, self._payload(filters={"createdBy": []}), format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.json()["filters"] == ["Add at least one filter before saving a view."]
+        assert response.json()["detail"] == "Add at least one filter before saving a view."
 
     def test_rejects_saved_views_with_malformed_filters(self) -> None:
         response = self.client.post(self.base_url, self._payload(filters={"tags": "product"}), format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.json()["filters"] == ["Tags must be a list of strings."]
+        assert response.json()["detail"] == "Tags must be a list of strings."
 
     def test_rejects_saved_views_with_oversized_filters(self) -> None:
         response = self.client.post(self.base_url, self._payload(filters={"search": "a" * 201}), format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.json()["filters"] == ["Search must be 200 characters or fewer."]
+        assert response.json()["detail"] == "Search must be 200 characters or fewer."
 
     def test_accepts_long_folder_paths(self) -> None:
         response = self.client.post(self.base_url, self._payload(filters={"folder": "a" * 201}), format="json")
@@ -72,7 +72,7 @@ class TestDashboardSavedViews(APIBaseTest):
         response = self.client.patch(f"{self.base_url}{response.json()['id']}/", {"filters": {}}, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.json()["filters"] == ["Add at least one filter before saving a view."]
+        assert response.json()["detail"] == "Add at least one filter before saving a view."
 
     def test_list_only_includes_saved_views_for_current_project(self) -> None:
         response = self.client.post(self.base_url, self._payload(), format="json")
@@ -167,7 +167,7 @@ class TestDashboardSavedViews(APIBaseTest):
         user_access_control.assert_called_once_with(user=self.user, team=self.team)
 
     def test_project_member_can_list_saved_views(self) -> None:
-        response = self.client.post(self.base_url, self._payload(), format="json")
+        response = self.client.post(self.base_url, self._payload(scope="team"), format="json")
         assert response.status_code == status.HTTP_201_CREATED, response.json()
 
         member = self._create_user("member@example.com", level=OrganizationMembership.Level.MEMBER)

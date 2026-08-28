@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import type { DashboardListSavedView } from './dashboardSavedViewsLogic'
@@ -70,12 +69,14 @@ export default meta
 type Story = StoryObj<typeof SavedDashboardViewsPicker>
 
 const openPicker: Story['play'] = async ({ canvasElement }) => {
-    await userEvent.click(await within(canvasElement).findByRole('button', { name: 'Saved views' }))
-    await waitFor(() => {
-        if (!document.querySelector('.Popover')) {
-            throw new Error('Saved views picker did not open')
-        }
-    })
+    const trigger = canvasElement.querySelector<HTMLButtonElement>('button[aria-label="Saved views"]')
+    if (!trigger) {
+        throw new Error('Saved views picker trigger not found')
+    }
+    await userEvent.click(trigger)
+    if (!document.querySelector('.Popover')) {
+        throw new Error('Saved views picker did not open')
+    }
 }
 
 export const Default: Story = {
@@ -108,6 +109,12 @@ export const Loading: Story = {
         savedViews: [],
         loading: true,
         defaultOpen: true,
+    },
+    parameters: {
+        testOptions: {
+            snapshotTargetSelector: '.Popover',
+            waitForLoadersToDisappear: false,
+        },
     },
 }
 
