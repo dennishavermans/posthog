@@ -16,7 +16,7 @@ export interface SavedDashboardViewsPickerProps {
     loadingMore: boolean
     updatingSavedView: boolean
     loadError: boolean
-    editDisabledReason: string | null
+    canEdit: boolean
     defaultOpen?: boolean
     onSaveAsNewView: () => void
     onSaveChanges: (view: DashboardListSavedView) => void
@@ -39,7 +39,7 @@ export function SavedDashboardViewsPicker({
     loadingMore,
     updatingSavedView,
     loadError,
-    editDisabledReason,
+    canEdit,
     defaultOpen = false,
     onSaveAsNewView,
     onSaveChanges,
@@ -68,7 +68,7 @@ export function SavedDashboardViewsPicker({
             onClickOutside={closePicker}
             overlay={
                 <div className="flex w-72 flex-col py-1">
-                    {!editDisabledReason && activeSavedViewHasUnsavedChanges && activeSavedView && (
+                    {canEdit && activeSavedViewHasUnsavedChanges && activeSavedView && (
                         <LemonButton
                             fullWidth
                             size="small"
@@ -76,7 +76,6 @@ export function SavedDashboardViewsPicker({
                             className="h-auto justify-start rounded-none px-2 py-2 text-left"
                             icon={<IconCheck className="text-primary" />}
                             loading={updatingSavedView}
-                            disabledReason={editDisabledReason}
                             onClick={() => onSaveChanges(activeSavedView)}
                         >
                             <span className="flex flex-col items-start gap-1">
@@ -87,7 +86,7 @@ export function SavedDashboardViewsPicker({
                             </span>
                         </LemonButton>
                     )}
-                    {!editDisabledReason && isFiltering && (
+                    {canEdit && isFiltering && (
                         <LemonButton
                             size="small"
                             fullWidth
@@ -195,7 +194,7 @@ export function SavedDashboardViewsPicker({
                                     </LemonButton>
                                 )}
                             </div>
-                            {!editDisabledReason && (
+                            {canEdit && (
                                 <div className="border-t">
                                     <LemonButton
                                         fullWidth
@@ -232,9 +231,7 @@ export function SavedDashboardViewsPicker({
             >
                 <span className="flex items-center gap-1">
                     <span>{activeSavedView?.name || 'Saved views'}</span>
-                    {!editDisabledReason && activeSavedViewHasUnsavedChanges && (
-                        <span className="text-warning">Unsaved</span>
-                    )}
+                    {canEdit && activeSavedViewHasUnsavedChanges && <span className="text-warning">Unsaved</span>}
                 </span>
             </LemonButton>
         </Popover>

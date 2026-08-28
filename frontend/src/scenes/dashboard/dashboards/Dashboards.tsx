@@ -484,7 +484,7 @@ export function Dashboards(): JSX.Element {
                             loadingMore={loadingMoreSavedViews}
                             updatingSavedView={updatingSavedView}
                             loadError={savedViewsLoadError}
-                            editDisabledReason={savedViewsEditDisabledReason}
+                            canEdit={!savedViewsEditDisabledReason}
                             onSaveAsNewView={saveView}
                             onSaveChanges={(view) => void updateSavedView(view)}
                             onSelectView={(view) => {
