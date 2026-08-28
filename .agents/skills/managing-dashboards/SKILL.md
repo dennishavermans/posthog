@@ -67,7 +67,7 @@ State these decisions before implementation.
 8. Define cache, refresh, query, and failure behavior.
 9. If templates apply, define scope, portability, copy semantics, and later edits.
 10. Define lifecycle, API, streaming, quota, audit, and project-tree effects.
-11. For a new API, decide whether it needs MCP tools. Record enabled operations, required scopes, or an explicit no.
+11. For a new API, add MCP tools for its supported operations. Exclude an operation only with a documented reason. Record required scopes.
 
 Use this checklist as a design gate. Read the linked reference when an item applies.
 

@@ -36,23 +36,20 @@ Dashboard list behavior is a separate contract from dashboard detail.
 
 ### Persisted list state
 
-- Treat persisted list state as its own resource, not dashboard metadata.
-- Persist only normalized values that the list can apply. Do not persist temporary UI state.
-- Use stable ordering and bounded pagination. If a picker loads all rows, follow the API `next` link until complete.
-- Render controls only on compatible list surfaces.
+- Store persisted list configuration separately from dashboard metadata.
+- Persist only values that reconstruct the list. Do not persist temporary UI state.
 
 ## API, schema, and MCP contracts
 
-Dashboard behavior has REST and generated frontend consumers. It can also have MCP consumers.
+Dashboard behavior has REST, generated frontend, and MCP consumers.
 
 1. Add serializer schema annotations for every new request or response field.
 2. Run `hogli build:openapi` after API contract changes.
-3. Decide whether each new operation needs MCP support. Record an explicit no when it does not.
-4. Add enabled operations to `products/dashboards/mcp/tools.yaml` with the required scopes and destructive annotations.
-5. Regenerate MCP code when the OpenAPI operation or tool definition changes.
-6. Check required API scopes. Dashboard reads, writes, and query execution use different scopes.
-7. Keep one-off filter and variable overrides non-persistent unless the endpoint explicitly persists them.
-8. Keep shared-token rules. Shared requests ignore dashboard filter and variable overrides.
+3. Define MCP operations in `products/dashboards/mcp/tools.yaml`. Include required scopes and destructive annotations.
+4. Regenerate MCP code when the OpenAPI operation or tool definition changes.
+5. Check required API scopes. Dashboard reads, writes, and query execution use different scopes.
+6. Keep one-off filter and variable overrides non-persistent unless the endpoint explicitly persists them.
+7. Keep shared-token rules. Shared requests ignore dashboard filter and variable overrides.
 
 Test REST and MCP behavior separately. An MCP response can intentionally omit fields that the REST endpoint returns.
 
@@ -77,6 +74,7 @@ Check limits before you add a path that creates, loads, or runs dashboard work.
 
 - Dashboard creation uses `LimitKey.MAX_DASHBOARDS_PER_TEAM`.
 - Public and embedded access must not bypass quotas or product access checks.
+- Use paginated loading by default. Load all rows only when the result is bounded and the feature requires it.
 - Bound request payloads, tile IDs, filter sizes, and pagination before they reach query execution.
 
 Read `manage-dashboard-widgets` for widget-specific limits, gates, and throttles.
