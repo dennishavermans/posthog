@@ -307,4 +307,3 @@ class DashboardSavedViewViewSet(
             team=self.team,
             request=self.request,
         )
-        instance.delete()
