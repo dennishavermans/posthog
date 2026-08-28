@@ -6,6 +6,7 @@ import { aiObservabilityEmptyState } from 'products/ai_observability/frontend/em
 import { llmPromptsEmptyState } from 'products/ai_observability/frontend/emptyState/llmPromptsEmptyState'
 import { webScriptsEmptyState } from 'products/cdp/frontend/emptyState/webScriptsEmptyState'
 import { supportEmptyState } from 'products/conversations/frontend/emptyState/supportEmptyState'
+import { dataWarehouseEmptyState } from 'products/data_warehouse/frontend/emptyState/dataWarehouseEmptyState'
 import { earlyAccessFeaturesEmptyState } from 'products/early_access_features/frontend/emptyState/earlyAccessFeaturesEmptyState'
 import { endpointsEmptyState } from 'products/endpoints/frontend/emptyState/endpointsEmptyState'
 import { errorTrackingEmptyState } from 'products/error_tracking/frontend/emptyState/errorTrackingEmptyState'
@@ -244,4 +245,19 @@ export const WebVitalsWaitingForData: ProductEmptyStateStory = productEmptyState
     webVitalsEmptyState,
     'waiting-for-data',
     { mocks: webVitalsMocks }
+)
+
+// Data warehouse detection lists sources and tables on mount - answer "none yet".
+export const DataWarehouseNeedsSetup: ProductEmptyStateStory = productEmptyStateStory(
+    dataWarehouseEmptyState,
+    'needs-setup',
+    {
+        mocks: {
+            get: {
+                // nosemgrep: no-environments-api-urls-frontend -- both APIs are env-scoped, so the msw mocks must match /api/environments to intercept them
+                '/api/environments/:team_id/external_data_sources/': [200, { results: [] }],
+                '/api/environments/:team_id/warehouse_tables/': [200, { results: [] }],
+            },
+        },
+    }
 )
