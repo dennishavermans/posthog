@@ -1,7 +1,7 @@
 import { useActions, useValues } from 'kea'
 import isEqual from 'lodash/isEqual'
 import posthog from 'posthog-js'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 
 import * as chartPng from '@posthog/brand/hoggies/png/chart'
 import { LemonButton, LemonDialog, LemonInput, LemonTag, lemonToast } from '@posthog/lemon-ui'
@@ -47,14 +47,18 @@ import { AccessControlLevel, AccessControlResourceType } from '~/types'
 import {
     dashboardSavedViewsCreate,
     dashboardSavedViewsDestroy,
-    dashboardSavedViewsList,
     dashboardSavedViewsPartialUpdate,
 } from 'products/dashboards/frontend/generated/api'
 import type {
-    DashboardSavedViewApi,
     PatchedDashboardSavedViewApi,
     DashboardSavedViewWriteApiFilters,
 } from 'products/dashboards/frontend/generated/api.schemas'
+import {
+    dashboardSavedViewsLogic,
+    DashboardListSavedView,
+    DashboardSavedViewScope,
+    loadDashboardSavedViews,
+} from 'products/dashboards/frontend/saved-views/dashboardSavedViewsLogic'
 import { SavedDashboardViewsPicker } from 'products/dashboards/frontend/saved-views/SavedDashboardViewsPicker'
 
 import { DashboardsTableContainer } from './DashboardsTable'
@@ -64,12 +68,6 @@ import { FeaturedTemplatesChooser } from './templates/FeaturedTemplatesChooser'
 const HedgehogChart = pngHoggie(chartPng)
 
 const DASHBOARD_DOCS_URL = 'https://posthog.com/docs/product-analytics/dashboards'
-
-export type DashboardListSavedView = Omit<DashboardSavedViewApi, 'filters'> & {
-    filters: DashboardsFilters
-}
-
-export type DashboardSavedViewScope = NonNullable<DashboardListSavedView['scope']>
 
 function savedViewFilterProperties(filters: DashboardsFilters): Record<string, boolean | number> {
     const tagCount = filters.tags?.length ?? 0
@@ -89,20 +87,6 @@ function savedViewFilterProperties(filters: DashboardsFilters): Record<string, b
         is_pinned: isPinned,
         is_shared: isShared,
         active_filter_count: [hasSearch, hasFolder, hasTags, hasCreator, isPinned, isShared].filter(Boolean).length,
-    }
-}
-
-export interface DashboardSavedViewsPage {
-    views: DashboardListSavedView[]
-    nextCursor: string | null
-}
-
-async function loadDashboardSavedViews(projectId: string, cursor?: string): Promise<DashboardSavedViewsPage> {
-    const response = await dashboardSavedViewsList(projectId, { limit: 100, cursor })
-
-    return {
-        views: response.results.map((view) => view as unknown as DashboardListSavedView),
-        nextCursor: response.next ? new URL(response.next).searchParams.get('cursor') : null,
     }
 }
 
@@ -167,20 +151,21 @@ export function Dashboards(): JSX.Element {
     const { dashboards, currentTab, filters, isFiltering } = useValues(dashboardsLogic)
     const { selectableMembers } = useValues(membersLogic)
     const { currentTeamId } = useValues(teamLogic)
+    const savedViewsLogic = dashboardSavedViewsLogic({ teamId: currentTeamId })
+    const { dashboardSavedViewsEnabled, savedViews, savedViewsNextCursor, loadingMoreSavedViews, savedViewsLoadError } =
+        useValues(savedViewsLogic)
+    const {
+        loadSavedViews,
+        loadMoreSavedViews,
+        loadMoreSavedViewsSuccess,
+        savedViewCreated,
+        savedViewDeleted,
+        savedViewUpdated,
+    } = useActions(savedViewsLogic)
     const { user } = useValues(userLogic)
     const { showNewDashboardModal } = useActions(newDashboardLogic)
-    const [dashboardSavedViewsEnabled, setDashboardSavedViewsEnabled] = useState(true)
-    const [savedViews, setSavedViews] = useState<DashboardListSavedView[]>([])
-    const [savedViewsNextCursor, setSavedViewsNextCursor] = useState<string | null>(null)
-    const savedViewsNextCursorRef = useRef<string | null>(null)
-    const [loadingMoreSavedViews, setLoadingMoreSavedViews] = useState(false)
     const [activeSavedViewId, setActiveSavedViewId] = useState<string | null>(null)
     const [updatingSavedView, setUpdatingSavedView] = useState(false)
-    const [savedViewsLoadError, setSavedViewsLoadError] = useState(false)
-    const [savedViewsReloadCount, setSavedViewsReloadCount] = useState(0)
-    const currentSavedViewsTeamId = useRef<number | null>(currentTeamId)
-    const savedViewsRequestVersion = useRef(0)
-    currentSavedViewsTeamId.current = currentTeamId
     const activeSavedView = savedViews.find((view) => view.id === activeSavedViewId)
     const activeSavedViewHasUnsavedChanges =
         activeSavedView != null && !isEqual(filters, savedViewFilters(activeSavedView))
@@ -237,9 +222,6 @@ export function Dashboards(): JSX.Element {
         AccessControlLevel.Editor
     )
 
-    const savedViewsRequestIsCurrent = (teamId: number, requestVersion: number): boolean =>
-        currentSavedViewsTeamId.current === teamId && savedViewsRequestVersion.current === requestVersion
-
     const saveView = (initialScope: DashboardSavedViewScope = 'private'): void => {
         if (!isFiltering) {
             lemonToast.error('Add a filter before saving a view')
@@ -268,18 +250,14 @@ export function Dashboards(): JSX.Element {
                     return
                 }
                 const teamId = currentTeamId
-                const requestVersion = savedViewsRequestVersion.current
-                if (!savedViewsRequestIsCurrent(teamId, requestVersion)) {
-                    return
-                }
                 try {
                     const savedView = await dashboardSavedViewsCreate(teamId.toString(), {
                         name: trimmedName,
                         filters: filters as unknown as DashboardSavedViewWriteApiFilters,
                         scope,
                     })
-                    if (savedViewsRequestIsCurrent(teamId, requestVersion)) {
-                        setSavedViews((views) => [...views, savedView as unknown as DashboardListSavedView])
+                    if (teamId === currentTeamId) {
+                        savedViewCreated(savedView as unknown as DashboardListSavedView)
                         setActiveSavedViewId(savedView.id)
                         lemonToast.success(`Saved ${scope} view`)
                     }
@@ -303,14 +281,10 @@ export function Dashboards(): JSX.Element {
             return
         }
         const teamId = currentTeamId
-        const requestVersion = savedViewsRequestVersion.current
-        if (!savedViewsRequestIsCurrent(teamId, requestVersion)) {
-            return
-        }
         try {
             await dashboardSavedViewsDestroy(teamId.toString(), view.id)
-            if (savedViewsRequestIsCurrent(teamId, requestVersion)) {
-                setSavedViews((views) => views.filter((savedView) => savedView.id !== view.id))
+            if (teamId === currentTeamId) {
+                savedViewDeleted(view.id)
                 setActiveSavedViewId((activeId) => (activeId === view.id ? null : activeId))
                 lemonToast.success('Saved view deleted')
             }
@@ -329,18 +303,11 @@ export function Dashboards(): JSX.Element {
             throw new Error('No project selected')
         }
         const teamId = currentTeamId
-        const requestVersion = savedViewsRequestVersion.current
-        if (!savedViewsRequestIsCurrent(teamId, requestVersion)) {
-            throw new Error('The project changed before the saved view was updated')
-        }
-
         try {
             const savedView = await dashboardSavedViewsPartialUpdate(teamId.toString(), view.id, update)
             const updatedView = savedView as unknown as DashboardListSavedView
-            if (savedViewsRequestIsCurrent(teamId, requestVersion)) {
-                setSavedViews((views) =>
-                    views.map((savedViewItem) => (savedViewItem.id === view.id ? updatedView : savedViewItem))
-                )
+            if (teamId === currentTeamId) {
+                savedViewUpdated(updatedView)
                 lemonToast.success('Saved view updated')
             }
             return updatedView
@@ -390,7 +357,7 @@ export function Dashboards(): JSX.Element {
                     editDisabledReason={savedViewsEditDisabledReason}
                     onUpdate={updateSavedViewMetadata}
                     onDelete={deleteSavedView}
-                    onLoadMore={loadMoreSavedViews}
+                    onLoadMore={loadMoreSavedViewsForManagement}
                     renderCreator={(view) => {
                         const creator = view.created_by ? membersById[view.created_by]?.user : null
                         return (
@@ -411,40 +378,17 @@ export function Dashboards(): JSX.Element {
         })
     }
 
-    const loadMoreSavedViews = async (): Promise<DashboardSavedViewsPage | null> => {
-        const cursor = savedViewsNextCursorRef.current
-        if (currentTeamId == null || cursor == null || loadingMoreSavedViews) {
+    const loadMoreSavedViewsForManagement = async (): Promise<DashboardSavedViewsPage | null> => {
+        if (currentTeamId == null || savedViewsNextCursor == null || loadingMoreSavedViews) {
             return null
         }
-
-        const teamId = currentTeamId
-        const requestVersion = savedViewsRequestVersion.current
-        setLoadingMoreSavedViews(true)
-
-        try {
-            const page = await loadDashboardSavedViews(teamId.toString(), cursor)
-            if (savedViewsRequestIsCurrent(teamId, requestVersion)) {
-                setSavedViews((views) => {
-                    const ids = new Set(views.map((view) => view.id))
-                    return [...views, ...page.views.filter((view) => !ids.has(view.id))]
-                })
-                setSavedViewsNextCursor(page.nextCursor)
-                savedViewsNextCursorRef.current = page.nextCursor
-                return page
-            }
-        } catch (error) {
-            if (savedViewsRequestIsCurrent(teamId, requestVersion)) {
-                posthog.captureException(error)
-                lemonToast.error('Could not load more saved views')
-            }
-            return null
-        } finally {
-            if (savedViewsRequestIsCurrent(teamId, requestVersion)) {
-                setLoadingMoreSavedViews(false)
-            }
-        }
-
-        return null
+        const page = await loadDashboardSavedViews(currentTeamId, savedViewsNextCursor)
+        const ids = new Set(savedViews.map((view) => view.id))
+        loadMoreSavedViewsSuccess({
+            ...page,
+            views: [...savedViews, ...page.views.filter((view) => !ids.has(view.id))],
+        })
+        return page
     }
 
     const updateSavedView = async (view: DashboardListSavedView): Promise<void> => {
@@ -452,22 +396,13 @@ export function Dashboards(): JSX.Element {
             return
         }
         const teamId = currentTeamId
-        const requestVersion = savedViewsRequestVersion.current
-        if (!savedViewsRequestIsCurrent(teamId, requestVersion)) {
-            return
-        }
-
         setUpdatingSavedView(true)
         try {
             const savedView = await dashboardSavedViewsPartialUpdate(teamId.toString(), view.id, {
                 filters: filters as unknown as DashboardSavedViewWriteApiFilters,
             })
-            if (savedViewsRequestIsCurrent(teamId, requestVersion)) {
-                setSavedViews((views) =>
-                    views.map((savedViewItem) =>
-                        savedViewItem.id === view.id ? (savedView as unknown as DashboardListSavedView) : savedViewItem
-                    )
-                )
+            if (teamId === currentTeamId) {
+                savedViewUpdated(savedView as unknown as DashboardListSavedView)
                 lemonToast.success('Saved view updated')
             }
         } catch (error) {
@@ -475,54 +410,9 @@ export function Dashboards(): JSX.Element {
             lemonToast.error(detail || 'Could not update view')
             throw error
         } finally {
-            if (savedViewsRequestIsCurrent(teamId, requestVersion)) {
-                setUpdatingSavedView(false)
-            }
+            setUpdatingSavedView(false)
         }
     }
-
-    useEffect(() => {
-        if (currentTeamId == null) {
-            setSavedViews([])
-            setSavedViewsNextCursor(null)
-            savedViewsNextCursorRef.current = null
-            setActiveSavedViewId(null)
-            setDashboardSavedViewsEnabled(false)
-            setUpdatingSavedView(false)
-            return
-        }
-
-        const requestVersion = savedViewsRequestVersion.current + 1
-        savedViewsRequestVersion.current = requestVersion
-        setSavedViews([])
-        setSavedViewsNextCursor(null)
-        savedViewsNextCursorRef.current = null
-        setActiveSavedViewId(null)
-        setUpdatingSavedView(false)
-        setLoadingMoreSavedViews(false)
-        setDashboardSavedViewsEnabled(true)
-        setSavedViewsLoadError(false)
-        void loadDashboardSavedViews(currentTeamId.toString())
-            .then((page) => {
-                if (savedViewsRequestIsCurrent(currentTeamId, requestVersion)) {
-                    setSavedViews(page.views)
-                    setSavedViewsNextCursor(page.nextCursor)
-                    savedViewsNextCursorRef.current = page.nextCursor
-                    setDashboardSavedViewsEnabled(true)
-                }
-            })
-            .catch((error) => {
-                if (savedViewsRequestIsCurrent(currentTeamId, requestVersion)) {
-                    if (!(error instanceof ApiError && error.status === 403)) {
-                        posthog.captureException(error)
-                        setSavedViewsLoadError(true)
-                        return
-                    }
-                    setSavedViews([])
-                    setDashboardSavedViewsEnabled(false)
-                }
-            })
-    }, [currentTeamId, savedViewsReloadCount])
 
     const enabledTabs: LemonTab<DashboardsTab>[] = [
         {
@@ -612,8 +502,8 @@ export function Dashboards(): JSX.Element {
                                 setActiveSavedViewId(view.id)
                             }}
                             onManageViews={manageSavedViews}
-                            onLoadMore={() => void loadMoreSavedViews()}
-                            onRetryLoad={() => setSavedViewsReloadCount((count) => count + 1)}
+                            onLoadMore={loadMoreSavedViews}
+                            onRetryLoad={loadSavedViews}
                         />
                     ) : null
                 }

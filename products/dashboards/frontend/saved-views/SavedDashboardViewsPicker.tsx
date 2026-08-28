@@ -4,7 +4,8 @@ import { IconCheck, IconChevronDown, IconPeople, IconPlus, IconUser } from '@pos
 import { LemonButton, Popover } from '@posthog/lemon-ui'
 
 import { LemonTabs } from 'lib/lemon-ui/LemonTabs'
-import type { DashboardListSavedView, DashboardSavedViewScope } from 'scenes/dashboard/dashboards/Dashboards'
+
+import type { DashboardListSavedView, DashboardSavedViewScope } from './dashboardSavedViewsLogic'
 
 export interface SavedDashboardViewsPickerProps {
     activeSavedView: DashboardListSavedView | undefined

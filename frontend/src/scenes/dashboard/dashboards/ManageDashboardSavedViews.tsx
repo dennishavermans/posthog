@@ -6,7 +6,11 @@ import { LemonButton, LemonDialog, LemonInput, LemonSelect } from '@posthog/lemo
 import { TZLabel } from 'lib/components/TZLabel'
 import { LemonTable, LemonTableColumns } from 'lib/lemon-ui/LemonTable'
 
-import type { DashboardListSavedView, DashboardSavedViewScope, DashboardSavedViewsPage } from './Dashboards'
+import type {
+    DashboardListSavedView,
+    DashboardSavedViewScope,
+    DashboardSavedViewsPage,
+} from 'products/dashboards/frontend/saved-views/dashboardSavedViewsLogic'
 
 type SavedViewUpdate = Pick<DashboardListSavedView, 'name' | 'scope'>
 
