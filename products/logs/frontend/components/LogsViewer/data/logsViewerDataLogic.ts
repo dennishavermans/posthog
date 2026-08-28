@@ -145,6 +145,7 @@ export interface logsViewerDataLogicValues {
     filterGroup: UniversalFiltersGroup // logsViewerFiltersLogic
     filters: LogsViewerFilters // logsViewerFiltersLogic
     personId: string | undefined // logsViewerFiltersLogic
+    sessionId: string | undefined // logsViewerFiltersLogic
     queryFilterGroup: UniversalFiltersGroup // logsViewerFiltersLogic
     utcDateRange: {
         date_from: string | null | undefined
@@ -481,7 +482,7 @@ export const logsViewerDataLogic = kea<logsViewerDataLogicType>([
         ],
         values: [
             logsViewerFiltersLogic({ id }),
-            ['filters', 'utcDateRange', 'filterGroup', 'queryFilterGroup', 'personId'],
+            ['filters', 'utcDateRange', 'filterGroup', 'queryFilterGroup', 'personId', 'sessionId'],
             logsViewerConfigLogic({ id }),
             ['orderBy', 'customColumns'],
         ],
@@ -673,6 +674,7 @@ export const logsViewerDataLogic = kea<logsViewerDataLogicType>([
                             filterGroup: values.queryFilterGroup as PropertyGroupFilter,
                             ...unsetColumnQueryFields(),
                             personId: values.personId,
+                            sessionId: values.sessionId,
                             customColumns: sentCustomColumns,
                         },
                         signal,
@@ -724,6 +726,7 @@ export const logsViewerDataLogic = kea<logsViewerDataLogicType>([
                             filterGroup: values.queryFilterGroup as PropertyGroupFilter,
                             ...unsetColumnQueryFields(),
                             personId: values.personId,
+                            sessionId: values.sessionId,
                             customColumns: values.customColumns,
                             after: values.nextCursor,
                         },
@@ -760,6 +763,7 @@ export const logsViewerDataLogic = kea<logsViewerDataLogicType>([
                             // severity breakdown, so state it rather than lean on the server default.
                             sparklineBreakdownBy: 'severity',
                             personId: values.personId,
+                            sessionId: values.sessionId,
                         },
                         signal,
                     })
@@ -1140,6 +1144,7 @@ export const logsViewerDataLogic = kea<logsViewerDataLogicType>([
                         filterGroup: values.queryFilterGroup as PropertyGroupFilter,
                         ...unsetColumnQueryFields(),
                         personId: values.personId,
+                        sessionId: values.sessionId,
                         customColumns: values.customColumns,
                         liveLogsCheckpoint: values.liveLogsCheckpoint ?? undefined,
                     },
