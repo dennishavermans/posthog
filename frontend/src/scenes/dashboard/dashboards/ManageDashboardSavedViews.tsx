@@ -6,26 +6,30 @@ import { LemonButton, LemonDialog, LemonInput, LemonSelect } from '@posthog/lemo
 import { TZLabel } from 'lib/components/TZLabel'
 import { LemonTable, LemonTableColumns } from 'lib/lemon-ui/LemonTable'
 
-import type { DashboardListSavedView, DashboardSavedViewScope } from './Dashboards'
+import type { DashboardListSavedView, DashboardSavedViewScope, DashboardSavedViewsPage } from './Dashboards'
 
 type SavedViewUpdate = Pick<DashboardListSavedView, 'name' | 'scope'>
 
 interface ManageDashboardSavedViewsProps {
     views: DashboardListSavedView[]
+    hasMore: boolean
     currentUserId: number | null
     editDisabledReason: string | null
     onUpdate: (view: DashboardListSavedView, update: Partial<SavedViewUpdate>) => Promise<DashboardListSavedView>
     onDelete: (view: DashboardListSavedView) => Promise<void>
+    onLoadMore: () => Promise<DashboardSavedViewsPage | null>
     renderCreator: (view: DashboardListSavedView) => JSX.Element | string
     renderFilters: (filters: DashboardListSavedView['filters']) => string
 }
 
 export function ManageDashboardSavedViews({
     views: initialViews,
+    hasMore,
     currentUserId,
     editDisabledReason,
     onUpdate,
     onDelete,
+    onLoadMore,
     renderCreator,
     renderFilters,
 }: ManageDashboardSavedViewsProps): JSX.Element {
@@ -34,6 +38,8 @@ export function ManageDashboardSavedViews({
         Object.fromEntries(initialViews.map((view) => [view.id, view.name]))
     )
     const [updatingIds, setUpdatingIds] = useState<string[]>([])
+    const [hasMoreViews, setHasMoreViews] = useState(hasMore)
+    const [loadingMoreViews, setLoadingMoreViews] = useState(false)
 
     const setUpdating = (id: string, updating: boolean): void => {
         setUpdatingIds((ids) => (updating ? [...ids, id] : ids.filter((updatingId) => updatingId !== id)))
@@ -103,6 +109,30 @@ export function ManageDashboardSavedViews({
             secondaryButton: { children: 'Cancel' },
             zIndex: '1169',
         })
+    }
+
+    const loadMoreViews = async (): Promise<void> => {
+        if (loadingMoreViews) {
+            return
+        }
+
+        setLoadingMoreViews(true)
+        try {
+            const page = await onLoadMore()
+            if (page) {
+                setViews((currentViews) => {
+                    const ids = new Set(currentViews.map((view) => view.id))
+                    return [...currentViews, ...page.views.filter((view) => !ids.has(view.id))]
+                })
+                setNames((currentNames) => ({
+                    ...currentNames,
+                    ...Object.fromEntries(page.views.map((view) => [view.id, view.name])),
+                }))
+                setHasMoreViews(page.nextCursor !== null)
+            }
+        } finally {
+            setLoadingMoreViews(false)
+        }
     }
 
     const columns: LemonTableColumns<DashboardListSavedView> = [
@@ -186,24 +216,33 @@ export function ManageDashboardSavedViews({
     })
 
     return (
-        <LemonTable
-            columns={columns}
-            dataSource={sortedViews}
-            rowKey="id"
-            size="small"
-            className="max-w-full"
-            rowActions={(view) => (
-                <LemonButton
-                    size="xsmall"
-                    type="tertiary"
-                    status="danger"
-                    icon={<IconTrash />}
-                    tooltip={`Delete ${view.name}`}
-                    aria-label={`Delete ${view.name}`}
-                    disabledReason={editDisabledReason}
-                    onClick={() => deleteView(view)}
-                />
+        <div>
+            <LemonTable
+                columns={columns}
+                dataSource={sortedViews}
+                rowKey="id"
+                size="small"
+                className="max-w-full"
+                rowActions={(view) => (
+                    <LemonButton
+                        size="xsmall"
+                        type="tertiary"
+                        status="danger"
+                        icon={<IconTrash />}
+                        tooltip={`Delete ${view.name}`}
+                        aria-label={`Delete ${view.name}`}
+                        disabledReason={editDisabledReason}
+                        onClick={() => deleteView(view)}
+                    />
+                )}
+            />
+            {hasMoreViews && (
+                <div className="flex justify-center border-t p-2">
+                    <LemonButton size="small" type="secondary" loading={loadingMoreViews} onClick={loadMoreViews}>
+                        Load more views
+                    </LemonButton>
+                </div>
             )}
-        />
+        </div>
     )
 }

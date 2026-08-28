@@ -89,10 +89,12 @@ type Story = StoryObj<typeof ManageDashboardSavedViews>
 export const Default: Story = {
     args: {
         views: savedViews,
+        hasMore: false,
         currentUserId: 1,
         editDisabledReason: null,
         onUpdate: async (view, update) => ({ ...view, ...update }),
         onDelete: async () => undefined,
+        onLoadMore: async () => null,
         renderCreator: (view) => {
             const id = view.created_by ?? 0
             const creator = creators[id]

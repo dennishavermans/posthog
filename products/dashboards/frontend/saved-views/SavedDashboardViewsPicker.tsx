@@ -11,6 +11,8 @@ export interface SavedDashboardViewsPickerProps {
     activeSavedViewHasUnsavedChanges: boolean
     isFiltering: boolean
     savedViews: DashboardListSavedView[]
+    hasMore: boolean
+    loadingMore: boolean
     updatingSavedView: boolean
     loadError: boolean
     editDisabledReason: string | null
@@ -19,6 +21,7 @@ export interface SavedDashboardViewsPickerProps {
     onSaveChanges: (view: DashboardListSavedView) => void
     onSelectView: (view: DashboardListSavedView) => void
     onManageViews: () => void
+    onLoadMore: () => void
     onRetryLoad: () => void
 }
 
@@ -31,6 +34,8 @@ export function SavedDashboardViewsPicker({
     activeSavedViewHasUnsavedChanges,
     isFiltering,
     savedViews,
+    hasMore,
+    loadingMore,
     updatingSavedView,
     loadError,
     editDisabledReason,
@@ -39,6 +44,7 @@ export function SavedDashboardViewsPicker({
     onSaveChanges,
     onSelectView,
     onManageViews,
+    onLoadMore,
     onRetryLoad,
 }: SavedDashboardViewsPickerProps): JSX.Element {
     const [scope, setScope] = useState<DashboardSavedViewScope>(activeSavedView?.scope ?? 'private')
@@ -127,7 +133,7 @@ export function SavedDashboardViewsPicker({
                                         key: 'private',
                                         label: (
                                             <span className="flex items-center gap-1">
-                                                Private ({privateSavedViews.length})
+                                                Private
                                                 {activeSavedView?.scope === 'private' && (
                                                     <IconCheck className="text-success" />
                                                 )}
@@ -138,7 +144,7 @@ export function SavedDashboardViewsPicker({
                                         key: 'team',
                                         label: (
                                             <span className="flex items-center gap-1">
-                                                Team ({teamSavedViews.length})
+                                                Team
                                                 {activeSavedView != null && activeSavedView.scope !== 'private' && (
                                                     <IconCheck className="text-success" />
                                                 )}
@@ -174,6 +180,18 @@ export function SavedDashboardViewsPicker({
                                             <span className="truncate">{view.name}</span>
                                         </LemonButton>
                                     ))
+                                )}
+                                {hasMore && (
+                                    <LemonButton
+                                        fullWidth
+                                        size="small"
+                                        type="tertiary"
+                                        className="justify-start rounded-none px-3"
+                                        loading={loadingMore}
+                                        onClick={onLoadMore}
+                                    >
+                                        Load more views
+                                    </LemonButton>
                                 )}
                             </div>
                             {!editDisabledReason && (
