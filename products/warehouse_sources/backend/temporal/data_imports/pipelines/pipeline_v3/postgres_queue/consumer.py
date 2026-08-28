@@ -41,6 +41,7 @@ from products.warehouse_sources.backend.temporal.data_imports.pipelines.pipeline
     ProcessBatchFn,
     _group_by_key,
 )
+from products.warehouse_sources.backend.temporal.data_imports.pipelines.pipeline_v3.messages import ExportSignalMessage
 from products.warehouse_sources.backend.temporal.data_imports.pipelines.pipeline_v3.postgres_queue.jobs_db import (
     _UNSET,
     FRESHNESS_WINDOW_SECONDS,
@@ -262,7 +263,7 @@ class DeltaBatchConsumerAdapter:
             )
 
             try:
-                await sync_to_async(abort_destinations)(batch.to_export_signal())
+                await sync_to_async(abort_destinations)(ExportSignalMessage.from_dict(batch.to_export_signal()))
             except Exception as e:
                 # Best effort by design: a leftover table costs the customer storage, not
                 # correctness, and is not worth failing the fail path over.

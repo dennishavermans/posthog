@@ -106,6 +106,7 @@ class ExternalDataDestinationSerializer(serializers.ModelSerializer):
     RETARGETING_FIELDS = ("database", "schema")
 
     def _reject_retargeting(self, attrs: dict[str, Any]) -> None:
+        assert self.instance is not None
         if "integration" in attrs and attrs["integration"] != self.instance.integration:
             raise ValidationError(
                 {
