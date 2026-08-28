@@ -10,7 +10,7 @@ import type {
     DashboardListSavedView,
     DashboardSavedViewScope,
     DashboardSavedViewsPage,
-} from 'products/dashboards/frontend/saved-views/dashboardSavedViewsLogic'
+} from './dashboardSavedViewsLogic'
 
 type SavedViewUpdate = Pick<DashboardListSavedView, 'name' | 'scope'>
 

@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
 import { ProfilePicture } from 'lib/lemon-ui/ProfilePicture'
-import { ManageDashboardSavedViews } from 'scenes/dashboard/dashboards/ManageDashboardSavedViews'
 
 import type { DashboardListSavedView } from './dashboardSavedViewsLogic'
+import { ManageDashboardSavedViews } from './ManageDashboardSavedViews'
 
 const viewNames = [
     'Activation dashboard',
