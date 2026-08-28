@@ -62,12 +62,17 @@ export function WizardRunsScene(): JSX.Element {
     const {
         cancelRunRequestLoading,
         runDetailsLoading,
+        runDiffError,
+        runDiffLoading,
         selectedRun,
         selectedRunArtifacts,
         selectedRunArtifactsInitialLoading,
+        selectedRunDiffArtifactId,
+        selectedRunDiffContent,
         selectedRunId,
     } = useValues(wizardRunDetailsLogic)
-    const { cancelRun, copyRunId, refreshSelectedRun, selectRun } = useActions(wizardRunDetailsLogic)
+    const { cancelRun, closeRunDiff, copyRunId, openRunDiff, refreshSelectedRun, selectRun } =
+        useActions(wizardRunDetailsLogic)
 
     return (
         <SceneContent>
@@ -182,7 +187,13 @@ export function WizardRunsScene(): JSX.Element {
                 artifactsLoading={selectedRunArtifactsInitialLoading}
                 refreshing={runDetailsLoading}
                 cancelling={cancelRunRequestLoading}
+                diffArtifactId={selectedRunDiffArtifactId}
+                diffContent={selectedRunDiffContent}
+                diffError={runDiffError}
+                diffLoading={runDiffLoading}
                 onClose={() => selectRun(null)}
+                onCloseDiff={closeRunDiff}
+                onOpenDiff={openRunDiff}
                 onRefresh={refreshSelectedRun}
                 onCopyRunId={copyRunId}
                 onCancel={cancelRun}

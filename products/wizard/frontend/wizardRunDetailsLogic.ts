@@ -8,11 +8,16 @@ import { copyToClipboard } from 'lib/utils/copyToClipboard'
 import { projectLogic } from 'scenes/projectLogic'
 
 import { wizardRunsPartialUpdate, wizardRunsRetrieve } from './generated/api'
-import type { WizardRunApi, WizardRunArtifactApi } from './generated/api.schemas'
-import { loadWizardRunArtifacts } from './wizardApi'
+import type { WizardRunApi, WizardRunArtifactApi, WizardRunGitDiffArtifactApi } from './generated/api.schemas'
+import { loadWizardRunArtifactContent, loadWizardRunArtifacts } from './wizardApi'
 import { wizardRunIsActive } from './wizardRunDisplay'
 
 const RUN_DETAIL_POLL_INTERVAL_MS = 10_000
+
+type WizardRunDiffContent = {
+    artifactId: string
+    content: string
+}
 
 function requestError(error: unknown, fallback: string): string {
     return error instanceof ApiError && error.detail ? error.detail : fallback
@@ -27,9 +32,14 @@ export interface wizardRunDetailsLogicValues {
     runArtifactsLoading: boolean
     runDetails: WizardRunApi | null
     runDetailsLoading: boolean
+    runDiff: WizardRunDiffContent | null
+    runDiffError: string | null
+    runDiffLoading: boolean
     selectedRun: WizardRunApi | null
     selectedRunArtifacts: WizardRunArtifactApi[]
     selectedRunArtifactsInitialLoading: boolean
+    selectedRunDiffArtifactId: string | null
+    selectedRunDiffContent: string | null
     selectedRunId: string | null
     selectedRunSummary: WizardRunApi | null
 }
@@ -45,6 +55,7 @@ export interface wizardRunDetailsLogicActions {
         cancelRunRequest: WizardRunApi | null
         payload?: { runId: string }
     }
+    closeRunDiff: () => { value: true }
     copyRunId: (runId: string) => { runId: string }
     loadRunArtifacts: ({ runId }: { runId: string }) => { runId: string }
     loadRunArtifactsFailure: (error: string, errorObject?: unknown) => { error: string; errorObject?: unknown }
@@ -64,6 +75,19 @@ export interface wizardRunDetailsLogicActions {
         runDetails: WizardRunApi | null
         payload?: { runId: string }
     }
+    loadRunDiff: ({ artifactId, runId }: { artifactId: string; runId: string }) => {
+        artifactId: string
+        runId: string
+    }
+    loadRunDiffFailure: (error: string, errorObject?: unknown) => { error: string; errorObject?: unknown }
+    loadRunDiffSuccess: (
+        runDiff: WizardRunDiffContent | null,
+        payload?: { artifactId: string; runId: string }
+    ) => {
+        runDiff: WizardRunDiffContent | null
+        payload?: { artifactId: string; runId: string }
+    }
+    openRunDiff: (artifact: WizardRunGitDiffArtifactApi) => { artifact: WizardRunGitDiffArtifactApi }
     refreshSelectedRun: () => { value: true }
     selectRun: (run: WizardRunApi | null) => { run: WizardRunApi | null }
 }
@@ -80,6 +104,10 @@ export interface wizardRunDetailsLogicMeta {
             runArtifactsLoading: boolean,
             artifactRunIdsLoaded: string[]
         ) => boolean
+        selectedRunDiffContent: (
+            selectedRunDiffArtifactId: string | null,
+            runDiff: WizardRunDiffContent | null
+        ) => string | null
         selectedRunId: (selectedRunSummary: WizardRunApi | null) => string | null
     }
 }
@@ -96,6 +124,8 @@ export const wizardRunDetailsLogic = kea<wizardRunDetailsLogicType>([
     connect(() => ({ values: [projectLogic, ['currentProjectId']] })),
     actions({
         selectRun: (run: WizardRunApi | null) => ({ run }),
+        openRunDiff: (artifact: WizardRunGitDiffArtifactApi) => ({ artifact }),
+        closeRunDiff: true,
         refreshSelectedRun: true,
         cancelRun: (run: WizardRunApi) => ({ run }),
         copyRunId: (runId: string) => ({ runId }),
@@ -117,6 +147,24 @@ export const wizardRunDetailsLogic = kea<wizardRunDetailsLogicType>([
 
                     return runId && !state.includes(runId) ? [...state, runId] : state
                 },
+            },
+        ],
+        selectedRunDiffArtifactId: [
+            null as string | null,
+            {
+                openRunDiff: (_, { artifact }) => artifact.id,
+                closeRunDiff: () => null,
+                selectRun: () => null,
+            },
+        ],
+        runDiffError: [
+            null as string | null,
+            {
+                openRunDiff: () => null,
+                closeRunDiff: () => null,
+                loadRunDiffSuccess: () => null,
+                loadRunDiffFailure: (_, { errorObject }) =>
+                    requestError(errorObject, "Couldn't load this diff. Try again."),
             },
         ],
     }),
@@ -153,6 +201,26 @@ export const wizardRunDetailsLogic = kea<wizardRunDetailsLogicType>([
                 },
             },
         ],
+        runDiff: [
+            null as WizardRunDiffContent | null,
+            {
+                loadRunDiff: async ({ artifactId, runId }: { artifactId: string; runId: string }, breakpoint) => {
+                    if (!values.currentProjectId) {
+                        return null
+                    }
+
+                    const content = await loadWizardRunArtifactContent(
+                        String(values.currentProjectId),
+                        runId,
+                        artifactId
+                    )
+
+                    await breakpoint()
+
+                    return { artifactId, content }
+                },
+            },
+        ],
         cancelRunRequest: [
             null as WizardRunApi | null,
             {
@@ -186,6 +254,11 @@ export const wizardRunDetailsLogic = kea<wizardRunDetailsLogicType>([
             (selectedRunId: string | null, runArtifactsLoading: boolean, artifactRunIdsLoaded: string[]): boolean =>
                 !!selectedRunId && runArtifactsLoading && !artifactRunIdsLoaded.includes(selectedRunId),
         ],
+        selectedRunDiffContent: [
+            (s) => [s.selectedRunDiffArtifactId, s.runDiff],
+            (selectedRunDiffArtifactId: string | null, runDiff: WizardRunDiffContent | null): string | null =>
+                selectedRunDiffArtifactId && runDiff?.artifactId === selectedRunDiffArtifactId ? runDiff.content : null,
+        ],
     }),
     listeners(({ actions, values, cache }) => ({
         selectRun: ({ run }) => {
@@ -208,6 +281,9 @@ export const wizardRunDetailsLogic = kea<wizardRunDetailsLogicType>([
                     return () => window.clearInterval(timerId)
                 }, 'wizardRunDetailPolling')
             }
+        },
+        openRunDiff: ({ artifact }) => {
+            actions.loadRunDiff({ runId: artifact.run_id, artifactId: artifact.id })
         },
         refreshSelectedRun: () => {
             if (values.selectedRunId) {

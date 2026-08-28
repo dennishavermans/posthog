@@ -4,7 +4,7 @@ import { Spinner } from '@posthog/lemon-ui'
 import { TZLabel } from 'lib/components/TZLabel'
 
 import type { WizardRunApi } from '../generated/api.schemas'
-import { wizardRunFailureStage } from '../wizardRunDisplay'
+import { wizardRunFailureStage, wizardWorkspaceLabel } from '../wizardRunDisplay'
 import { wizardRunErrorDetails } from './wizardRunErrorCatalog'
 
 type ProgressState = 'complete' | 'active' | 'pending' | 'failed'
@@ -67,22 +67,31 @@ function ProgressIcon({ state }: { state: ProgressState }): JSX.Element {
 
 export function WizardRunProgress({ run }: { run: WizardRunApi }): JSX.Element {
     const runError = wizardRunErrorDetails(run.error_code, run.error_message)
+    const position = stagePosition(run)
     const steps = [
         {
             title: 'Run created',
-            detail: run.created_at ? <TZLabel time={run.created_at} /> : 'Created',
+            detail: run.created_at ? <TZLabel time={run.created_at} /> : 'Waiting to start',
         },
         {
-            title: 'Repository prepared',
-            detail: stagePosition(run) > 1 ? 'Repository ready' : 'Preparing the workspace',
+            title: 'Preparing workspace',
+            detail:
+                run.workspace.type === 'git_repository'
+                    ? `Repository: ${run.workspace.repository}`
+                    : `Folder: ${wizardWorkspaceLabel(run)}`,
         },
         {
-            title: run.status === 'completed' ? 'Program completed' : 'Running program',
-            detail: run.status === 'running' ? `Running ${run.program.name.toLowerCase()}` : run.program.name,
+            title: 'Running Wizard',
+            detail: `Program: ${run.program.name}`,
         },
         {
-            title: 'Artifacts',
-            detail: run.status === 'completed' ? 'Artifacts ready' : 'Waiting for output',
+            title: 'Finishing up',
+            detail:
+                run.status === 'completed'
+                    ? 'Changes and artifacts are ready'
+                    : position === 3
+                      ? 'Saving changes and artifacts'
+                      : 'Starts after the program finishes',
         },
     ]
 

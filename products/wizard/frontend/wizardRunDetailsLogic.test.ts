@@ -4,18 +4,36 @@ import { projectLogic } from 'scenes/projectLogic'
 
 import { initKeaTests } from '~/test/init'
 
-import { wizardRunsArtifactsList, wizardRunsRetrieve } from './generated/api'
-import type { WizardRunApi } from './generated/api.schemas'
+import { wizardRunsRetrieve } from './generated/api'
+import type { WizardRunApi, WizardRunGitDiffArtifactApi } from './generated/api.schemas'
+import { loadWizardRunArtifactContent, loadWizardRunArtifacts } from './wizardApi'
 import { wizardRunDetailsLogic } from './wizardRunDetailsLogic'
 
 jest.mock('./generated/api', () => ({
-    wizardRunsArtifactsList: jest.fn(),
     wizardRunsPartialUpdate: jest.fn(),
     wizardRunsRetrieve: jest.fn(),
 }))
 
-const mockWizardRunsArtifactsList = wizardRunsArtifactsList as jest.Mock
+jest.mock('./wizardApi', () => ({
+    loadWizardRunArtifactContent: jest.fn(),
+    loadWizardRunArtifacts: jest.fn(),
+}))
+
+const mockLoadWizardRunArtifactContent = loadWizardRunArtifactContent as jest.Mock
+const mockLoadWizardRunArtifacts = loadWizardRunArtifacts as jest.Mock
 const mockWizardRunsRetrieve = wizardRunsRetrieve as jest.Mock
+
+const gitDiffArtifact: WizardRunGitDiffArtifactApi = {
+    id: 'artifact-1',
+    team_id: 1,
+    run_id: 'run-1',
+    artifact_type: 'git_diff',
+    size_bytes: 512,
+    content_hash: 'diff-hash',
+    additions: 2,
+    removals: 1,
+    created_at: '2026-08-26T10:02:00Z',
+}
 
 function makeRun(): WizardRunApi {
     return {
@@ -52,9 +70,11 @@ describe('wizardRunDetailsLogic', () => {
     beforeEach(async () => {
         initKeaTests()
         mockWizardRunsRetrieve.mockReset()
-        mockWizardRunsArtifactsList.mockReset()
+        mockLoadWizardRunArtifactContent.mockReset()
+        mockLoadWizardRunArtifacts.mockReset()
         mockWizardRunsRetrieve.mockResolvedValue(makeRun())
-        mockWizardRunsArtifactsList.mockResolvedValue([])
+        mockLoadWizardRunArtifactContent.mockResolvedValue('diff content')
+        mockLoadWizardRunArtifacts.mockResolvedValue([])
         await expectLogic(projectLogic).toMatchValues({ currentProjectId: expect.any(Number) })
         logic = wizardRunDetailsLogic()
         logic.mount()
@@ -76,14 +96,32 @@ describe('wizardRunDetailsLogic', () => {
             })
 
         expect(mockWizardRunsRetrieve).toHaveBeenCalledWith(expect.any(String), 'run-1')
-        expect(mockWizardRunsArtifactsList).toHaveBeenCalledWith(expect.any(String), 'run-1')
+        expect(mockLoadWizardRunArtifacts).toHaveBeenCalledWith(expect.any(String), 'run-1')
+        expect(mockLoadWizardRunArtifactContent).not.toHaveBeenCalled()
+    })
+
+    it('loads git diff content only after the artifact is opened', async () => {
+        mockLoadWizardRunArtifacts.mockResolvedValue([gitDiffArtifact])
+        logic.actions.selectRun(makeRun())
+        await expectLogic(logic).toFinishAllListeners()
+
+        expect(mockLoadWizardRunArtifactContent).not.toHaveBeenCalled()
+
+        logic.actions.openRunDiff(gitDiffArtifact)
+
+        await expectLogic(logic).toFinishAllListeners().toMatchValues({
+            selectedRunDiffArtifactId: 'artifact-1',
+            selectedRunDiffContent: 'diff content',
+            runDiffLoading: false,
+        })
+        expect(mockLoadWizardRunArtifactContent).toHaveBeenCalledWith(expect.any(String), 'run-1', 'artifact-1')
     })
 
     it('keeps resolved artifact state visible during a refresh', async () => {
         logic.actions.selectRun(makeRun())
         await expectLogic(logic).toFinishAllListeners()
 
-        mockWizardRunsArtifactsList.mockReturnValue(new Promise(() => {}))
+        mockLoadWizardRunArtifacts.mockReturnValue(new Promise(() => {}))
         logic.actions.refreshSelectedRun()
 
         await expectLogic(logic).toMatchValues({

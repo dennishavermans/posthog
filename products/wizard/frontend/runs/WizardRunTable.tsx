@@ -65,6 +65,7 @@ export function WizardRunTable({
                             icon={<IconGithub />}
                             to={wizardGithubRepositoryUrl(run.workspace.repository)}
                             targetBlank
+                            className="w-fit"
                             onClick={(e) => e.stopPropagation()}
                         >
                             {run.workspace.repository}
