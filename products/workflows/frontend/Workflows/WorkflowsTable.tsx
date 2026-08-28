@@ -5,9 +5,7 @@ import { LemonCheckbox, LemonDivider, LemonInput, LemonSelect, LemonTag, Link, T
 
 import { AccessControlAction } from 'lib/components/AccessControlAction'
 import { AppMetricsSparkline } from 'lib/components/AppMetrics/AppMetricsSparkline'
-import { MailHog } from 'lib/components/hedgehogs'
 import { MemberSelect } from 'lib/components/MemberSelect'
-import { ProductIntroduction } from 'lib/components/ProductIntroduction/ProductIntroduction'
 import { useOnMountEffect } from 'lib/hooks/useOnMountEffect'
 import { LemonButton } from 'lib/lemon-ui/LemonButton'
 import { More } from 'lib/lemon-ui/LemonButton/More'
@@ -22,7 +20,6 @@ import { AccessControlLevel, AccessControlResourceType } from '~/types'
 
 import { getHogFlowStep } from './hogflows/steps/HogFlowSteps'
 import { HogFlow } from './hogflows/types'
-import { newWorkflowLogic } from './newWorkflowLogic'
 import { workflowLogic } from './workflowLogic'
 import { WorkflowStatusFilter, workflowsLogic } from './workflowsLogic'
 
@@ -98,7 +95,6 @@ export function WorkflowsTable(): JSX.Element {
         workflowsLoading,
         workflows,
         pagination,
-        hasLoadedWorkflows,
         filters,
         selectedArchivedWorkflowIds,
         allArchivedSelected,
@@ -117,7 +113,6 @@ export function WorkflowsTable(): JSX.Element {
         selectAllArchivedWorkflows,
         clearArchivedWorkflowSelection,
     } = useActions(logic)
-    const { showNewWorkflowModal } = useActions(newWorkflowLogic)
 
     useOnMountEffect(() => {
         // Tricky: unmount the new workflow logic when leaving the new workflow scene
@@ -327,95 +322,64 @@ export function WorkflowsTable(): JSX.Element {
         },
     ]
 
-    const showProductIntroduction =
-        hasLoadedWorkflows &&
-        !workflowsLoading &&
-        workflows.results.length === 0 &&
-        !filters.search &&
-        !filters.createdBy &&
-        filters.status === 'all' &&
-        // An empty page is not an empty project, so never offer onboarding while paging
-        filters.page === 1
-
     return (
         <div className="workflows-section" data-attr="workflows-table" data-loading={workflowsLoading}>
-            {showProductIntroduction && (
-                <ProductIntroduction
-                    productName="Workflow"
-                    thingName="workflow"
-                    description="Create workflows that automate actions or send messages to your users."
-                    docsURL="https://posthog.com/docs/workflows/start-here"
-                    action={() => {
-                        showNewWorkflowModal()
-                    }}
-                    customHog={MailHog}
-                    isEmpty
-                    mcpSurfaceKey="workflows.create"
-                />
-            )}
-            {!showProductIntroduction && (
-                <>
-                    <div className="flex justify-between gap-2 flex-wrap mb-4">
-                        <LemonInput
-                            type="search"
-                            placeholder="Search for workflows"
-                            onChange={(search) => setFilters({ search })}
-                            value={filters.search}
-                        />
-                        <div className="flex items-center gap-2">
-                            <span>
-                                <b>Status</b>
-                            </span>
-                            <LemonSelect
-                                dropdownMatchSelectWidth={false}
-                                size="small"
-                                onChange={(value) => setFilters({ status: value as WorkflowStatusFilter })}
-                                options={[
-                                    { label: 'All', value: 'all' },
-                                    { label: 'Active', value: 'active' },
-                                    { label: 'Draft', value: 'draft' },
-                                    { label: 'Archived', value: 'archived' },
-                                ]}
-                                value={filters.status}
-                            />
-                            <span className="ml-1">
-                                <b>Created by</b>
-                            </span>
-                            <MemberSelect
-                                value={filters.createdBy}
-                                onChange={(user) => setFilters({ createdBy: user?.uuid || null })}
-                            />
-                        </div>
-                    </div>
-
-                    {isArchived && selectedArchivedCount > 0 && (
-                        <div className="flex items-center gap-2 mb-2">
-                            <span className="text-muted text-sm">
-                                {selectedArchivedCount} workflow{selectedArchivedCount !== 1 ? 's' : ''} selected
-                            </span>
-                            <LemonButton
-                                type="secondary"
-                                status="danger"
-                                size="small"
-                                onClick={deleteSelectedWorkflows}
-                            >
-                                Delete selected
-                            </LemonButton>
-                        </div>
-                    )}
-
-                    <LemonTable
-                        dataSource={workflows.results}
-                        loading={workflowsLoading}
-                        rowKey="id"
-                        columns={columns}
-                        defaultSorting={{ columnKey: 'updatedAt', order: 1 }}
-                        pagination={pagination}
-                        nouns={['workflow', 'workflows']}
-                        emptyState="No workflows matching filters"
+            <>
+                <div className="flex justify-between gap-2 flex-wrap mb-4">
+                    <LemonInput
+                        type="search"
+                        placeholder="Search for workflows"
+                        onChange={(search) => setFilters({ search })}
+                        value={filters.search}
                     />
-                </>
-            )}
+                    <div className="flex items-center gap-2">
+                        <span>
+                            <b>Status</b>
+                        </span>
+                        <LemonSelect
+                            dropdownMatchSelectWidth={false}
+                            size="small"
+                            onChange={(value) => setFilters({ status: value as WorkflowStatusFilter })}
+                            options={[
+                                { label: 'All', value: 'all' },
+                                { label: 'Active', value: 'active' },
+                                { label: 'Draft', value: 'draft' },
+                                { label: 'Archived', value: 'archived' },
+                            ]}
+                            value={filters.status}
+                        />
+                        <span className="ml-1">
+                            <b>Created by</b>
+                        </span>
+                        <MemberSelect
+                            value={filters.createdBy}
+                            onChange={(user) => setFilters({ createdBy: user?.uuid || null })}
+                        />
+                    </div>
+                </div>
+
+                {isArchived && selectedArchivedCount > 0 && (
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="text-muted text-sm">
+                            {selectedArchivedCount} workflow{selectedArchivedCount !== 1 ? 's' : ''} selected
+                        </span>
+                        <LemonButton type="secondary" status="danger" size="small" onClick={deleteSelectedWorkflows}>
+                            Delete selected
+                        </LemonButton>
+                    </div>
+                )}
+
+                <LemonTable
+                    dataSource={workflows.results}
+                    loading={workflowsLoading}
+                    rowKey="id"
+                    columns={columns}
+                    defaultSorting={{ columnKey: 'updatedAt', order: 1 }}
+                    pagination={pagination}
+                    nouns={['workflow', 'workflows']}
+                    emptyState="No workflows matching filters"
+                />
+            </>
         </div>
     )
 }
