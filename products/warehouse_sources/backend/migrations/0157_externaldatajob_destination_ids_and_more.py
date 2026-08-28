@@ -10,7 +10,7 @@ import posthog.uuidt
 class Migration(migrations.Migration):
     dependencies = [
         ("posthog", "1315_githubinstallrequest_account"),
-        ("warehouse_sources", "0155_repin_github_api_version"),
+        ("warehouse_sources", "0156_externaldatajob_pipeline_status_finished_idx"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
