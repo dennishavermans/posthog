@@ -34,17 +34,25 @@ Dashboard list behavior is a separate contract from dashboard detail.
 - Product-created unlisted dashboards need stable lookup data and concurrent-create protection.
 - Keep product-created dashboards out of normal lists unless the product explicitly exposes them.
 
+### Persisted list state
+
+- Treat persisted list state as its own resource, not dashboard metadata.
+- Persist only normalized values that the list can apply. Do not persist temporary UI state.
+- Use stable ordering and bounded pagination. If a picker loads all rows, follow the API `next` link until complete.
+- Render controls only on compatible list surfaces.
+
 ## API, schema, and MCP contracts
 
-Dashboard behavior has REST and generated frontend consumers. It also has MCP consumers when the changed API operation is enabled in `products/dashboards/mcp/tools.yaml`.
+Dashboard behavior has REST and generated frontend consumers. It can also have MCP consumers.
 
 1. Add serializer schema annotations for every new request or response field.
 2. Run `hogli build:openapi` after API contract changes.
-3. Update `products/dashboards/mcp/tools.yaml` only when the changed operation is MCP-enabled or becomes MCP-enabled.
-4. Regenerate MCP code only when the OpenAPI operation or tool definition changes.
-5. Check required API scopes. Dashboard reads, writes, and query execution use different scopes.
-6. Keep one-off filter and variable overrides non-persistent unless the endpoint explicitly persists them.
-7. Keep shared-token rules. Shared requests ignore dashboard filter and variable overrides.
+3. Decide whether each new operation needs MCP support. Record an explicit no when it does not.
+4. Add enabled operations to `products/dashboards/mcp/tools.yaml` with the required scopes and destructive annotations.
+5. Regenerate MCP code when the OpenAPI operation or tool definition changes.
+6. Check required API scopes. Dashboard reads, writes, and query execution use different scopes.
+7. Keep one-off filter and variable overrides non-persistent unless the endpoint explicitly persists them.
+8. Keep shared-token rules. Shared requests ignore dashboard filter and variable overrides.
 
 Test REST and MCP behavior separately. An MCP response can intentionally omit fields that the REST endpoint returns.
 
@@ -86,12 +94,13 @@ Dashboard changes are product events and audit events.
 
 ## Backend test matrix
 
-| Change                   | Test boundary                                                                    |
-| ------------------------ | -------------------------------------------------------------------------------- |
-| Persisted model field    | Migration, serializer, OpenAPI, generated types, and MCP schema                  |
-| Create or delete         | Team quota, soft delete, activity log, file-system sync, and restore             |
-| Move, copy, or duplicate | Source and destination access, transaction rollback, and tile uniqueness         |
-| Read endpoint            | REST and stream behavior, shared sanitization, cache policy, and error payload   |
-| Query endpoint           | Scope, throttle, access method, cache outcome, cancellation, and partial failure |
-| Template or transfer     | Old payload, source-specific reference, target team, and excluded derived fields |
-| Subscription path        | Permission, duplicate delivery, cache loss, and notification failure             |
+| Change                   | Test boundary                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| Persisted model field    | Migration, serializer, OpenAPI, generated types, and MCP schema                     |
+| Persisted list state     | Applicable payload, stable pagination, list placement, permission, and MCP decision |
+| Create or delete         | Team quota, soft delete, activity log, file-system sync, and restore                |
+| Move, copy, or duplicate | Source and destination access, transaction rollback, and tile uniqueness            |
+| Read endpoint            | REST and stream behavior, shared sanitization, cache policy, and error payload      |
+| Query endpoint           | Scope, throttle, access method, cache outcome, cancellation, and partial failure    |
+| Template or transfer     | Old payload, source-specific reference, target team, and excluded derived fields    |
+| Subscription path        | Permission, duplicate delivery, cache loss, and notification failure                |

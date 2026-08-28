@@ -20819,6 +20819,64 @@ export namespace Schemas {
       widget?: DashboardPatchWidgetOpenApi;
     }
 
+    /**
+     * Dashboard list filters stored by this view.
+     */
+    export type DashboardSavedViewFilters = { [key: string]: unknown };
+
+    /**
+     * * `private` - Private
+     * * `team` - Team
+     */
+    export type DashboardSavedViewScopeEnum = typeof DashboardSavedViewScopeEnum[keyof typeof DashboardSavedViewScopeEnum];
+
+
+    export const DashboardSavedViewScopeEnum = {
+      Private: 'private',
+      Team: 'team',
+    } as const;
+
+    export interface DashboardSavedView {
+      readonly id: string;
+      /**
+         * Name shown in the dashboard list view picker.
+         * @maxLength 200
+         */
+      name: string;
+      /** Dashboard list filters stored by this view. */
+      filters: DashboardSavedViewFilters;
+      /** Whether only the creator or all team members can use this view.
+       *
+       * * `private` - Private
+       * * `team` - Team */
+      scope?: DashboardSavedViewScopeEnum;
+      readonly created_at: string;
+      /** @nullable */
+      readonly updated_at: string | null;
+      /** @nullable */
+      readonly created_by: number | null;
+    }
+
+    /**
+     * Dashboard list filters stored by this view.
+     */
+    export type DashboardSavedViewWriteFilters = { [key: string]: unknown };
+
+    export interface DashboardSavedViewWrite {
+      /**
+         * Name shown in the dashboard list view picker.
+         * @maxLength 200
+         */
+      name: string;
+      /** Dashboard list filters stored by this view. */
+      filters: DashboardSavedViewWriteFilters;
+      /** Whether only the creator or all team members can use this view.
+       *
+       * * `private` - Private
+       * * `team` - Team */
+      scope?: DashboardSavedViewScopeEnum;
+    }
+
     export interface DashboardSubscribeNudgeResponse {
       /** Whether a nudge notification was created. False when one was already sent recently for this user and dashboard, or when in-app notifications are unavailable. */
       created: boolean;
@@ -53449,6 +53507,14 @@ export namespace Schemas {
       results: DashboardBasic[];
     }
 
+    export interface PaginatedDashboardSavedViewList {
+      /** @nullable */
+      next?: string | null;
+      /** @nullable */
+      previous?: string | null;
+      results: DashboardSavedView[];
+    }
+
     export interface PaginatedDashboardTemplateList {
       count: number;
       /** @nullable */
@@ -60239,6 +60305,32 @@ export namespace Schemas {
       readonly created_at?: string;
       /** @nullable */
       readonly updated_at?: string | null;
+    }
+
+    /**
+     * Dashboard list filters stored by this view.
+     */
+    export type PatchedDashboardSavedViewFilters = { [key: string]: unknown };
+
+    export interface PatchedDashboardSavedView {
+      readonly id?: string;
+      /**
+         * Name shown in the dashboard list view picker.
+         * @maxLength 200
+         */
+      name?: string;
+      /** Dashboard list filters stored by this view. */
+      filters?: PatchedDashboardSavedViewFilters;
+      /** Whether only the creator or all team members can use this view.
+       *
+       * * `private` - Private
+       * * `team` - Team */
+      scope?: DashboardSavedViewScopeEnum;
+      readonly created_at?: string;
+      /** @nullable */
+      readonly updated_at?: string | null;
+      /** @nullable */
+      readonly created_by?: number | null;
     }
 
     export interface PatchedDashboardTemplate {
@@ -90656,6 +90748,17 @@ export namespace Schemas {
      * The initial index from which to return the results.
      */
     offset?: number;
+    };
+
+    export type DashboardSavedViewsListParams = {
+    /**
+     * The pagination cursor value.
+     */
+    cursor?: string;
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number;
     };
 
     export type DashboardTemplatesListParams = {

@@ -17,7 +17,6 @@ export function DashboardsFiltersBar({ extraActions }: DashboardsFiltersBarProps
     const { setFilters, setTagSearch, setShowTagPopover, setSearch } = useActions(dashboardsLogic)
 
     const createdByIds = filters.createdBy === 'All users' ? [] : filters.createdBy
-
     const debouncedSetSearch = useDebouncedCallback((value: string) => {
         setSearch(value)
     }, 300)
@@ -164,7 +163,11 @@ export function DashboardsFiltersBar({ extraActions }: DashboardsFiltersBarProps
                 {currentTab !== DashboardsTab.Yours && (
                     <MemberSelectMultiplePopover
                         value={createdByIds}
-                        onChange={(ids) => setFilters({ createdBy: ids.length > 0 ? ids : 'All users' })}
+                        onChange={(ids) =>
+                            setFilters({
+                                createdBy: ids.length > 0 ? ids : 'All users',
+                            })
+                        }
                     />
                 )}
                 {extraActions}

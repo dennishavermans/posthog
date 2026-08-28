@@ -515,7 +515,9 @@ export const dashboardsLogic = kea<dashboardsLogicType>([
     })),
     urlToAction(({ actions, values }) => ({
         '/dashboard': (_, searchParams) => {
-            const tab = (searchParams['tab'] as DashboardsTab | undefined) || DashboardsTab.All
+            const requestedTab = (searchParams['tab'] as DashboardsTab | undefined) || DashboardsTab.All
+            const isLegacyPinnedTab = requestedTab === DashboardsTab.Pinned
+            const tab = isLegacyPinnedTab ? DashboardsTab.All : requestedTab
             if (values.currentTab !== tab) {
                 actions.setCurrentTab(tab)
             }
@@ -558,7 +560,7 @@ export const dashboardsLogic = kea<dashboardsLogicType>([
                   : []
             const nextFilters = {
                 createdBy: createdByIds.length > 0 ? createdByIds : DEFAULT_FILTERS.createdBy,
-                pinned: searchParams['pinned'] === true || searchParams['pinned'] === 'true',
+                pinned: isLegacyPinnedTab || searchParams['pinned'] === true || searchParams['pinned'] === 'true',
                 shared: searchParams['shared'] === true || searchParams['shared'] === 'true',
                 tags: Array.isArray(searchParams['tags']) ? searchParams['tags'] : DEFAULT_FILTERS.tags,
                 folder: 'folder' in searchParams ? urlSearchParamToString(searchParams['folder']) : null,

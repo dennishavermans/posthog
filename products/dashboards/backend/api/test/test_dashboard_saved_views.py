@@ -1,0 +1,301 @@
+from urllib.parse import parse_qs, urlparse
+
+from posthog.test.base import APIBaseTest
+from unittest.mock import patch
+
+from rest_framework import status
+
+from posthog.models.organization import OrganizationMembership
+from posthog.models.team import Team
+
+from products.dashboards.backend.models.dashboard import Dashboard
+from products.dashboards.backend.models.dashboard_saved_view import DashboardSavedView
+
+
+class TestDashboardSavedViews(APIBaseTest):
+    def setUp(self) -> None:
+        super().setUp()
+        self.saved_views_flag = patch(
+            "products.dashboards.backend.api.dashboard_saved_view.dashboard_saved_views_enabled", return_value=True
+        )
+        self.saved_views_flag.start()
+        self.addCleanup(self.saved_views_flag.stop)
+        self.base_url = f"/api/projects/{self.team.pk}/dashboard_saved_views/"
+
+    def _payload(self, **overrides: object) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "name": "Product dashboards",
+            "filters": {"tags": ["product"], "shared": True},
+        }
+        payload.update(overrides)
+        return payload
+
+    @patch("products.dashboards.backend.api.dashboard_saved_view.dashboard_saved_views_enabled", return_value=False)
+    def test_rejects_requests_when_saved_views_flag_is_disabled(self, _dashboard_saved_views_enabled) -> None:
+        response = self.client.get(self.base_url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_rejects_saved_views_without_filters(self) -> None:
+        response = self.client.post(self.base_url, self._payload(filters={}), format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json()["filters"] == ["Add at least one filter before saving a view."]
+
+    def test_rejects_saved_views_with_an_empty_creator_filter(self) -> None:
+        response = self.client.post(self.base_url, self._payload(filters={"createdBy": []}), format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json()["filters"] == ["Add at least one filter before saving a view."]
+
+    def test_rejects_saved_views_with_malformed_filters(self) -> None:
+        response = self.client.post(self.base_url, self._payload(filters={"tags": "product"}), format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json()["filters"] == ["Tags must be a list of strings."]
+
+    def test_rejects_updating_a_saved_view_without_filters(self) -> None:
+        response = self.client.post(self.base_url, self._payload(), format="json")
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+
+        response = self.client.patch(f"{self.base_url}{response.json()['id']}/", {"filters": {}}, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json()["filters"] == ["Add at least one filter before saving a view."]
+
+    def test_list_only_includes_saved_views_for_current_project(self) -> None:
+        response = self.client.post(self.base_url, self._payload(), format="json")
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+        assert response.json()["scope"] == "private"
+
+        other_team = Team.objects.create(organization=self.organization, name="Other project")
+        DashboardSavedView.all_teams.create(
+            team=other_team,
+            name="Other project view",
+            filters={},
+            created_by=self.user,
+        )
+
+        response = self.client.get(self.base_url)
+
+        assert response.status_code == status.HTTP_200_OK, response.json()
+        assert [view["name"] for view in response.json()["results"]] == ["Product dashboards"]
+
+    def test_list_uses_cursor_pagination(self) -> None:
+        DashboardSavedView.all_teams.create(
+            team=self.team,
+            name="Alpha view",
+            filters={"pinned": True},
+            created_by=self.user,
+        )
+        DashboardSavedView.all_teams.create(
+            team=self.team,
+            name="Bravo view",
+            filters={"shared": True},
+            created_by=self.user,
+        )
+
+        first_page = self.client.get(self.base_url, {"limit": 1})
+
+        assert first_page.status_code == status.HTTP_200_OK, first_page.json()
+        assert first_page.json()["next"] is not None
+        assert [view["name"] for view in first_page.json()["results"]] == ["Alpha view"]
+        cursor = parse_qs(urlparse(first_page.json()["next"]).query)["cursor"][0]
+        second_page = self.client.get(self.base_url, {"limit": 1, "cursor": cursor})
+        assert second_page.status_code == status.HTTP_200_OK, second_page.json()
+        assert [view["name"] for view in second_page.json()["results"]] == ["Bravo view"]
+
+    def test_project_member_can_list_saved_views(self) -> None:
+        response = self.client.post(self.base_url, self._payload(), format="json")
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+
+        member = self._create_user("member@example.com", level=OrganizationMembership.Level.MEMBER)
+        self.client.force_login(member)
+        response = self.client.get(self.base_url)
+
+        assert response.status_code == status.HTTP_200_OK, response.json()
+        assert [view["name"] for view in response.json()["results"]] == ["Product dashboards"]
+
+    @patch(
+        "products.dashboards.backend.api.dashboard_saved_view.UserAccessControl.check_access_level_for_resource",
+        return_value=False,
+    )
+    def test_user_without_dashboard_viewer_access_cannot_list_saved_views(self, _check_access_level) -> None:
+        response = self.client.get(self.base_url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_private_views_are_visible_only_to_their_creator(self) -> None:
+        response = self.client.post(self.base_url, self._payload(scope="private"), format="json")
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+        assert response.json()["scope"] == "private"
+
+        member = self._create_user("member@example.com", level=OrganizationMembership.Level.MEMBER)
+        self.client.force_login(member)
+        response = self.client.get(self.base_url)
+
+        assert response.status_code == status.HTTP_200_OK, response.json()
+        assert response.json()["results"] == []
+
+    def test_deleting_a_creator_removes_only_their_private_views(self) -> None:
+        creator = self._create_user("creator@example.com", level=OrganizationMembership.Level.MEMBER)
+        private_view = DashboardSavedView.all_teams.create(
+            team=self.team,
+            name="Private view",
+            filters={"pinned": True},
+            scope=DashboardSavedView.Scope.PRIVATE,
+            created_by=creator,
+        )
+        team_view = DashboardSavedView.all_teams.create(
+            team=self.team,
+            name="Team view",
+            filters={"pinned": True},
+            scope=DashboardSavedView.Scope.TEAM,
+            created_by=creator,
+        )
+
+        creator.delete()
+
+        assert not DashboardSavedView.all_teams.filter(pk=private_view.id).exists()
+        assert DashboardSavedView.all_teams.filter(pk=team_view.id, created_by__isnull=True).exists()
+
+    @patch(
+        "products.dashboards.backend.api.dashboard_saved_view.UserAccessControl.check_access_level_for_resource",
+        return_value=False,
+    )
+    def test_read_only_user_cannot_create_a_private_view_without_dashboard_editor_access(
+        self, _check_access_level
+    ) -> None:
+        response = self.client.post(self.base_url, self._payload(scope="private"), format="json")
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    @patch(
+        "products.dashboards.backend.api.dashboard_saved_view.UserAccessControl.check_access_level_for_resource",
+        return_value=False,
+    )
+    def test_read_only_user_cannot_update_or_delete_a_private_view(self, _check_access_level) -> None:
+        saved_view = DashboardSavedView.all_teams.create(
+            team=self.team,
+            name="Private view",
+            filters={},
+            scope=DashboardSavedView.Scope.PRIVATE,
+            created_by=self.user,
+        )
+
+        update_response = self.client.patch(f"{self.base_url}{saved_view.id}/", {"name": "Renamed view"}, format="json")
+        delete_response = self.client.delete(f"{self.base_url}{saved_view.id}/")
+
+        assert update_response.status_code == status.HTTP_403_FORBIDDEN
+        assert delete_response.status_code == status.HTTP_403_FORBIDDEN
+        assert DashboardSavedView.all_teams.filter(pk=saved_view.id).exists()
+
+    @patch(
+        "products.dashboards.backend.api.dashboard_saved_view.UserAccessControl.check_access_level_for_resource",
+        return_value=True,
+    )
+    def test_only_creator_can_change_a_team_view_visibility(self, _check_access_level) -> None:
+        saved_view = DashboardSavedView.all_teams.create(
+            team=self.team,
+            name="Team view",
+            filters={},
+            scope=DashboardSavedView.Scope.TEAM,
+            created_by=self.user,
+        )
+        member = self._create_user("member@example.com", level=OrganizationMembership.Level.MEMBER)
+        self.client.force_login(member)
+
+        response = self.client.patch(f"{self.base_url}{saved_view.id}/", {"scope": "private"}, format="json")
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        saved_view.refresh_from_db()
+        assert saved_view.scope == DashboardSavedView.Scope.TEAM
+
+    @patch("products.dashboards.backend.api.dashboard_saved_view.report_user_action")
+    def test_create_and_delete_report_saved_view_events(self, report_user_action) -> None:
+        Dashboard.objects.create(team=self.team, name="First dashboard", created_by=self.user)
+        Dashboard.objects.create(team=self.team, name="Second dashboard", created_by=self.user)
+        response = self.client.post(self.base_url, self._payload(), format="json")
+
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+        saved_view = response.json()
+        create_event = report_user_action.call_args
+        assert create_event.args[:3] == (
+            self.user,
+            "dashboard saved view created",
+            {
+                "saved_view_id": saved_view["id"],
+                "scope": "private",
+                "has_search_filter": False,
+                "has_folder_filter": False,
+                "has_tag_filter": True,
+                "tag_count": 1,
+                "has_creator_filter": False,
+                "is_pinned": False,
+                "is_shared": True,
+                "active_filter_count": 2,
+                "saved_views_created_by_user_count": 1,
+                "dashboards_created_by_user_count": 2,
+            },
+        )
+        assert create_event.kwargs["team"] == self.team
+        assert create_event.kwargs["request"] is not None
+
+        response = self.client.delete(f"{self.base_url}{saved_view['id']}/")
+
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert [call.args[1] for call in report_user_action.call_args_list] == [
+            "dashboard saved view created",
+            "dashboard saved view deleted",
+        ]
+        assert not DashboardSavedView.all_teams.filter(pk=saved_view["id"]).exists()
+
+    @patch("products.dashboards.backend.api.dashboard_saved_view.report_user_action")
+    def test_update_reports_filter_shape(self, report_user_action) -> None:
+        response = self.client.post(self.base_url, self._payload(), format="json")
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+
+        response = self.client.patch(
+            f"{self.base_url}{response.json()['id']}/",
+            {"filters": {"search": "dashboard", "pinned": True}},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.json()
+        update_event = report_user_action.call_args
+        assert update_event.args[:3] == (
+            self.user,
+            "dashboard saved view updated",
+            {
+                "saved_view_id": response.json()["id"],
+                "scope": "private",
+                "changed_fields": ["filters"],
+                "has_search_filter": True,
+                "has_folder_filter": False,
+                "has_tag_filter": False,
+                "tag_count": 0,
+                "has_creator_filter": False,
+                "is_pinned": True,
+                "is_shared": False,
+                "active_filter_count": 2,
+            },
+        )
+
+    @patch(
+        "products.dashboards.backend.api.dashboard_saved_view.UserAccessControl.check_access_level_for_resource",
+        return_value=False,
+    )
+    def test_rejects_create_and_delete_without_dashboard_editor_access(self, _check_access_level) -> None:
+        saved_view = DashboardSavedView.all_teams.create(
+            team=self.team,
+            name="Existing view",
+            filters={},
+            created_by=self.user,
+        )
+
+        create_response = self.client.post(self.base_url, self._payload(), format="json")
+        delete_response = self.client.delete(f"{self.base_url}{saved_view.id}/")
+
+        assert create_response.status_code == status.HTTP_403_FORBIDDEN
+        assert delete_response.status_code == status.HTTP_403_FORBIDDEN
+        assert DashboardSavedView.all_teams.filter(pk=saved_view.id).exists()

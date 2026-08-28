@@ -9,6 +9,64 @@
  */
 import * as zod from 'zod'
 
+export const dashboardSavedViewsCreateBodyNameMax = 200
+
+export const dashboardSavedViewsCreateBodyScopeDefault = `private`
+
+export const DashboardSavedViewsCreateBody = /* @__PURE__ */ zod.object({
+    name: zod
+        .string()
+        .max(dashboardSavedViewsCreateBodyNameMax)
+        .describe('Name shown in the dashboard list view picker.'),
+    filters: zod.record(zod.string(), zod.unknown()).describe('Dashboard list filters stored by this view.'),
+    scope: zod
+        .enum(['private', 'team'])
+        .describe('\* `private` - Private\n\* `team` - Team')
+        .default(dashboardSavedViewsCreateBodyScopeDefault)
+        .describe(
+            'Whether only the creator or all team members can use this view.\n\n\* `private` - Private\n\* `team` - Team'
+        ),
+})
+
+export const dashboardSavedViewsUpdateBodyNameMax = 200
+
+export const dashboardSavedViewsUpdateBodyScopeDefault = `private`
+
+export const DashboardSavedViewsUpdateBody = /* @__PURE__ */ zod.object({
+    name: zod
+        .string()
+        .max(dashboardSavedViewsUpdateBodyNameMax)
+        .describe('Name shown in the dashboard list view picker.'),
+    filters: zod.record(zod.string(), zod.unknown()).describe('Dashboard list filters stored by this view.'),
+    scope: zod
+        .enum(['private', 'team'])
+        .describe('\* `private` - Private\n\* `team` - Team')
+        .default(dashboardSavedViewsUpdateBodyScopeDefault)
+        .describe(
+            'Whether only the creator or all team members can use this view.\n\n\* `private` - Private\n\* `team` - Team'
+        ),
+})
+
+export const dashboardSavedViewsPartialUpdateBodyNameMax = 200
+
+export const dashboardSavedViewsPartialUpdateBodyScopeDefault = `private`
+
+export const DashboardSavedViewsPartialUpdateBody = /* @__PURE__ */ zod.object({
+    name: zod
+        .string()
+        .max(dashboardSavedViewsPartialUpdateBodyNameMax)
+        .optional()
+        .describe('Name shown in the dashboard list view picker.'),
+    filters: zod.record(zod.string(), zod.unknown()).optional().describe('Dashboard list filters stored by this view.'),
+    scope: zod
+        .enum(['private', 'team'])
+        .describe('\* `private` - Private\n\* `team` - Team')
+        .default(dashboardSavedViewsPartialUpdateBodyScopeDefault)
+        .describe(
+            'Whether only the creator or all team members can use this view.\n\n\* `private` - Private\n\* `team` - Team'
+        ),
+})
+
 export const dashboardTemplatesCreateBodyTemplateNameMax = 400
 
 export const dashboardTemplatesCreateBodyDashboardDescriptionMax = 400
