@@ -42,7 +42,7 @@ Do this before implementation for a new dashboard feature. Skip it for a narrow 
 
 1. State the user problem, intended actor, and explicit non-goals.
 2. State the feature action and its default behavior.
-3. State the state owner: dashboard, tile, request, user, URL, or a separate team-scoped resource.
+3. State where the feature stores its state: dashboard, tile, request, user, URL, or a separate team-scoped resource.
 4. State the availability, read permission, and mutation permission.
 5. State behavior for new rows, existing rows, and invalid or absent state.
 6. State the acceptance criteria for allowed, denied, shared, and failure paths.
