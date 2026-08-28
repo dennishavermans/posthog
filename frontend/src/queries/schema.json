@@ -39619,6 +39619,7 @@
                 "comments",
                 "conversations",
                 "customer_analytics",
+                "dashboards",
                 "data_catalog",
                 "data_warehouse",
                 "data_warehouse_saved_queries",
