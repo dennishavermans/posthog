@@ -262,7 +262,7 @@ export function Dashboards(): JSX.Element {
                         lemonToast.success(`Saved ${scope} view`)
                     }
                 } catch (error) {
-                    const detail = error instanceof ApiError && typeof error.detail === 'string' ? error.detail : null
+                    const detail = error instanceof ApiError ? error.detail : null
                     lemonToast.error(detail || 'Could not save view')
                     throw error
                 }
@@ -289,7 +289,7 @@ export function Dashboards(): JSX.Element {
                 lemonToast.success('Saved view deleted')
             }
         } catch (error) {
-            const detail = error instanceof ApiError && typeof error.detail === 'string' ? error.detail : null
+            const detail = error instanceof ApiError ? error.detail : null
             lemonToast.error(detail || 'Could not delete view')
             throw error
         }
@@ -312,7 +312,7 @@ export function Dashboards(): JSX.Element {
             }
             return updatedView
         } catch (error) {
-            const detail = error instanceof ApiError && typeof error.detail === 'string' ? error.detail : null
+            const detail = error instanceof ApiError ? error.detail : null
             lemonToast.error(detail || 'Could not update view')
             throw error
         }
@@ -406,7 +406,7 @@ export function Dashboards(): JSX.Element {
                 lemonToast.success('Saved view updated')
             }
         } catch (error) {
-            const detail = error instanceof ApiError && typeof error.detail === 'string' ? error.detail : null
+            const detail = error instanceof ApiError ? error.detail : null
             lemonToast.error(detail || 'Could not update view')
             throw error
         } finally {
