@@ -46,8 +46,6 @@ function savedViewFilterProperties(filters: DashboardsFilters): Record<string, b
     const hasFolder = filters.folder != null
     const hasTags = tagCount > 0
     const hasCreator = Array.isArray(filters.createdBy) && filters.createdBy.length > 0
-    const isPinned = filters.pinned
-    const isShared = filters.shared
 
     return {
         has_search_filter: hasSearch,
@@ -55,9 +53,10 @@ function savedViewFilterProperties(filters: DashboardsFilters): Record<string, b
         has_tag_filter: hasTags,
         tag_count: tagCount,
         has_creator_filter: hasCreator,
-        is_pinned: isPinned,
-        is_shared: isShared,
-        active_filter_count: [hasSearch, hasFolder, hasTags, hasCreator, isPinned, isShared].filter(Boolean).length,
+        is_pinned: filters.pinned,
+        is_shared: filters.shared,
+        active_filter_count: [hasSearch, hasFolder, hasTags, hasCreator, filters.pinned, filters.shared].filter(Boolean)
+            .length,
     }
 }
 
@@ -123,7 +122,7 @@ export function DashboardSavedViews(): JSX.Element | null {
         loadMoreSavedViewsLoading,
         savedViewsLoading,
         savedViewsLoadError,
-        savedViewsLoadMoreError,
+        savedViewsLoadMoreFailed,
     } = useValues(savedViewsLogic)
     const {
         loadSavedViews,
@@ -395,7 +394,7 @@ export function DashboardSavedViews(): JSX.Element | null {
             updatingSavedView={updatingSavedView}
             loading={savedViewsLoading}
             loadError={savedViewsLoadError}
-            loadMoreError={savedViewsLoadMoreError}
+            loadMoreFailed={savedViewsLoadMoreFailed}
             canEdit={!savedViewsEditDisabledReason && !savedViewsLoading}
             onSaveAsNewView={saveView}
             onSaveChanges={(view) => void updateSavedView(view)}

@@ -43,7 +43,7 @@ export function ManageDashboardSavedViews({
     )
     const [updatingIds, setUpdatingIds] = useState<string[]>([])
     const [nextCursor, setNextCursor] = useState(initialNextCursor)
-    const [loadMoreError, setLoadMoreError] = useState(false)
+    const [loadMoreFailed, setLoadMoreFailed] = useState(false)
     const [loadingMoreViews, setLoadingMoreViews] = useState(false)
 
     const setUpdating = (id: string, updating: boolean): void => {
@@ -131,7 +131,7 @@ export function ManageDashboardSavedViews({
 
         setLoadingMoreViews(true)
         try {
-            setLoadMoreError(false)
+            setLoadMoreFailed(false)
             const page = await onLoadMore(nextCursor)
             if (page) {
                 setViews((currentViews) => {
@@ -145,7 +145,7 @@ export function ManageDashboardSavedViews({
                 setNextCursor(page.nextCursor)
             }
         } catch {
-            setLoadMoreError(true)
+            setLoadMoreFailed(true)
         } finally {
             setLoadingMoreViews(false)
         }
@@ -257,11 +257,11 @@ export function ManageDashboardSavedViews({
                     />
                 )}
             />
-            {(nextCursor !== null || loadMoreError) && (
+            {(nextCursor !== null || loadMoreFailed) && (
                 <div className="flex flex-col items-center gap-1 border-t p-2">
-                    {loadMoreError && <div className="text-sm text-danger">Could not load more views.</div>}
+                    {loadMoreFailed && <div className="text-sm text-danger">Could not load more views.</div>}
                     <LemonButton size="small" type="secondary" loading={loadingMoreViews} onClick={loadMoreViews}>
-                        {loadMoreError ? 'Retry loading views' : 'Load more views'}
+                        {loadMoreFailed ? 'Retry loading views' : 'Load more views'}
                     </LemonButton>
                 </div>
             )}

@@ -17,7 +17,7 @@ export interface SavedDashboardViewsPickerProps {
     updatingSavedView: boolean
     loading: boolean
     loadError: boolean
-    loadMoreError: boolean
+    loadMoreFailed: boolean
     canEdit: boolean
     defaultOpen?: boolean
     onSaveAsNewView: () => void
@@ -38,7 +38,7 @@ export function SavedDashboardViewsPicker({
     updatingSavedView,
     loading,
     loadError,
-    loadMoreError,
+    loadMoreFailed,
     canEdit,
     defaultOpen = false,
     onSaveAsNewView,
@@ -195,7 +195,7 @@ export function SavedDashboardViewsPicker({
                                         loading={loadingMore}
                                         onClick={onLoadMore}
                                     >
-                                        {loadMoreError ? 'Could not load more views. Retry' : 'Load more views'}
+                                        {loadMoreFailed ? 'Could not load more views. Retry' : 'Load more views'}
                                     </LemonButton>
                                 )}
                             </div>
