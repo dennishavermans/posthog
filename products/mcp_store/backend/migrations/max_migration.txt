@@ -1,1 +1,1 @@
-0026_agent_grant_scope
+0027_add_mcp_template_oauth_scope_allowlist
