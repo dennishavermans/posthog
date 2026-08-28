@@ -54,6 +54,12 @@ class TestDashboardSavedViews(APIBaseTest):
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.json()["filters"] == ["Tags must be a list of strings."]
 
+    def test_rejects_saved_views_with_oversized_filters(self) -> None:
+        response = self.client.post(self.base_url, self._payload(filters={"search": "a" * 201}), format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json()["filters"] == ["Search must be 200 characters or fewer."]
+
     def test_rejects_updating_a_saved_view_without_filters(self) -> None:
         response = self.client.post(self.base_url, self._payload(), format="json")
         assert response.status_code == status.HTTP_201_CREATED, response.json()
@@ -104,6 +110,20 @@ class TestDashboardSavedViews(APIBaseTest):
         second_page = self.client.get(self.base_url, {"limit": 1, "cursor": cursor})
         assert second_page.status_code == status.HTTP_200_OK, second_page.json()
         assert [view["name"] for view in second_page.json()["results"]] == ["Bravo view"]
+
+    def test_child_environment_reads_saved_views_from_parent_project(self) -> None:
+        response = self.client.post(self.base_url, self._payload(), format="json")
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+
+        child_team = Team.objects.create(
+            organization=self.organization, parent_team=self.team, name="Child environment"
+        )
+        child_url = f"/api/projects/{child_team.pk}/dashboard_saved_views/"
+
+        response = self.client.get(child_url)
+
+        assert response.status_code == status.HTTP_200_OK, response.json()
+        assert [view["name"] for view in response.json()["results"]] == ["Product dashboards"]
 
     def test_project_member_can_list_saved_views(self) -> None:
         response = self.client.post(self.base_url, self._payload(), format="json")

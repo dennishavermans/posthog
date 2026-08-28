@@ -1,9 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { waitFor, within } from '@testing-library/dom'
+import { waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import type { DashboardListSavedView } from 'scenes/dashboard/dashboards/Dashboards'
-
+import type { DashboardListSavedView } from './dashboardSavedViewsLogic'
 import { SavedDashboardViewsPicker } from './SavedDashboardViewsPicker'
 
 const privateViewNames = [
@@ -88,7 +87,9 @@ export const Default: Story = {
         hasMore: false,
         loadingMore: false,
         updatingSavedView: false,
+        loading: false,
         loadError: false,
+        loadMoreError: false,
         canEdit: true,
         onSaveAsNewView: () => undefined,
         onSaveChanges: () => undefined,
@@ -109,7 +110,9 @@ export const UnsavedChanges: Story = {
         hasMore: false,
         loadingMore: false,
         updatingSavedView: false,
+        loading: false,
         loadError: false,
+        loadMoreError: false,
         canEdit: true,
         defaultOpen: true,
         onSaveAsNewView: () => undefined,
@@ -130,7 +133,9 @@ export const ReadOnly: Story = {
         hasMore: false,
         loadingMore: false,
         updatingSavedView: false,
+        loading: false,
         loadError: false,
+        loadMoreError: false,
         canEdit: false,
         defaultOpen: true,
         onSaveAsNewView: () => undefined,

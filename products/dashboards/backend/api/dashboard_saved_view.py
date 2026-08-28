@@ -1,13 +1,14 @@
+import json
 from collections.abc import Mapping
 from typing import Literal, TypedDict, cast
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models import QuerySet
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_field
 from rest_framework import mixins, serializers, status, viewsets
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.pagination import CursorPagination
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.request import Request
@@ -15,6 +16,7 @@ from rest_framework.response import Response
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.event_usage import report_user_action
+from posthog.helpers.trigram_search import MAX_SEARCH_LENGTH
 from posthog.models.user import User
 
 from products.access_control.backend.facade.user_access_control import UserAccessControl
@@ -23,6 +25,11 @@ from products.dashboards.backend.models.dashboard import Dashboard
 from products.dashboards.backend.models.dashboard_saved_view import DashboardSavedView
 
 SAVED_VIEW_FILTER_KEYS = {"search", "createdBy", "pinned", "shared", "tags", "folder"}
+MAX_SAVED_VIEW_FILTER_BYTES = 16 * 1024
+MAX_SAVED_VIEW_FILTER_STRING_LENGTH = MAX_SEARCH_LENGTH
+MAX_SAVED_VIEW_TAGS = 50
+MAX_SAVED_VIEW_TAG_LENGTH = 100
+MAX_SAVED_VIEW_CREATORS = 100
 
 
 class DashboardSavedViewFilters(TypedDict, total=False):
@@ -107,10 +114,17 @@ class DashboardSavedViewWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Filters contain unsupported fields.")
         if "search" in filters and not isinstance(filters["search"], str):
             raise serializers.ValidationError("Search must be a string.")
+        if (
+            isinstance(filters.get("search"), str)
+            and len(cast(str, filters["search"])) > MAX_SAVED_VIEW_FILTER_STRING_LENGTH
+        ):
+            raise serializers.ValidationError("Search must be 200 characters or fewer.")
         if "createdBy" in filters and filters["createdBy"] != "All users":
             creators = filters["createdBy"]
             if not isinstance(creators, list) or any(type(creator) is not int for creator in creators):
                 raise serializers.ValidationError("Creators must be a list of user IDs.")
+            if len(creators) > MAX_SAVED_VIEW_CREATORS:
+                raise serializers.ValidationError("You can select up to 100 creators.")
         if "pinned" in filters and not isinstance(filters["pinned"], bool):
             raise serializers.ValidationError("Pinned must be true or false.")
         if "shared" in filters and not isinstance(filters["shared"], bool):
@@ -119,10 +133,26 @@ class DashboardSavedViewWriteSerializer(serializers.ModelSerializer):
             not isinstance(filters["tags"], list) or any(not isinstance(tag, str) for tag in filters["tags"])
         ):
             raise serializers.ValidationError("Tags must be a list of strings.")
+        if isinstance(filters.get("tags"), list):
+            tags = cast(list[str], filters["tags"])
+            if len(tags) > MAX_SAVED_VIEW_TAGS:
+                raise serializers.ValidationError("You can select up to 50 tags.")
+            if any(len(tag) > MAX_SAVED_VIEW_TAG_LENGTH for tag in tags):
+                raise serializers.ValidationError("Tags must be 100 characters or fewer.")
         if "folder" in filters and filters["folder"] is not None and not isinstance(filters["folder"], str):
             raise serializers.ValidationError("Folder must be a string or null.")
+        if (
+            isinstance(filters.get("folder"), str)
+            and len(cast(str, filters["folder"])) > MAX_SAVED_VIEW_FILTER_STRING_LENGTH
+        ):
+            raise serializers.ValidationError("Folder must be 200 characters or fewer.")
         if not has_saved_view_filters(filters):
             raise serializers.ValidationError("Add at least one filter before saving a view.")
+        if (
+            len(json.dumps(filters, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            > MAX_SAVED_VIEW_FILTER_BYTES
+        ):
+            raise serializers.ValidationError("Saved view filters are too large.")
         return cast(DashboardSavedViewFilters, filters)
 
 
@@ -190,13 +220,20 @@ class DashboardSavedViewViewSet(
 
     def safely_get_queryset(self, queryset: QuerySet[DashboardSavedView]) -> QuerySet[DashboardSavedView]:
         return (
-            queryset.filter(team_id=self.team.id)
+            queryset.filter(team_id=self.canonical_team_id)
             .filter(
                 models.Q(scope=DashboardSavedView.Scope.TEAM)
                 | models.Q(scope=DashboardSavedView.Scope.PRIVATE, created_by=cast(User, self.request.user))
             )
             .select_related("created_by")
         )
+
+    @property
+    def canonical_team_id(self) -> int:
+        return self.team.parent_team_id or self.team.id
+
+    def _should_skip_parents_filter(self) -> bool:
+        return True
 
     def perform_create(self, serializer: DashboardSavedViewWriteSerializer) -> None:
         instance = serializer.save(team=self.team, created_by=self.request.user)
@@ -207,7 +244,9 @@ class DashboardSavedViewViewSet(
                 "saved_view_id": str(instance.id),
                 "scope": instance.scope,
                 **saved_view_filter_properties(cast(DashboardSavedViewFilters, instance.filters)),
-                **saved_view_creator_properties(team_id=self.team.id, user_id=cast(User, self.request.user).id),
+                **saved_view_creator_properties(
+                    team_id=self.canonical_team_id, user_id=cast(User, self.request.user).id
+                ),
             },
             team=self.team,
             request=self.request,
@@ -215,15 +254,26 @@ class DashboardSavedViewViewSet(
 
     def perform_update(self, serializer: DashboardSavedViewWriteSerializer) -> None:
         existing_view = cast(DashboardSavedView, serializer.instance)
-        scope = cast(DashboardSavedView.Scope | None, serializer.validated_data.get("scope"))
-        if (
-            scope is not None
-            and scope != existing_view.scope
-            and existing_view.scope == DashboardSavedView.Scope.TEAM
-            and existing_view.created_by_id != self.request.user.id
-        ):
-            raise PermissionDenied("Only the creator can change a shared saved view's visibility.")
-        instance = serializer.save()
+        try:
+            with transaction.atomic():
+                locked_view = DashboardSavedView.all_teams.select_for_update().get(pk=existing_view.pk)
+                scope = cast(DashboardSavedView.Scope | None, serializer.validated_data.get("scope"))
+                if (
+                    locked_view.scope == DashboardSavedView.Scope.PRIVATE
+                    and locked_view.created_by_id != self.request.user.id
+                ):
+                    raise PermissionDenied("You don't have permission to update this private saved view.")
+                if (
+                    scope is not None
+                    and scope != locked_view.scope
+                    and locked_view.scope == DashboardSavedView.Scope.TEAM
+                    and locked_view.created_by_id != self.request.user.id
+                ):
+                    raise PermissionDenied("Only the creator can change a shared saved view's visibility.")
+                serializer.instance = locked_view
+                instance = serializer.save()
+        except DashboardSavedView.DoesNotExist:
+            raise NotFound()
         report_user_action(
             self.request.user,
             "dashboard saved view updated",
@@ -238,10 +288,22 @@ class DashboardSavedViewViewSet(
         )
 
     def perform_destroy(self, instance: DashboardSavedView) -> None:
+        try:
+            with transaction.atomic():
+                locked_view = DashboardSavedView.all_teams.select_for_update().get(pk=instance.pk)
+                if (
+                    locked_view.scope == DashboardSavedView.Scope.PRIVATE
+                    and locked_view.created_by_id != self.request.user.id
+                ):
+                    raise PermissionDenied("You don't have permission to delete this private saved view.")
+                scope = locked_view.scope
+                locked_view.delete()
+        except DashboardSavedView.DoesNotExist:
+            raise NotFound()
         report_user_action(
             self.request.user,
             "dashboard saved view deleted",
-            {"saved_view_id": str(instance.id), "scope": instance.scope},
+            {"saved_view_id": str(instance.id), "scope": scope},
             team=self.team,
             request=self.request,
         )

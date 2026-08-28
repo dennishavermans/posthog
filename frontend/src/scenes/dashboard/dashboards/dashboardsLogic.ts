@@ -476,6 +476,10 @@ export const dashboardsLogic = kea<dashboardsLogicType>([
             const { createdBy, pinned, shared, tags } = values.filters
             const searchParams: Record<string, any> = { ...router.values.searchParams }
 
+            if (searchParams['tab'] === DashboardsTab.Pinned) {
+                delete searchParams['tab']
+            }
+
             if (createdBy !== DEFAULT_FILTERS.createdBy) {
                 searchParams['created_by'] = createdBy
             } else {

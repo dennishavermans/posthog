@@ -27,6 +27,18 @@ class DashboardSavedView(TeamScopedRootMixin, UUIDModel):
     class Meta(TeamScopedRootMixin.Meta):
         db_table = "posthog_dashboard_saved_view"
         ordering = ["name", "id"]
+        indexes = [
+            models.Index(
+                fields=["team", "name", "id"],
+                condition=models.Q(scope="team"),
+                name="dash_saved_view_team_idx",
+            ),
+            models.Index(
+                fields=["team", "created_by", "name", "id"],
+                condition=models.Q(scope="private"),
+                name="dash_saved_view_private_idx",
+            ),
+        ]
 
 
 @receiver(pre_delete, sender="posthog.User")

@@ -1,5 +1,5 @@
+import { deepEqual as isEqual } from 'fast-equals'
 import { useActions, useValues } from 'kea'
-import isEqual from 'lodash/isEqual'
 import posthog from 'posthog-js'
 import { useState } from 'react'
 
@@ -57,6 +57,7 @@ import {
     dashboardSavedViewsLogic,
     DashboardListSavedView,
     DashboardSavedViewScope,
+    DashboardSavedViewsPage,
     loadDashboardSavedViews,
 } from 'products/dashboards/frontend/saved-views/dashboardSavedViewsLogic'
 import { SavedDashboardViewsPicker } from 'products/dashboards/frontend/saved-views/SavedDashboardViewsPicker'
@@ -122,11 +123,11 @@ function SavedViewVisibilityPicker({
                 options={[
                     {
                         value: 'private',
-                        label: 'Private',
+                        label: 'Private (only visible to me)',
                     },
                     {
                         value: 'team',
-                        label: 'Team',
+                        label: 'Shared with team',
                         disabledReason:
                             getAccessControlDisabledReason(
                                 AccessControlResourceType.Dashboard,
@@ -152,8 +153,15 @@ export function Dashboards(): JSX.Element {
     const { selectableMembers } = useValues(membersLogic)
     const { currentTeamId } = useValues(teamLogic)
     const savedViewsLogic = dashboardSavedViewsLogic({ teamId: currentTeamId })
-    const { dashboardSavedViewsEnabled, savedViews, savedViewsNextCursor, loadingMoreSavedViews, savedViewsLoadError } =
-        useValues(savedViewsLogic)
+    const {
+        dashboardSavedViewsEnabled,
+        savedViews,
+        savedViewsNextCursor,
+        loadMoreSavedViewsLoading,
+        savedViewsLoading,
+        savedViewsLoadError,
+        savedViewsLoadMoreError,
+    } = useValues(savedViewsLogic)
     const {
         loadSavedViews,
         loadMoreSavedViews,
@@ -229,8 +237,8 @@ export function Dashboards(): JSX.Element {
         }
         let scope = initialScope
         LemonDialog.openForm({
-            title: 'Save dashboard list view',
-            initialValues: { name: 'My View' },
+            title: 'Save as new view',
+            initialValues: { name: 'My view' },
             content: (
                 <div className="space-y-6">
                     {savedFiltersSummary(filters)}
@@ -263,7 +271,7 @@ export function Dashboards(): JSX.Element {
                     }
                 } catch (error) {
                     const detail = error instanceof ApiError ? error.detail : null
-                    lemonToast.error(detail || 'Could not save view')
+                    lemonToast.error(detail || 'Could not save this view. Try again.')
                     throw error
                 }
             },
@@ -290,7 +298,7 @@ export function Dashboards(): JSX.Element {
             }
         } catch (error) {
             const detail = error instanceof ApiError ? error.detail : null
-            lemonToast.error(detail || 'Could not delete view')
+            lemonToast.error(detail || 'Could not delete this view. Try again.')
             throw error
         }
     }
@@ -313,7 +321,7 @@ export function Dashboards(): JSX.Element {
             return updatedView
         } catch (error) {
             const detail = error instanceof ApiError ? error.detail : null
-            lemonToast.error(detail || 'Could not update view')
+            lemonToast.error(detail || 'Could not update this view. Try again.')
             throw error
         }
     }
@@ -352,7 +360,7 @@ export function Dashboards(): JSX.Element {
             content: (
                 <ManageDashboardSavedViews
                     views={savedViews}
-                    hasMore={savedViewsNextCursor !== null}
+                    nextCursor={savedViewsNextCursor}
                     currentUserId={user?.id ?? null}
                     editDisabledReason={savedViewsEditDisabledReason}
                     onUpdate={updateSavedViewMetadata}
@@ -378,16 +386,12 @@ export function Dashboards(): JSX.Element {
         })
     }
 
-    const loadMoreSavedViewsForManagement = async (): Promise<DashboardSavedViewsPage | null> => {
-        if (currentTeamId == null || savedViewsNextCursor == null || loadingMoreSavedViews) {
+    const loadMoreSavedViewsForManagement = async (cursor: string): Promise<DashboardSavedViewsPage | null> => {
+        if (currentTeamId == null) {
             return null
         }
-        const page = await loadDashboardSavedViews(currentTeamId, savedViewsNextCursor)
-        const ids = new Set(savedViews.map((view) => view.id))
-        loadMoreSavedViewsSuccess({
-            ...page,
-            views: [...savedViews, ...page.views.filter((view) => !ids.has(view.id))],
-        })
+        const page = await loadDashboardSavedViews(currentTeamId, cursor)
+        loadMoreSavedViewsSuccess(page)
         return page
     }
 
@@ -407,7 +411,7 @@ export function Dashboards(): JSX.Element {
             }
         } catch (error) {
             const detail = error instanceof ApiError ? error.detail : null
-            lemonToast.error(detail || 'Could not update view')
+            lemonToast.error(detail || 'Could not update this view. Try again.')
             throw error
         } finally {
             setUpdatingSavedView(false)
@@ -481,10 +485,12 @@ export function Dashboards(): JSX.Element {
                             isFiltering={isFiltering}
                             savedViews={savedViews}
                             hasMore={savedViewsNextCursor !== null}
-                            loadingMore={loadingMoreSavedViews}
+                            loadingMore={loadMoreSavedViewsLoading}
                             updatingSavedView={updatingSavedView}
+                            loading={savedViewsLoading}
                             loadError={savedViewsLoadError}
-                            canEdit={!savedViewsEditDisabledReason}
+                            loadMoreError={savedViewsLoadMoreError}
+                            canEdit={!savedViewsEditDisabledReason && !savedViewsLoading}
                             onSaveAsNewView={saveView}
                             onSaveChanges={(view) => void updateSavedView(view)}
                             onSelectView={(view) => {

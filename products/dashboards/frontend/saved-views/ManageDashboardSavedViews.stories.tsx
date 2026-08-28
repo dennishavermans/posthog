@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
 import { ProfilePicture } from 'lib/lemon-ui/ProfilePicture'
-import type { DashboardListSavedView } from 'scenes/dashboard/dashboards/Dashboards'
 import { ManageDashboardSavedViews } from 'scenes/dashboard/dashboards/ManageDashboardSavedViews'
+
+import type { DashboardListSavedView } from './dashboardSavedViewsLogic'
 
 const viewNames = [
     'Activation dashboard',
@@ -89,7 +90,7 @@ type Story = StoryObj<typeof ManageDashboardSavedViews>
 export const Default: Story = {
     args: {
         views: savedViews,
-        hasMore: false,
+        nextCursor: null,
         currentUserId: 1,
         editDisabledReason: null,
         onUpdate: async (view, update) => ({ ...view, ...update }),

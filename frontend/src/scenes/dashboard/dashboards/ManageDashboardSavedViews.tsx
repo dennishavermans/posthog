@@ -16,19 +16,19 @@ type SavedViewUpdate = Pick<DashboardListSavedView, 'name' | 'scope'>
 
 interface ManageDashboardSavedViewsProps {
     views: DashboardListSavedView[]
-    hasMore: boolean
+    nextCursor: string | null
     currentUserId: number | null
     editDisabledReason: string | null
     onUpdate: (view: DashboardListSavedView, update: Partial<SavedViewUpdate>) => Promise<DashboardListSavedView>
     onDelete: (view: DashboardListSavedView) => Promise<void>
-    onLoadMore: () => Promise<DashboardSavedViewsPage | null>
+    onLoadMore: (cursor: string) => Promise<DashboardSavedViewsPage | null>
     renderCreator: (view: DashboardListSavedView) => JSX.Element | string
     renderFilters: (filters: DashboardListSavedView['filters']) => string
 }
 
 export function ManageDashboardSavedViews({
     views: initialViews,
-    hasMore,
+    nextCursor: initialNextCursor,
     currentUserId,
     editDisabledReason,
     onUpdate,
@@ -42,7 +42,8 @@ export function ManageDashboardSavedViews({
         Object.fromEntries(initialViews.map((view) => [view.id, view.name]))
     )
     const [updatingIds, setUpdatingIds] = useState<string[]>([])
-    const [hasMoreViews, setHasMoreViews] = useState(hasMore)
+    const [nextCursor, setNextCursor] = useState(initialNextCursor)
+    const [loadMoreError, setLoadMoreError] = useState(false)
     const [loadingMoreViews, setLoadingMoreViews] = useState(false)
 
     const setUpdating = (id: string, updating: boolean): void => {
@@ -103,14 +104,18 @@ export function ManageDashboardSavedViews({
             primaryButton: {
                 children: 'Delete view',
                 status: 'danger',
-                onClick: () => {
+                onClick: async () => {
                     setViews((currentViews) => currentViews.filter((savedView) => savedView.id !== view.id))
-                    void onDelete(view).catch(() => {
+                    try {
+                        await onDelete(view)
+                    } catch (error) {
                         setViews((currentViews) => [...currentViews, view])
-                    })
+                        throw error
+                    }
                 },
             },
             secondaryButton: { children: 'Cancel' },
+            shouldAwaitSubmit: true,
             zIndex: '1169',
         })
     }
@@ -120,9 +125,14 @@ export function ManageDashboardSavedViews({
             return
         }
 
+        if (nextCursor == null) {
+            return
+        }
+
         setLoadingMoreViews(true)
         try {
-            const page = await onLoadMore()
+            setLoadMoreError(false)
+            const page = await onLoadMore(nextCursor)
             if (page) {
                 setViews((currentViews) => {
                     const ids = new Set(currentViews.map((view) => view.id))
@@ -132,8 +142,10 @@ export function ManageDashboardSavedViews({
                     ...currentNames,
                     ...Object.fromEntries(page.views.map((view) => [view.id, view.name])),
                 }))
-                setHasMoreViews(page.nextCursor !== null)
+                setNextCursor(page.nextCursor)
             }
+        } catch {
+            setLoadMoreError(true)
         } finally {
             setLoadingMoreViews(false)
         }
@@ -166,15 +178,19 @@ export function ManageDashboardSavedViews({
             render: function renderScope(_, view) {
                 const visibilityLocked = view.scope === 'team' && view.created_by !== currentUserId
                 if (editDisabledReason || visibilityLocked) {
-                    return <span className="text-secondary">{view.scope === 'private' ? 'Private' : 'Team'}</span>
+                    return (
+                        <span className="text-secondary">
+                            {view.scope === 'private' ? 'Private (only visible to me)' : 'Shared with team'}
+                        </span>
+                    )
                 }
                 return (
                     <LemonSelect<DashboardSavedViewScope>
                         size="small"
                         value={view.scope ?? 'team'}
                         options={[
-                            { value: 'private', label: 'Private' },
-                            { value: 'team', label: 'Team' },
+                            { value: 'private', label: 'Private (only visible to me)' },
+                            { value: 'team', label: 'Shared with team' },
                         ]}
                         onChange={(scope) => void saveScope(view, scope)}
                         disabled={updatingIds.includes(view.id)}
@@ -227,6 +243,7 @@ export function ManageDashboardSavedViews({
                 rowKey="id"
                 size="small"
                 className="max-w-full"
+                emptyState="No saved views yet. Add a filter to create one."
                 rowActions={(view) => (
                     <LemonButton
                         size="xsmall"
@@ -240,10 +257,11 @@ export function ManageDashboardSavedViews({
                     />
                 )}
             />
-            {hasMoreViews && (
-                <div className="flex justify-center border-t p-2">
+            {(nextCursor !== null || loadMoreError) && (
+                <div className="flex flex-col items-center gap-1 border-t p-2">
+                    {loadMoreError && <div className="text-sm text-danger">Could not load more views.</div>}
                     <LemonButton size="small" type="secondary" loading={loadingMoreViews} onClick={loadMoreViews}>
-                        Load more views
+                        {loadMoreError ? 'Retry loading views' : 'Load more views'}
                     </LemonButton>
                 </div>
             )}

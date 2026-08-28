@@ -15,7 +15,9 @@ export interface SavedDashboardViewsPickerProps {
     hasMore: boolean
     loadingMore: boolean
     updatingSavedView: boolean
+    loading: boolean
     loadError: boolean
+    loadMoreError: boolean
     canEdit: boolean
     defaultOpen?: boolean
     onSaveAsNewView: () => void
@@ -34,7 +36,9 @@ export function SavedDashboardViewsPicker({
     hasMore,
     loadingMore,
     updatingSavedView,
+    loading,
     loadError,
+    loadMoreError,
     canEdit,
     defaultOpen = false,
     onSaveAsNewView,
@@ -107,7 +111,8 @@ export function SavedDashboardViewsPicker({
                         </LemonButton>
                     )}
                     {(activeSavedView || isFiltering) && <div className="mx-3 border-t" />}
-                    {loadError && (
+                    {loading && <div className="px-3 py-2 text-sm text-secondary">Loading saved views…</div>}
+                    {!loading && loadError && (
                         <LemonButton
                             fullWidth
                             size="small"
@@ -118,10 +123,10 @@ export function SavedDashboardViewsPicker({
                             Could not load saved views. Retry
                         </LemonButton>
                     )}
-                    {!loadError && !hasSavedViews && !isFiltering && (
+                    {!loading && !loadError && !hasSavedViews && !isFiltering && (
                         <div className="px-3 py-2 text-sm text-secondary">Add a filter to create a saved view.</div>
                     )}
-                    {hasSavedViews && (
+                    {!loading && hasSavedViews && (
                         <>
                             <LemonTabs<DashboardSavedViewScope>
                                 size="small"
@@ -133,7 +138,7 @@ export function SavedDashboardViewsPicker({
                                         key: 'private',
                                         label: (
                                             <span className="flex items-center gap-1">
-                                                Private
+                                                Private views
                                                 {activeSavedView?.scope === 'private' && (
                                                     <IconCheck className="text-success" />
                                                 )}
@@ -144,7 +149,7 @@ export function SavedDashboardViewsPicker({
                                         key: 'team',
                                         label: (
                                             <span className="flex items-center gap-1">
-                                                Team
+                                                Shared with team
                                                 {activeSavedView != null && activeSavedView.scope !== 'private' && (
                                                     <IconCheck className="text-success" />
                                                 )}
@@ -190,7 +195,7 @@ export function SavedDashboardViewsPicker({
                                         loading={loadingMore}
                                         onClick={onLoadMore}
                                     >
-                                        Load more views
+                                        {loadMoreError ? 'Could not load more views. Retry' : 'Load more views'}
                                     </LemonButton>
                                 )}
                             </div>
