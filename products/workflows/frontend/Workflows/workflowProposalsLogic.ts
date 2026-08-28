@@ -20,6 +20,11 @@ import type {
 import type { HogFlow } from './hogflows/types'
 import { workflowLogic } from './workflowLogic'
 
+// Each applied suggestion costs its own outcome request, and two ClickHouse reads behind it. Applied
+// is terminal, so an unbounded list grows with every publish and pays for itself again on every page
+// view. The newest few are the ones anyone reads.
+const APPLIED_OUTCOME_LIMIT = 3
+
 export interface WorkflowProposalsLogicProps {
     id: string
 }
@@ -178,6 +183,7 @@ export const workflowProposalsLogic = kea<workflowProposalsLogicType>([
                     try {
                         return await hogFlowsProposalsList(String(values.currentTeamIdStrict), props.id, {
                             status: 'applied',
+                            limit: APPLIED_OUTCOME_LIMIT,
                         })
                     } catch (error) {
                         // Only the flag-off 404 is an empty queue. Let a 5xx or a dropped connection reject

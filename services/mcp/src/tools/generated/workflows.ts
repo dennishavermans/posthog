@@ -19,6 +19,10 @@ import {
     HogFlowsMetricsRetrieveQueryParams,
     HogFlowsPartialUpdateBody,
     HogFlowsPartialUpdateParams,
+    HogFlowsProposalsCreateBody,
+    HogFlowsProposalsCreateParams,
+    HogFlowsProposalsListParams,
+    HogFlowsProposalsListQueryParams,
     HogFlowsPublishCreateBody,
     HogFlowsPublishCreateParams,
     HogFlowsRetrieveParams,
@@ -242,6 +246,31 @@ const workflowsListInvocations = (): ToolBase<
     },
 })
 
+const WorkflowsListProposalsSchema = HogFlowsProposalsListParams.omit({ project_id: true }).extend(
+    HogFlowsProposalsListQueryParams.shape
+)
+
+const workflowsListProposals = (): ToolBase<
+    typeof WorkflowsListProposalsSchema,
+    WithPostHogUrl<Schemas.PaginatedWorkflowProposalList>
+> => ({
+    name: 'workflows-list-proposals',
+    schema: WorkflowsListProposalsSchema,
+    handler: async (context: Context, params: z.infer<typeof WorkflowsListProposalsSchema>) => {
+        const projectId = await context.stateManager.getProjectId()
+        const result = await context.api.request<Schemas.PaginatedWorkflowProposalList>({
+            method: 'GET',
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/hog_flows/${encodeURIComponent(String(params.id))}/proposals/`,
+            query: {
+                limit: params.limit,
+                offset: params.offset,
+                status: params.status,
+            },
+        })
+        return await withPostHogUrl(context, result, '/workflows')
+    },
+})
+
 const WorkflowsListRevisionsSchema = HogFlowsRevisionsListParams.omit({ project_id: true }).extend(
     HogFlowsRevisionsListQueryParams.shape
 )
@@ -403,6 +432,46 @@ const workflowsStats = (): ToolBase<typeof WorkflowsStatsSchema, Schemas.AppMetr
     },
 })
 
+const WorkflowsSuggestSchema = HogFlowsProposalsCreateParams.omit({ project_id: true }).extend(
+    HogFlowsProposalsCreateBody.shape
+)
+
+const workflowsSuggest = (): ToolBase<typeof WorkflowsSuggestSchema, Schemas.WorkflowProposal> => ({
+    name: 'workflows-suggest',
+    schema: WorkflowsSuggestSchema,
+    handler: async (context: Context, params: z.infer<typeof WorkflowsSuggestSchema>) => {
+        const projectId = await context.stateManager.getProjectId()
+        const body: Record<string, unknown> = {}
+        if (params.title !== undefined) {
+            body['title'] = params.title
+        }
+        if (params.rationale !== undefined) {
+            body['rationale'] = params.rationale
+        }
+        if (params.content !== undefined) {
+            body['content'] = params.content
+        }
+        if (params.evidence !== undefined) {
+            body['evidence'] = params.evidence
+        }
+        if (params.base_version !== undefined) {
+            body['base_version'] = params.base_version
+        }
+        if (params.source_type !== undefined) {
+            body['source_type'] = params.source_type
+        }
+        if (params.source_id !== undefined) {
+            body['source_id'] = params.source_id
+        }
+        const result = await context.api.request<Schemas.WorkflowProposal>({
+            method: 'POST',
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/hog_flows/${encodeURIComponent(String(params.id))}/proposals/`,
+            body,
+        })
+        return result
+    },
+})
+
 const WorkflowsTestRunSchema = HogFlowsInvocationsCreateParams.omit({ project_id: true }).extend(
     HogFlowsInvocationsCreateBody.shape
 )
@@ -516,6 +585,7 @@ export const GENERATED_TOOLS: Record<string, () => ToolBase<ZodObjectAny>> = {
     'workflows-list': workflowsList,
     'workflows-list-batch-jobs': workflowsListBatchJobs,
     'workflows-list-invocations': workflowsListInvocations,
+    'workflows-list-proposals': workflowsListProposals,
     'workflows-list-revisions': workflowsListRevisions,
     'workflows-logs': workflowsLogs,
     'workflows-patch-action-email': workflowsPatchActionEmail,
@@ -523,6 +593,7 @@ export const GENERATED_TOOLS: Record<string, () => ToolBase<ZodObjectAny>> = {
     'workflows-publish': workflowsPublish,
     'workflows-restore-revision': workflowsRestoreRevision,
     'workflows-stats': workflowsStats,
+    'workflows-suggest': workflowsSuggest,
     'workflows-test-run': workflowsTestRun,
     'workflows-update': workflowsUpdate,
     'workflows-update-schedule': workflowsUpdateSchedule,

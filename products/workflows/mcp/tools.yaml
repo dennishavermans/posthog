@@ -305,7 +305,7 @@ tools:
             a failed invocation into workflows-logs for the step-by-step trace.
     workflows-list-proposals:
         operation: hog_flows_proposals_list
-        enabled: false
+        enabled: true
         scopes:
             - hog_flow:read
         annotations:
@@ -451,7 +451,7 @@ tools:
             with open/click tracking off, which can never register an open or a click.
     workflows-suggest:
         operation: hog_flows_proposals_create
-        enabled: false
+        enabled: true
         scopes:
             - hog_flow:write
         annotations:
