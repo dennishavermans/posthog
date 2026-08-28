@@ -6,6 +6,7 @@ import { aiObservabilityEmptyState } from 'products/ai_observability/frontend/em
 import { llmPromptsEmptyState } from 'products/ai_observability/frontend/emptyState/llmPromptsEmptyState'
 import { webScriptsEmptyState } from 'products/cdp/frontend/emptyState/webScriptsEmptyState'
 import { supportEmptyState } from 'products/conversations/frontend/emptyState/supportEmptyState'
+import { customerAnalyticsEmptyState } from 'products/customer_analytics/frontend/emptyState/customerAnalyticsEmptyState'
 import { dataWarehouseEmptyState } from 'products/data_warehouse/frontend/emptyState/dataWarehouseEmptyState'
 import { earlyAccessFeaturesEmptyState } from 'products/early_access_features/frontend/emptyState/earlyAccessFeaturesEmptyState'
 import { endpointsEmptyState } from 'products/endpoints/frontend/emptyState/endpointsEmptyState'
@@ -282,4 +283,10 @@ export const MarketingAnalyticsNeedsSetup: ProductEmptyStateStory = productEmpty
             },
         },
     }
+)
+
+// Customer analytics detection is synchronous (groups access from the team), so no mocks needed.
+export const CustomerAnalyticsNeedsSetup: ProductEmptyStateStory = productEmptyStateStory(
+    customerAnalyticsEmptyState,
+    'needs-setup'
 )
