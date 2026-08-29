@@ -6,6 +6,10 @@ import { isValidConfigValue } from "@posthog/core/task-detail/configOptions";
 import type { AgentRuntime } from "@posthog/shared";
 import type { Task } from "@posthog/shared/domain-types";
 import {
+  subscriptionModelAccess,
+  useAdapterSubscription,
+} from "@posthog/ui/features/settings/adapterSubscription";
+import {
   forwardRef,
   useCallback,
   useEffect,
@@ -114,6 +118,8 @@ export const ChannelHomeComposer = forwardRef<
   } = useSettingsStore();
 
   const adapter = lastUsedAdapter;
+  const claudeSubscription = useAdapterSubscription("claude");
+  const codexSubscription = useAdapterSubscription("codex");
   const [runtime, setRuntime] = useState<AgentRuntime>("acp");
   // Keep the menu open when a harness switch swaps its ACP/Pi control.
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -503,6 +509,11 @@ export const ChannelHomeComposer = forwardRef<
               onConfigOptionChange={setConfigOption}
               menuOpen={modelMenuOpen}
               onMenuOpenChange={setModelMenuOpen}
+              modelAccess={subscriptionModelAccess(
+                adapter === "codex" ? codexSubscription : claudeSubscription,
+                workspaceMode,
+              )}
+              showBillingMenu
               disabled={isBusy}
               isLoading={isLoading}
             />
