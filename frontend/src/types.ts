@@ -6722,6 +6722,12 @@ export interface ExternalDataJob {
      * runs the customer isn't charged for. `null` on legacy rows and means billable.
      */
     billable?: boolean | null
+    /**
+     * Destinations this run delivered to, snapshotted when it started. Empty on runs that predate
+     * destinations, which wrote to the PostHog warehouse alone. `rows_synced` counts the rows read
+     * from the source once, not once per destination.
+     */
+    destination_ids?: string[]
 }
 
 export interface SimpleDataWarehouseTable {

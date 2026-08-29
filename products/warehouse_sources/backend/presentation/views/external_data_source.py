@@ -916,6 +916,15 @@ class ExternalDataJobSerializers(serializers.ModelSerializer):
             "`null` on legacy rows and means billable."
         ),
     )
+    destination_ids = serializers.ListField(
+        child=serializers.CharField(),
+        read_only=True,
+        help_text=(
+            "Destinations this run delivered to, snapshotted when it started. Empty on runs that "
+            "predate destinations, which wrote to the PostHog warehouse alone. `rows_synced` counts "
+            "the rows read from the source once, not once per destination."
+        ),
+    )
 
     class Meta:
         model = ExternalDataJob
@@ -931,6 +940,7 @@ class ExternalDataJobSerializers(serializers.ModelSerializer):
             "workflow_run_id",
             "cdc_write_mode",
             "billable",
+            "destination_ids",
         ]
         read_only_fields = [
             "id",
@@ -944,6 +954,7 @@ class ExternalDataJobSerializers(serializers.ModelSerializer):
             "workflow_run_id",
             "cdc_write_mode",
             "billable",
+            "destination_ids",
         ]
 
     def get_cdc_write_mode(self, instance: ExternalDataJob) -> str | None:
