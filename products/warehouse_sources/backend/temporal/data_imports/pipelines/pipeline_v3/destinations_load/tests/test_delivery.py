@@ -3,6 +3,8 @@ import uuid
 from posthog.test.base import BaseTest
 from unittest import mock
 
+from parameterized import parameterized
+
 from products.warehouse_sources.backend.models.external_data_destination import (
     ExternalDataDestination,
     get_or_create_warehouse_destination,
@@ -230,19 +232,21 @@ class TestDestinationTableName(DeliveryTestCase):
         )
         return ExternalDataSchema.objects.create(team=self.team, source=source, name=name)
 
-    def test_it_matches_the_name_the_posthog_warehouse_uses(self) -> None:
+    def test_it_leads_with_the_source_type(self) -> None:
         schema = self._schema_for("Stripe", "", "Charge")
 
         signal = self._signal([], schema_id=str(schema.id))
 
         assert destination_table_name(signal, {}) == "stripe_charge"
 
-    def test_a_source_prefix_is_carried_over(self) -> None:
+    @parameterized.expand([("no trailing underscore", "eu"), ("trailing underscore", "eu_")])
+    def test_a_source_prefix_sits_between_the_type_and_the_table(self, _name: str, prefix: str) -> None:
         # Two Stripe accounts are told apart by prefix in PostHog, so they must be told apart in
-        # the customer's database too rather than both landing on `stripe_charge`.
-        schema = self._schema_for("Stripe", "eu_", "Charge")
+        # the customer's database too rather than both landing on `stripe_charge`. The warehouse
+        # would glue this into `eu_stripe_charge`; separated, it reads as type, source, table.
+        schema = self._schema_for("Stripe", prefix, "Charge")
 
-        assert destination_table_name(self._signal([], schema_id=str(schema.id)), {}) == "eu_stripe_charge"
+        assert destination_table_name(self._signal([], schema_id=str(schema.id)), {}) == "stripe_eu_charge"
 
     def test_two_sources_sharing_a_resource_name_do_not_collide(self) -> None:
         postgres = self._schema_for("Postgres", "", "users")

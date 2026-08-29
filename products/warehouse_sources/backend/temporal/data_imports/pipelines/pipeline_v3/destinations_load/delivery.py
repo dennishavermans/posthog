@@ -21,12 +21,12 @@ from asgiref.sync import async_to_sync
 
 from products.warehouse_sources.backend.models.external_data_destination import ExternalDataDestination
 from products.warehouse_sources.backend.models.external_data_schema import ExternalDataSchema
+from products.warehouse_sources.backend.models.external_data_source import ExternalDataSource
 from products.warehouse_sources.backend.temporal.data_imports.destinations.contracts import (
     DestinationBatchContext,
     DestinationRunContext,
 )
 from products.warehouse_sources.backend.temporal.data_imports.destinations.registry import resolve_destination_writer
-from products.warehouse_sources.backend.temporal.data_imports.pipelines.helpers import build_table_name
 from products.warehouse_sources.backend.temporal.data_imports.pipelines.pipeline_v3.destinations_load.builtin_writers import (
     ensure_builtin_destination_writers_registered,
 )
@@ -94,21 +94,41 @@ def warehouse_is_a_destination(export_signal: ExportSignalMessage) -> bool:
     )
 
 
+def _source_scoped_table_name(source: ExternalDataSource, schema_name: str) -> str:
+    """Source type, then the source's prefix, then the schema name, each separated.
+
+    The warehouse builds the same three parts but glues the prefix to the source type
+    (`build_table_name` gives `testpostgres_auth_group`), which reads as one word in a customer's
+    own database. Here they stay separated, so `postgres_test_auth_group` says which source type,
+    which source, and which table.
+
+    The sanitizing matches the warehouse: dots parse as `<table>.<column>` in HogQL, and slashes
+    are not identifier characters at all.
+    """
+    safe_schema_name = schema_name.replace("/", "_").replace(".", "__")
+    prefix = (source.prefix or "").strip("_")
+    parts = [source.source_type, prefix, safe_schema_name] if prefix else [source.source_type, safe_schema_name]
+    return "_".join(parts).lower()
+
+
 def destination_table_name(export_signal: ExportSignalMessage, config: dict) -> str:
     """What a destination calls the table for this schema.
 
-    The same name the PostHog warehouse uses, via `build_table_name`, so a table is recognizable
-    on both sides and two sources with a same-named resource do not resolve to one table. Falls
-    back to the raw resource name only if the schema has gone, which is a run that is failing
-    anyway. `table_prefix` stays supported as an escape hatch for a name a customer needs to
-    control; nothing sets it today.
+    Carries the source type and prefix so two sources with a same-named resource do not resolve to
+    one table. Falls back to the raw resource name only if the schema has gone, which is a run that
+    is failing anyway. `table_prefix` stays supported as an escape hatch for a name a customer needs
+    to control; nothing sets it today.
     """
     schema = (
         ExternalDataSchema.objects.filter(id=export_signal.schema_id, team_id=export_signal.team_id)
         .select_related("source")
         .first()
     )
-    base = build_table_name(schema.source, schema.name) if schema and schema.source else export_signal.resource_name
+    base = (
+        _source_scoped_table_name(schema.source, schema.name)
+        if schema and schema.source
+        else export_signal.resource_name
+    )
     return f"{config.get('table_prefix', '')}{base}"
 
 
