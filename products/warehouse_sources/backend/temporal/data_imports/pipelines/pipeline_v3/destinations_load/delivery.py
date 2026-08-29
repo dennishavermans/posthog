@@ -14,6 +14,7 @@ before this runs, and it carries the unsuffixed idempotency key it has always ha
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable
 
 import structlog
@@ -23,6 +24,7 @@ from products.warehouse_sources.backend.models.external_data_destination import 
 from products.warehouse_sources.backend.models.external_data_schema import ExternalDataSchema
 from products.warehouse_sources.backend.models.external_data_source import ExternalDataSource
 from products.warehouse_sources.backend.temporal.data_imports.destinations.contracts import (
+    BatchWriteOutcome,
     DestinationBatchContext,
     DestinationRunContext,
 )
@@ -222,10 +224,12 @@ def deliver_batch_to_destinations(
         # once while processing and once flagged final, so skipping the whole batch because it
         # was already written would leave a full refresh staged and never swapped in.
         if already_written and not export_signal.is_final_batch:
-            logger.debug(
+            logger.info(
                 "destination_batch_already_delivered",
+                destination_name=destination.name,
                 destination_type=destination.type,
                 batch_index=export_signal.batch_index,
+                msg=(f"Batch {export_signal.batch_index} already delivered to {destination.name}, skipping"),
             )
             continue
 
@@ -237,12 +241,28 @@ def deliver_batch_to_destinations(
             expected_row_count=export_signal.row_count,
         )
 
+        started_at = time.monotonic()
+        logger.info(
+            "destination_batch_started",
+            destination_name=destination.name,
+            destination_type=destination.type,
+            table_name=run_ctx.table_name,
+            sync_type=run_ctx.sync_type,
+            batch_index=export_signal.batch_index,
+            expected_rows=export_signal.row_count,
+            msg=(
+                f"Writing {export_signal.row_count:,} rows to {destination.name} "
+                f"({run_ctx.table_name}), batch {export_signal.batch_index}"
+            ),
+        )
+
+        outcome = None
         try:
             ensure_builtin_destination_writers_registered()
             writer = resolve_destination_writer(run_ctx)
             if not already_written:
                 async_to_sync(writer.prepare_run)(run_ctx)
-                async_to_sync(_write)(writer, export_signal, batch_ctx)
+                outcome = async_to_sync(_write)(writer, export_signal, batch_ctx)
                 # Marked before publication, not after. `finalize_run` is a no-op the second
                 # time, but `write_batch` is not: on a full refresh it rebuilds the staging
                 # table out of this one batch, so a replay that ran both again would publish
@@ -258,31 +278,54 @@ def deliver_batch_to_destinations(
                 written += 1
             if export_signal.is_final_batch:
                 async_to_sync(writer.finalize_run)(run_ctx)
+                logger.info(
+                    "destination_run_published",
+                    destination_name=destination.name,
+                    destination_type=destination.type,
+                    table_name=run_ctx.table_name,
+                    total_rows=export_signal.total_rows,
+                    msg=(
+                        f"Published {run_ctx.table_name} on {destination.name}"
+                        f"{f' ({export_signal.total_rows:,} rows)' if export_signal.total_rows else ''}"
+                    ),
+                )
         except Exception as e:
             logger.warning(
                 "destination_batch_failed",
+                destination_name=destination.name,
                 destination_type=destination.type,
+                table_name=run_ctx.table_name,
                 batch_index=export_signal.batch_index,
                 error=str(e),
+                msg=f"Failed writing to {destination.name} ({run_ctx.table_name}): {e}",
             )
             raise DestinationDeliveryError(destination.name, e) from e
 
-        logger.debug(
+        rows_written = outcome.rows_written if outcome else 0
+        duration_seconds = round(time.monotonic() - started_at, 3)
+        logger.info(
             "destination_batch_delivered",
+            destination_name=destination.name,
             destination_type=destination.type,
+            table_name=run_ctx.table_name,
             batch_index=export_signal.batch_index,
+            rows_written=rows_written,
+            duration_seconds=duration_seconds,
+            msg=(f"Wrote {rows_written:,} rows to {destination.name} ({run_ctx.table_name}) in {duration_seconds}s"),
         )
 
     return written
 
 
-async def _write(writer, export_signal: ExportSignalMessage, batch_ctx: DestinationBatchContext) -> None:
+async def _write(
+    writer, export_signal: ExportSignalMessage, batch_ctx: DestinationBatchContext
+) -> BatchWriteOutcome | None:
     """Stream the staged parquet into the writer a row group at a time.
 
     Re-read per destination rather than held once: a staged batch targets around 200 MiB of
     Arrow, and holding it for the whole loop would multiply that by the destination count.
     """
-    await writer.write_batch(aiter_record_batches(export_signal.s3_path), batch_ctx)
+    return await writer.write_batch(aiter_record_batches(export_signal.s3_path), batch_ctx)
 
 
 def abort_destinations(export_signal: ExportSignalMessage) -> None:

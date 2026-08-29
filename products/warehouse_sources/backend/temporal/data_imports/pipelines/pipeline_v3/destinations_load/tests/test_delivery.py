@@ -3,6 +3,7 @@ import uuid
 from posthog.test.base import BaseTest
 from unittest import mock
 
+import structlog.testing
 from parameterized import parameterized
 
 from products.warehouse_sources.backend.models.external_data_destination import (
@@ -129,6 +130,39 @@ class TestDelivery(DeliveryTestCase):
 
         assert written == 2
         assert sorted(self._writes()) == ["warehouse a", "warehouse b"]
+
+    def test_the_logs_say_where_the_rows_went(self) -> None:
+        # A run writing to several destinations is otherwise indistinguishable in the logs from
+        # one writing to the warehouse alone, which is what makes a partial failure hard to read.
+        a = self._destination("customer postgres")
+
+        with structlog.testing.capture_logs() as logs:
+            delivery.deliver_batch_to_destinations(self._signal([str(a.id)]))
+
+        by_event = {entry["event"]: entry for entry in logs}
+
+        assert "destination_batch_started" in by_event
+        assert by_event["destination_batch_started"]["destination_name"] == "customer postgres"
+        assert by_event["destination_batch_started"]["table_name"]
+
+        delivered = by_event["destination_batch_delivered"]
+        assert delivered["destination_name"] == "customer postgres"
+        assert delivered["rows_written"] == 1
+        assert delivered["table_name"]
+        assert delivered["duration_seconds"] >= 0
+
+    def test_a_failed_destination_names_itself_and_its_table_in_the_logs(self) -> None:
+        a = self._destination("customer postgres")
+        RecordingWriter.fail_for = {"customer postgres"}
+
+        with structlog.testing.capture_logs() as logs:
+            with self.assertRaises(delivery.DestinationDeliveryError):
+                delivery.deliver_batch_to_destinations(self._signal([str(a.id)]))
+
+        failed = next(entry for entry in logs if entry["event"] == "destination_batch_failed")
+        assert failed["destination_name"] == "customer postgres"
+        assert failed["table_name"]
+        assert "destination unreachable" in failed["error"]
 
     def test_a_destination_that_already_took_the_batch_is_not_written_again(self) -> None:
         a = self._destination("warehouse a")
