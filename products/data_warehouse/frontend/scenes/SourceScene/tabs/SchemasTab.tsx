@@ -507,7 +507,7 @@ function ManagedSchemaTable({
                 ...(showMetrics
                     ? [
                           {
-                              title: 'Row count (7d)',
+                              title: 'Rows synced (7d)',
                               key: 'rows_synced_sparkline',
                               render: function RenderSparkline(_: unknown, schema: ExternalDataSourceSchema) {
                                   const lastSyncedAt = schema.last_synced_at ? dayjs(schema.last_synced_at) : null
@@ -523,7 +523,7 @@ function ManagedSchemaTable({
                                           logicKey={`dwh-schema-sparkline-${schema.id}`}
                                           loadOnChanges
                                           successMetricNames={['rows_synced']}
-                                          metricLabels={{ rows_synced: 'Row count' }}
+                                          metricLabels={{ rows_synced: 'Rows synced' }}
                                           forceParams={{
                                               appSource: DATA_WAREHOUSE_APP_SOURCE,
                                               appSourceId: sourceId,

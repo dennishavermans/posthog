@@ -27,7 +27,7 @@ const DATA_WAREHOUSE_METRICS_INFO: Record<string, { name: string; description: s
         color: getColorVar('warning'),
     },
     rows_synced: {
-        name: 'Row count',
+        name: 'Rows synced',
         description: 'Rows read from the source. A run reads them once however many destinations it writes to.',
         color: getColorVar('success'),
     },

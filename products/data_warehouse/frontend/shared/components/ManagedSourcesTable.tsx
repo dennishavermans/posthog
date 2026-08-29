@@ -129,7 +129,7 @@ export function ManagedSourcesTable(): JSX.Element {
                     ...(showMetrics
                         ? [
                               {
-                                  title: 'Row count (7d)',
+                                  title: 'Rows synced (7d)',
                                   key: 'rows_synced_sparkline',
                                   render: function RenderSparkline(_: unknown, source: { id: string }) {
                                       return (
@@ -137,7 +137,7 @@ export function ManagedSourcesTable(): JSX.Element {
                                               logicKey={`dwh-source-sparkline-${source.id}`}
                                               loadOnChanges
                                               successMetricNames={['rows_synced']}
-                                              metricLabels={{ rows_synced: 'Row count' }}
+                                              metricLabels={{ rows_synced: 'Rows synced' }}
                                               forceParams={{
                                                   appSource: DATA_WAREHOUSE_APP_SOURCE,
                                                   appSourceId: source.id,
