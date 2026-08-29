@@ -49,6 +49,7 @@ import { Route as InboxPullsIndexRouteImport } from './routes/inbox/pulls.index'
 import { Route as InboxDismissedIndexRouteImport } from './routes/inbox/dismissed.index'
 import { Route as AgentsScoutsIndexRouteImport } from './routes/agents/scouts.index'
 import { Route as ShellSpacesIndexRouteImport } from './routes/_shell/spaces/index'
+import { Route as ShellFeedsIndexRouteImport } from './routes/_shell/feeds/index'
 import { Route as TasksPendingKeyRouteImport } from './routes/tasks/pending.$key'
 import { Route as LoopsLoopIdEditRouteImport } from './routes/loops/$loopId/edit'
 import { Route as InboxRunsReportIdRouteImport } from './routes/inbox/runs.$reportId'
@@ -271,6 +272,11 @@ const ShellSpacesIndexRoute = ShellSpacesIndexRouteImport.update({
   path: '/spaces/',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellFeedsIndexRoute = ShellFeedsIndexRouteImport.update({
+  id: '/feeds/',
+  path: '/feeds/',
+  getParentRoute: () => ShellRoute,
+} as any)
 const TasksPendingKeyRoute = TasksPendingKeyRouteImport.update({
   id: '/tasks/pending/$key',
   path: '/tasks/pending/$key',
@@ -436,6 +442,7 @@ export interface FileRoutesByFullPath {
   '/inbox/runs/$reportId': typeof InboxRunsReportIdRoute
   '/loops/$loopId/edit': typeof LoopsLoopIdEditRoute
   '/tasks/pending/$key': typeof TasksPendingKeyRoute
+  '/feeds/': typeof ShellFeedsIndexRoute
   '/spaces/': typeof ShellSpacesIndexRoute
   '/agents/scouts/': typeof AgentsScoutsIndexRoute
   '/inbox/dismissed/': typeof InboxDismissedIndexRoute
@@ -490,6 +497,7 @@ export interface FileRoutesByTo {
   '/inbox/runs/$reportId': typeof InboxRunsReportIdRoute
   '/loops/$loopId/edit': typeof LoopsLoopIdEditRoute
   '/tasks/pending/$key': typeof TasksPendingKeyRoute
+  '/feeds': typeof ShellFeedsIndexRoute
   '/spaces': typeof ShellSpacesIndexRoute
   '/agents/scouts': typeof AgentsScoutsIndexRoute
   '/inbox/dismissed': typeof InboxDismissedIndexRoute
@@ -555,6 +563,7 @@ export interface FileRoutesById {
   '/inbox/runs/$reportId': typeof InboxRunsReportIdRoute
   '/loops/$loopId/edit': typeof LoopsLoopIdEditRoute
   '/tasks/pending/$key': typeof TasksPendingKeyRoute
+  '/_shell/feeds/': typeof ShellFeedsIndexRoute
   '/_shell/spaces/': typeof ShellSpacesIndexRoute
   '/agents/scouts/': typeof AgentsScoutsIndexRoute
   '/inbox/dismissed/': typeof InboxDismissedIndexRoute
@@ -620,6 +629,7 @@ export interface FileRouteTypes {
     | '/inbox/runs/$reportId'
     | '/loops/$loopId/edit'
     | '/tasks/pending/$key'
+    | '/feeds/'
     | '/spaces/'
     | '/agents/scouts/'
     | '/inbox/dismissed/'
@@ -674,6 +684,7 @@ export interface FileRouteTypes {
     | '/inbox/runs/$reportId'
     | '/loops/$loopId/edit'
     | '/tasks/pending/$key'
+    | '/feeds'
     | '/spaces'
     | '/agents/scouts'
     | '/inbox/dismissed'
@@ -738,6 +749,7 @@ export interface FileRouteTypes {
     | '/inbox/runs/$reportId'
     | '/loops/$loopId/edit'
     | '/tasks/pending/$key'
+    | '/_shell/feeds/'
     | '/_shell/spaces/'
     | '/agents/scouts/'
     | '/inbox/dismissed/'
@@ -1062,6 +1074,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellSpacesIndexRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/feeds/': {
+      id: '/_shell/feeds/'
+      path: '/feeds'
+      fullPath: '/feeds/'
+      preLoaderRoute: typeof ShellFeedsIndexRouteImport
+      parentRoute: typeof ShellRoute
+    }
     '/tasks/pending/$key': {
       id: '/tasks/pending/$key'
       path: '/tasks/pending/$key'
@@ -1229,6 +1248,7 @@ interface ShellRouteChildren {
   ShellIndexRoute: typeof ShellIndexRoute
   ShellFeedsFeedIdRoute: typeof ShellFeedsFeedIdRoute
   ShellSpacesContextRoute: typeof ShellSpacesContextRoute
+  ShellFeedsIndexRoute: typeof ShellFeedsIndexRoute
   ShellSpacesIndexRoute: typeof ShellSpacesIndexRoute
   ShellSpacesChannelIdArtifactsRoute: typeof ShellSpacesChannelIdArtifactsRoute
   ShellSpacesChannelIdCanvasesRoute: typeof ShellSpacesChannelIdCanvasesRoute
@@ -1252,6 +1272,7 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellIndexRoute: ShellIndexRoute,
   ShellFeedsFeedIdRoute: ShellFeedsFeedIdRoute,
   ShellSpacesContextRoute: ShellSpacesContextRoute,
+  ShellFeedsIndexRoute: ShellFeedsIndexRoute,
   ShellSpacesIndexRoute: ShellSpacesIndexRoute,
   ShellSpacesChannelIdArtifactsRoute: ShellSpacesChannelIdArtifactsRoute,
   ShellSpacesChannelIdCanvasesRoute: ShellSpacesChannelIdCanvasesRoute,
