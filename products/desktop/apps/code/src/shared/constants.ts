@@ -70,7 +70,7 @@ export const ARTIFACT_PREVIEW_DATA_URL_PREFIX =
   "data:text/html;charset=utf-8;base64,";
 export const ARTIFACT_PREVIEW_PARTITION_PREFIX = "artifact-preview-";
 export const DATA_DIR = ".posthog-code";
-export const WORKTREES_DIR = ".posthog-code/worktrees";
+export const WORKTREES_DIR = ".posthog-desktop/worktrees";
 export const LEGACY_DATA_DIRS = [
   ".twig",
   ".twig/worktrees",
