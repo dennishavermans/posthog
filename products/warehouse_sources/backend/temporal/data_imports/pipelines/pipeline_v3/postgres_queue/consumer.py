@@ -263,6 +263,8 @@ class DeltaBatchConsumerAdapter:
             )
 
             try:
+                # `to_export_signal()` hands back a dict, so it needs parsing the same way the
+                # delivery path does before anything reads a field off it.
                 await sync_to_async(abort_destinations)(ExportSignalMessage.from_dict(batch.to_export_signal()))
             except Exception as e:
                 # Best effort by design: a leftover table costs the customer storage, not

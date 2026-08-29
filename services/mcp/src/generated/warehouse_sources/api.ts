@@ -1733,6 +1733,12 @@ export const ExternalDataSourcesCreateBody = /* @__PURE__ */ zod.object({
         .describe(
             'Whether a synced source should also be live-queryable via direct connection. Defaults to false; ignored for pure direct-query sources.'
         ),
+    destination_ids: zod
+        .array(zod.string())
+        .optional()
+        .describe(
+            'Destinations every table on this source writes to. Set here rather than afterwards, so the opening sync already carries them. Omit to write to the PostHog warehouse only.'
+        ),
 })
 
 /**

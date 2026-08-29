@@ -6420,6 +6420,8 @@ export interface ExternalDataSourceCreatePayload {
     direct_query_enabled?: boolean
     created_via: 'web' | 'api' | 'mcp'
     payload: Record<string, any>
+    /** Destinations every table on the source writes to. Set at creation so the opening sync carries them. */
+    destination_ids?: string[]
 }
 
 /** Response of `POST warehouse_tables/upload_file` — the stored file a self-managed table is built from. */
