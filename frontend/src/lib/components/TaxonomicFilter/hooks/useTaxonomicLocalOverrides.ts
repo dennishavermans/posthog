@@ -21,7 +21,10 @@ import {
     TaxonomicDefinitionTypes,
     TaxonomicFilterGroupType,
 } from 'lib/components/TaxonomicFilter/types'
-import { filterRecentsForContext } from 'lib/components/TaxonomicFilter/utils/suggestedContextFilters'
+import {
+    filterPinnedForContext,
+    filterRecentsForContext,
+} from 'lib/components/TaxonomicFilter/utils/suggestedContextFilters'
 import { dataWarehouseSettingsSceneLogic } from 'scenes/data-warehouse/settings/dataWarehouseSettingsSceneLogic'
 
 import { actionsModel } from '~/models/actionsModel'
@@ -62,6 +65,11 @@ export function useTaxonomicLocalOverrides(context: {
         [recentFilterItems, taxonomicGroupTypes, excludedOperators, selectingKeyOnly, excludedProperties]
     )
 
+    const contextFilteredPinnedItems = useMemo(
+        () => filterPinnedForContext(pinnedFilterItems, taxonomicGroupTypes, excludedProperties),
+        [pinnedFilterItems, taxonomicGroupTypes, excludedProperties]
+    )
+
     return useCallback(
         (groupType: TaxonomicFilterGroupType): TaxonomicDefinitionTypes[] | undefined => {
             switch (groupType) {
@@ -70,7 +78,7 @@ export function useTaxonomicLocalOverrides(context: {
                 case TaxonomicFilterGroupType.RecentFilters:
                     return contextFilteredRecentItems
                 case TaxonomicFilterGroupType.PinnedFilters:
-                    return pinnedFilterItems
+                    return contextFilteredPinnedItems
                 case TaxonomicFilterGroupType.Dashboards:
                     return nameSortedDashboards as unknown as TaxonomicDefinitionTypes[]
                 case TaxonomicFilterGroupType.Experiments:
@@ -86,7 +94,7 @@ export function useTaxonomicLocalOverrides(context: {
         [
             actionsSorted,
             contextFilteredRecentItems,
-            pinnedFilterItems,
+            contextFilteredPinnedItems,
             nameSortedDashboards,
             experiments,
             dataWarehouseTablesAndViews,

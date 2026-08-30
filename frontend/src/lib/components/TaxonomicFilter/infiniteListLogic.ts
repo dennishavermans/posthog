@@ -515,7 +515,8 @@ export interface infiniteListLogicMeta {
         ) => TaxonomicDefinitionTypes[]
         contextFilteredPinnedItems: (
             pinnedFilterItems: TaxonomicDefinitionTypes[],
-            taxonomicGroupTypes: TaxonomicFilterGroupType[]
+            taxonomicGroupTypes: TaxonomicFilterGroupType[],
+            excludedProperties: import('lib/components/TaxonomicFilter/types').TaxonomicFilterGroupValueMap | undefined
         ) => TaxonomicDefinitionTypes[]
         isSoleSubstantiveGroup: (
             listGroupType: TaxonomicFilterGroupType,
@@ -1152,18 +1153,29 @@ export const infiniteListLogic = kea<infiniteListLogicType>([
             },
         ],
         contextFilteredPinnedItems: [
-            (s) => [s.pinnedFilterItems, s.taxonomicGroupTypes],
+            (s) => [
+                s.pinnedFilterItems,
+                s.taxonomicGroupTypes,
+                (_, props: InfiniteListLogicProps) => props.excludedProperties,
+            ],
             (
                 pinnedFilterItems: TaxonomicDefinitionTypes[],
-                taxonomicGroupTypes: TaxonomicFilterGroupType[]
+                taxonomicGroupTypes: TaxonomicFilterGroupType[],
+                excludedProperties: ExcludedProperties | undefined
             ): TaxonomicDefinitionTypes[] => {
                 if (!pinnedFilterItems?.length) {
                     return []
                 }
                 const availableTypes = new Set(taxonomicGroupTypes)
-                return pinnedFilterItems.filter(
-                    (item) => hasPinnedContext(item) && availableTypes.has(item._pinnedContext.sourceGroupType)
-                )
+                return pinnedFilterItems.filter((item) => {
+                    if (!hasPinnedContext(item) || !availableTypes.has(item._pinnedContext.sourceGroupType)) {
+                        return false
+                    }
+                    // A pin outlives the picker it was made in, so a value pinned elsewhere reaches
+                    // a picker that forbids it. Recents drop excluded values for the same reason.
+                    const excludedValues = excludedProperties?.[item._pinnedContext.sourceGroupType]
+                    return !(excludedValues?.length && excludedValues.includes(item._pinnedContext.value))
+                })
             },
         ],
         // This list is the filter's only substantive (non-meta) group. There are no separate
