@@ -2613,6 +2613,7 @@ class ExternalDataSourceType(StrEnum):
     ANVIL = "Anvil"
     COOLIFY = "Coolify"
     SOCIAL_PILOT = "SocialPilot"
+    ROKT_ADS = "RoktAds"
 
 
 class ExternalQueryErrorCode(StrEnum):
@@ -3092,6 +3093,22 @@ class LogsSparklineRankBy(StrEnum):
 class NeighborDirection(StrEnum):
     BEFORE = "before"
     AFTER = "after"
+
+
+class MCPToolQualitySortColumn(StrEnum):
+    TOTAL_CALLS = "total_calls"
+    ERROR_RATE_PCT = "error_rate_pct"
+    P50_DURATION_MS = "p50_duration_ms"
+    P95_DURATION_MS = "p95_duration_ms"
+    P99_DURATION_MS = "p99_duration_ms"
+    USERS = "users"
+    SESSIONS = "sessions"
+    LAST_SEEN = "last_seen"
+
+
+class MCPToolQualitySortDirection(StrEnum):
+    ASC = "ASC"
+    DESC = "DESC"
 
 
 class MarketingAnalyticsAttributionBreakdown(StrEnum):
