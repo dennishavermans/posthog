@@ -10,6 +10,7 @@ import { captureException } from '~/common/utils/posthog'
 import { HealthCheckResult, PluginsServerConfig } from '../../types'
 import { isManagedAlertInternalEvent } from '../managed-alert-events'
 import { CdpInternalEventSchema } from '../schema'
+import { SLACK_MESSAGE_RECEIVED_EVENT } from '../schema/hogflow'
 import { HogFlowInvocationPipeline } from '../services/hog-flow-invocation-pipeline.service'
 import { HogFunctionInvocationPipeline } from '../services/hog-function-invocation-pipeline.service'
 import { JobQueue } from '../services/job-queue/job-queue.interface'
@@ -17,8 +18,6 @@ import { CyclotronJobInvocation, HogFunctionInvocationGlobals, HogFunctionTypeTy
 import { convertInternalEventToHogFunctionInvocationGlobals } from '../utils'
 import { CdpConsumerBase, CdpConsumerBaseDeps } from './cdp-base.consumer'
 import { counterParseError } from './metrics'
-
-const SLACK_MESSAGE_RECEIVED_EVENT = '$slack_message_received'
 
 // The event that starts each trigger type. Type alone would match every other signal on this topic.
 const INTERNAL_EVENT_TRIGGER_EVENTS = new Map([['slack-message', SLACK_MESSAGE_RECEIVED_EVENT]])
