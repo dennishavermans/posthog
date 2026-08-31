@@ -6,7 +6,7 @@ from autoevals.partial import ScorerWithPartial
 from autoevals.ragas import AnswerSimilarity
 from braintrust import Score
 
-from posthog.schema import AssistantMessage, AssistantToolCall, NodeKind
+from posthog.schema import AssistantMessage, AssistantToolCall, DataVisualizationNode, NodeKind
 
 from ee.hogai.utils.types.base import AnyAssistantGeneratedQuery, AnyPydanticModelQuery
 
@@ -102,11 +102,12 @@ class QueryKindSelection(ScorerWithPartial):
         query = output.get("query")
         if not query:
             return Score(name=self._name(), score=None, metadata={"reason": "No query present"})
-        score = 1 if query.kind == self._expected else 0
+        query_kind = query.source.kind if isinstance(query, DataVisualizationNode) else query.kind
+        score = 1 if query_kind == self._expected else 0
         return Score(
             name=self._name(),
             score=score,
-            metadata={"reason": f"Expected {self._expected}, got {query.kind}"} if not score else {},
+            metadata={"reason": f"Expected {self._expected}, got {query_kind}"} if not score else {},
         )
 
 
