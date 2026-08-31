@@ -54,20 +54,6 @@ GET_PERSON_ID_BY_PRECALCULATED_COHORT_ID = """
 SELECT DISTINCT person_id FROM cohortpeople WHERE team_id = %(team_id)s AND cohort_id = %({prepend}_cohort_id_{index})s AND version = %({prepend}_version_{index})s
 """
 
-GET_COHORTS_BY_PERSON_UUID = """
-SELECT cohort_id, argMax(version, version) as latest_version
-  FROM cohortpeople
-  WHERE team_id = %(team_id)s AND person_id = %(person_id)s
-  GROUP BY cohort_id
-  HAVING argMax(sign, version) > 0
-"""
-
-GET_STATIC_COHORTPEOPLE_BY_PERSON_UUID = f"""
-SELECT DISTINCT cohort_id
-FROM {PERSON_STATIC_COHORT_TABLE}
-WHERE team_id = %(team_id)s AND person_id = %(person_id)s
-"""
-
 GET_COHORTPEOPLE_BY_COHORT_ID = """
 SELECT DISTINCT person_id
 FROM cohortpeople
