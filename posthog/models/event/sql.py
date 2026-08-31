@@ -17,7 +17,6 @@ from posthog.clickhouse.events_json import (
     KAFKA_EVENTS_NATIVE_JSON_TABLE,
     PERSON_PROPERTIES_JSON_SUBCOLUMNS,
     WRITABLE_EVENTS_JSON_TABLE,
-    _json_subcolumn_type_supports_nullable,
 )
 from posthog.clickhouse.indexes import index_by_kafka_timestamp
 from posthog.clickhouse.kafka_engine import (
@@ -42,19 +41,19 @@ def WRITABLE_EVENTS_DATA_TABLE():
     return "writable_events"
 
 
-def _json_column_type(max_dynamic_types: int, max_dynamic_paths: int, subcolumns: dict[str, str]) -> str:
+def _json_column_type(subcolumns: dict[str, str]) -> str:
     explicit_paths = ", ".join(
         f"{escape_clickhouse_identifier(name)} {column_type}" for name, column_type in subcolumns.items()
     )
-    return f"JSON(max_dynamic_types = {max_dynamic_types}, max_dynamic_paths = {max_dynamic_paths}, {explicit_paths})"
+    return f"JSON(max_dynamic_paths = 0, {explicit_paths})"
 
 
 def EVENTS_PROPERTIES_JSON_TYPE() -> str:
-    return _json_column_type(8, 256, EVENTS_PROPERTIES_JSON_SUBCOLUMNS)
+    return _json_column_type(EVENTS_PROPERTIES_JSON_SUBCOLUMNS)
 
 
 def PERSON_PROPERTIES_JSON_TYPE() -> str:
-    return _json_column_type(6, 32, PERSON_PROPERTIES_JSON_SUBCOLUMNS)
+    return _json_column_type(PERSON_PROPERTIES_JSON_SUBCOLUMNS)
 
 
 def json_property_presence_expr(column: str, prop: str) -> str:
@@ -74,8 +73,7 @@ def json_property_presence_expr(column: str, prop: str) -> str:
     path_sql = ".".join(escape_clickhouse_identifier(part) for part in parts)
     scalar = f"{column_sql}.{path_sql}"
     if len(parts) == 1 and prop in subcolumns:
-        if not _json_subcolumn_type_supports_nullable(subcolumns[prop]):
-            # Native container paths use the empty value for both missing and explicitly empty values.
+        if not subcolumns[prop].startswith("Nullable("):
             return f"notEmpty({scalar})"
         return f"isNotNull({scalar})"
     if parts[0] in subcolumns:
@@ -258,8 +256,8 @@ CREATE TABLE IF NOT EXISTS {table_name} {on_cluster_clause}
     timestamp DateTime64(6, 'UTC'),
     team_id Int64,
     distinct_id String,
-    elements_hash String DEFAULT '',
-    created_at DateTime64(6, 'UTC'),
+    elements_hash String,
+    created_at DateTime64(6, 'UTC') DEFAULT now(),
     _timestamp DateTime,
     _offset UInt64,
     elements_chain String,
@@ -276,11 +274,13 @@ CREATE TABLE IF NOT EXISTS {table_name} {on_cluster_clause}
     group2_created_at DateTime64(3),
     group3_created_at DateTime64(3),
     group4_created_at DateTime64(3),
-    inserted_at Nullable(DateTime64(6, 'UTC')) DEFAULT now64(),
+    inserted_at DateTime64(6, 'UTC') DEFAULT now64(),
     person_mode Enum8('full' = 0, 'propertyless' = 1, 'force_upgrade' = 2),
-    is_deleted Bool DEFAULT false,
     consumer_breadcrumbs Array(String),
-    historical_migration Bool DEFAULT false
+    historical_migration Bool,
+    total_event_size UInt32,
+    captured_at DateTime64(6, 'UTC') DEFAULT now(),
+    _partition UInt64
     {compatibility_columns}
     {indexes}
 ) ENGINE = {engine}
@@ -290,11 +290,10 @@ CREATE TABLE IF NOT EXISTS {table_name} {on_cluster_clause}
 def EVENTS_JSON_TABLE_SQL(on_cluster: bool = False) -> str:
     return (
         EVENTS_JSON_TABLE_BASE_SQL
-        + """PARTITION BY toYYYYMM(timestamp)
-PRIMARY KEY (team_id, toDate(timestamp), event, timestamp, cityHash64(distinct_id))
-ORDER BY (team_id, toDate(timestamp), event, timestamp, cityHash64(distinct_id), distinct_id, uuid)
-SAMPLE BY cityHash64(distinct_id)
-SETTINGS index_granularity = 8192, object_serialization_version = 'v3', object_shared_data_serialization_version = 'map_with_buckets', object_shared_data_serialization_version_for_zero_level_parts = 'map', merge_max_block_size = 131072, merge_max_block_size_bytes = 67108864, vertical_merge_algorithm_min_rows_to_activate = 0
+        + """PARTITION BY clamp(toYYYYMM(timestamp), 202001, 203512)
+PRIMARY KEY (team_id, toDate(timestamp), event, distinct_id)
+ORDER BY (team_id, toDate(timestamp), event, distinct_id, timestamp, uuid)
+SETTINGS index_granularity = 8192, object_serialization_version = 'v3', object_shared_data_serialization_version = 'map_with_buckets', enable_block_offset_column = 1, enable_block_number_column = 1, map_serialization_version = 'with_buckets'
 """
     ).format(
         table_name=EVENTS_JSON_DATA_TABLE,
@@ -533,6 +532,7 @@ person_mode,
 historical_migration,
 _timestamp,
 _offset,
+_partition,
 arrayMap(
     i -> _headers.value[i],
     arrayFilter(

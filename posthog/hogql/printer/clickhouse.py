@@ -511,38 +511,109 @@ class ClickHousePrinter(BasePrinter):
         if not isinstance(type.table_type.resolve_database_table(self.context), EVENTS_TABLE_TYPES):
             return None
 
-        # toJSONString on a JSON column emits default values for every declared-but-absent typed path.
-        # Real JSON nulls cannot exist in the column, and typed path names are top-level, so dropping
-        # those declared defaults from a single serialization reproduces the original document.
+        pairs = f"JSONExtractKeysAndValuesRaw(toJSONString({field_sql}))"
+        normalized_pairs = self._normalize_events_json_pairs(resolved_field.name, pairs)
         filter_expr = self._events_json_serialized_pair_filter(resolved_field.name)
         return (
             "concat('{', arrayStringConcat("
             "arrayMap(kv -> concat(toJSONString(kv.1), ':', kv.2), "
-            f"arrayFilter(kv -> {filter_expr}, JSONExtractKeysAndValuesRaw(toJSONString({field_sql})))"
+            f"arrayFilter(kv -> {filter_expr}, {normalized_pairs})"
             "), ','), '}')"
         )
+
+    def _normalize_events_json_pairs(self, field_name: str, pairs: str) -> str:
+        subcolumns = (
+            EVENTS_PROPERTIES_JSON_SUBCOLUMNS if field_name == "properties" else PERSON_PROPERTIES_JSON_SUBCOLUMNS
+        )
+        nested_paths = [
+            (path.split("."), self._json_type_default(column_type))
+            for path, column_type in subcolumns.items()
+            if "." in path
+        ]
+        return self._normalize_nested_json_pairs(pairs, nested_paths) if nested_paths else pairs
+
+    def _normalize_nested_json_pairs(self, pairs: str, paths: list[tuple[list[str], str | None]]) -> str:
+        children: dict[str, list[tuple[list[str], str | None]]] = {}
+        for parts, default in paths:
+            if len(parts) > 1:
+                children.setdefault(parts[0], []).append((parts[1:], default))
+        if not children:
+            return pairs
+        branches: list[str] = []
+        for key, child_paths in children.items():
+            child_pairs = "JSONExtractKeysAndValuesRaw(item.2)"
+            normalized_child_pairs = self._normalize_nested_json_pairs(child_pairs, child_paths)
+            child_filter = self._nested_json_pair_filter(child_paths)
+            cleaned_child = (
+                "concat('{', arrayStringConcat(arrayMap(child -> concat(toJSONString(child.1), ':', child.2), "
+                f"arrayFilter(child -> {child_filter}, {normalized_child_pairs})), ','), '}}')"
+            )
+            branches.extend([f"equals(item.1, {escape_clickhouse_string(key)})", cleaned_child])
+        return f"arrayMap(item -> tuple(item.1, multiIf({', '.join(branches)}, item.2)), {pairs})"
+
+    def _nested_json_pair_filter(self, paths: list[tuple[list[str], str | None]]) -> str:
+        filters = []
+        defaults: dict[str, list[str]] = {}
+        child_keys = set()
+        for parts, default in paths:
+            if len(parts) == 1 and default is not None:
+                defaults.setdefault(default, []).append(parts[0])
+            elif len(parts) > 1:
+                child_keys.add(parts[0])
+        for default, keys in defaults.items():
+            filters.append(
+                f"NOT (child.2 = {escape_clickhouse_string(default)} AND "
+                f"has({self._clickhouse_string_array(keys)}, child.1))"
+            )
+        if child_keys:
+            filters.append(
+                f"NOT (child.2 = '{{}}' AND has({self._clickhouse_string_array(sorted(child_keys))}, child.1))"
+            )
+        return " AND ".join(filters) or "1"
 
     def _events_json_serialized_pair_filter(self, field_name: str) -> str:
         subcolumns = (
             EVENTS_PROPERTIES_JSON_SUBCOLUMNS if field_name == "properties" else PERSON_PROPERTIES_JSON_SUBCOLUMNS
         )
+        string_keys = []
         array_keys = []
         map_keys = []
+        nested_keys = set()
         for key, column_type in subcolumns.items():
+            if "." in key:
+                nested_keys.add(key.split(".", 1)[0])
+                continue
             runtime_type = parse_sql_runtime_type(column_type)
-            if runtime_type.family == "array":
+            if runtime_type.family == "string" and not runtime_type.nullable:
+                string_keys.append(key)
+            elif runtime_type.family == "array":
                 array_keys.append(key)
             elif runtime_type.family == "map":
                 map_keys.append(key)
 
         filters = ["kv.2 != 'null'"]
+        if string_keys:
+            filters.append(f"NOT (kv.2 = '\"\"' AND has({self._clickhouse_string_array(string_keys)}, kv.1))")
         if array_keys:
             filters.append(f"NOT (kv.2 = '[]' AND has({self._clickhouse_string_array(array_keys)}, kv.1))")
-        if map_keys:
-            filters.append(f"NOT (kv.2 = '{{}}' AND has({self._clickhouse_string_array(map_keys)}, kv.1))")
+        if map_keys or nested_keys:
+            empty_object_keys = [*map_keys, *sorted(nested_keys)]
+            filters.append(f"NOT (kv.2 = '{{}}' AND has({self._clickhouse_string_array(empty_object_keys)}, kv.1))")
         return " AND ".join(filters)
 
-    def _clickhouse_string_array(self, values: list[str]) -> str:
+    @staticmethod
+    def _json_type_default(column_type: str) -> str | None:
+        runtime_type = parse_sql_runtime_type(column_type)
+        if runtime_type.family == "string" and not runtime_type.nullable:
+            return '""'
+        if runtime_type.family == "array":
+            return "[]"
+        if runtime_type.family == "map":
+            return "{}"
+        return None
+
+    @staticmethod
+    def _clickhouse_string_array(values: list[str]) -> str:
         return "[" + ", ".join(escape_clickhouse_string(value) for value in values) + "]"
 
     def _serialize_to_json_string_call(self, node: ast.Call) -> str | None:
