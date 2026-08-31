@@ -88,9 +88,16 @@ class TestNewEventsSchemaPropertySubcolumns(SimpleTestCase):
         context.property_swapper = PropertySwapper("UTC", {}, {}, {}, context, True)
         return context
 
-    def _print_select(self, select: str, use_new_events_schema: bool | None = None) -> str:
+    def _print_select(
+        self,
+        select: str,
+        use_new_events_schema: bool | None = None,
+        restricted_properties: set[RestrictedProperty] | None = None,
+    ) -> str:
         expr = parse_select(select)
         context = self._context(use_new_events_schema)
+        if restricted_properties is not None:
+            context.restricted_properties = restricted_properties
         with patch("posthog.hogql.printer.utils.build_property_swapper"):
             query, _ = prepare_and_print_ast(
                 expr,
@@ -138,6 +145,7 @@ class TestNewEventsSchemaPropertySubcolumns(SimpleTestCase):
 
         assert "events.properties_group_feature_flags" in legacy, legacy
         assert "substring(" in legacy, legacy
+        assert "mapFilter(" not in legacy, legacy
         assert "events.properties.`$feature_flags`" in native, native
         assert "mapFilter(" in native, native
         assert "events.properties.`$feature/checkout`" not in native, native
@@ -154,6 +162,34 @@ class TestNewEventsSchemaPropertySubcolumns(SimpleTestCase):
         )
         assert "events.properties.`$feature_flags`" in raw_active_flags, raw_active_flags
         assert "events.properties.`$active_feature_flags`" not in raw_active_flags, raw_active_flags
+
+        restricted_flag = RestrictedProperty(name="$feature/secret", property_type=PropertyDefinition.Type.EVENT)
+        legacy_restricted = self._print_select(
+            "SELECT properties.$feature_flags, properties.$feature_flags.secret, "
+            "JSONHas(properties, '$feature_flags', 'secret') FROM events",
+            use_new_events_schema=False,
+            restricted_properties={restricted_flag},
+        )
+        native_restricted = self._print_select(
+            "SELECT properties.$feature_flags, properties.$active_feature_flags, "
+            "JSONHas(properties, '$feature_flags', 'secret') FROM events",
+            use_new_events_schema=True,
+            restricted_properties={restricted_flag},
+        )
+        restricted_active = self._print_select(
+            "SELECT count() FROM events WHERE properties.$active_feature_flags = 'checkout'",
+            use_new_events_schema=True,
+            restricted_properties={
+                RestrictedProperty(name="$active_feature_flags", property_type=PropertyDefinition.Type.EVENT)
+            },
+        )
+
+        assert "mapFilter(" in legacy_restricted, legacy_restricted
+        assert "has(events.properties_group_feature_flags" not in legacy_restricted, legacy_restricted
+        assert native_restricted.count("mapFilter(") == 2, native_restricted
+        assert "has(events.properties.`$feature_flags`" not in native_restricted, native_restricted
+        assert "and(" in native_restricted, native_restricted
+        assert "events.properties.`$feature_flags`" not in restricted_active, restricted_active
 
     @override_settings(CLICKHOUSE_HOGQL_USE_NEW_EVENTS_SCHEMA=True)
     def test_exception_types_use_array_subcolumn(self) -> None:
