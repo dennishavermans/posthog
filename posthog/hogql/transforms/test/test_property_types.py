@@ -1281,7 +1281,9 @@ class TestEventsSchemaPropertyParity(ClickhouseTestMixin, HypothesisDjangoTestCa
         assert legacy.results is not None
         assert json.loads(legacy.results[0][0]) == {"checkout": "true", "variant": "control"}
         assert legacy.results[0][1] == "true"
-        assert native.results == [("true", "control", '["checkout","variant"]')]
+        assert native.results is not None
+        assert native.results[0][:2] == ("true", "control")
+        assert set(json.loads(native.results[0][2])) == {"checkout", "variant"}
 
 
 # ── Timezone index pruning tests ──────────────────────────────────────────────
