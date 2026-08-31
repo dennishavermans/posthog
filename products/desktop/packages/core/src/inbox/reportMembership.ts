@@ -1,3 +1,4 @@
+import type { InboxReviewerScope } from "@posthog/shared/analytics-events";
 import type { SignalReport } from "@posthog/shared/types";
 
 /**
@@ -71,6 +72,13 @@ export function isTeammateInboxScope(
   scope: InboxScope,
 ): scope is `teammate:${string}` {
   return parseTeammateInboxScope(scope) != null;
+}
+
+/** Analytics-safe scope value: teammate UUIDs never leave the client. */
+export function inboxReviewerScopeValue(scope: InboxScope): InboxReviewerScope {
+  if (scope === INBOX_SCOPE_FOR_YOU) return "for-you";
+  if (scope === INBOX_SCOPE_ENTIRE_PROJECT) return "entire-project";
+  return "teammate";
 }
 
 export function inboxScopeTriggerLabel(
