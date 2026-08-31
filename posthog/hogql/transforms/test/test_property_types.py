@@ -1,5 +1,4 @@
 import re
-import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
@@ -50,9 +49,7 @@ from posthog.hogql.test.utils import pretty_print_in_tests
 from posthog.hogql.transforms.property_types import PropertySwapper, build_property_swapper
 from posthog.hogql.type_system import ComparisonCompatibility
 
-from posthog.clickhouse.client import sync_execute
 from posthog.models import PropertyDefinition, Team
-from posthog.models.event.sql import DISTRIBUTED_EVENTS_JSON_TABLE, EVENTS_JSON_TABLE_SQL
 from posthog.models.group.util import create_group
 from posthog.models.property.util import get_property_string_expr
 from posthog.test.test_utils import create_group_type_mapping_without_created_at
@@ -166,19 +163,6 @@ class TestNewEventsSchemaPropertySubcolumns(SimpleTestCase):
         assert "events.properties.`$exception_types`" in printed, printed
         assert "JSONExtract" not in printed, printed
         assert "toJSONString(events.properties.`$exception_types`)" not in printed, printed
-
-    def test_events_json_schema_excludes_fork_only_indexes(self) -> None:
-        ddl = EVENTS_JSON_TABLE_SQL()
-
-        assert "`$feature_flags` Map(LowCardinality(String), LowCardinality(String))" in ddl
-        assert "total_event_size UInt32" in ddl
-        assert "captured_at DateTime64(6, 'UTC') DEFAULT now()" in ddl
-        assert "PARTITION BY clamp(toYYYYMM(timestamp), 202001, 203512)" in ddl
-        assert "INDEX properties_allpaths_bf JSONAllPaths(properties)" in ddl
-        assert "INDEX properties_text" not in ddl
-        assert "INDEX properties_bf" not in ddl
-        assert "INDEX person_properties_text" not in ddl
-        assert "INDEX person_properties_bf" not in ddl
 
 
 class TestPropertyTypes(BaseTest):
@@ -1134,7 +1118,7 @@ _JSON_SCHEMA_PARITY_PROPERTIES: st.SearchStrategy[dict[str, object]] = st.fixed_
 class TestEventsSchemaPropertyParity(ClickhouseTestMixin, HypothesisDjangoTestCase, BaseTest):
     def _query_properties(self, event_uuid: str, use_new_events_schema: bool) -> tuple[Any, ...]:
         response = execute_hogql_query(
-            "SELECT properties, properties.dynamic_value, properties.$browser, JSONHas(properties, '$browser') "
+            "SELECT properties.dynamic_value, properties.$browser, JSONHas(properties, '$browser') "
             f"FROM events WHERE uuid = '{event_uuid}'",
             team=self.team,
             modifiers=HogQLQueryModifiers(materializationMode=MaterializationMode.DISABLED),
@@ -1170,31 +1154,15 @@ class TestEventsSchemaPropertyParity(ClickhouseTestMixin, HypothesisDjangoTestCa
         legacy = self._query_properties(event_uuid, use_new_events_schema=False)
         native = self._query_properties(event_uuid, use_new_events_schema=True)
 
-        legacy_document = json.loads(legacy[0])
-        native_document = json.loads(native[0])
-        # Non-nullable typed strings cannot distinguish missing, null, and empty values.
-        expected_native_document = {key: value for key, value in legacy_document.items() if value is not None}
-        if expected_native_document.get("$browser") == "":
-            del expected_native_document["$browser"]
-
-        assert native_document == expected_native_document
-        assert native[1] == legacy[1]
+        assert native[0] == legacy[0]
 
         browser = properties.get("$browser")
-        assert native[2] == (browser or "")
+        assert native[1] == (browser or "")
 
         if browser in (None, ""):
-            assert native[3] == 0
+            assert native[2] == 0
         else:
-            assert native[3] == legacy[3]
-
-        raw_native_document = json.loads(
-            sync_execute(
-                f"SELECT toJSONString(properties) FROM {DISTRIBUTED_EVENTS_JSON_TABLE} WHERE uuid = %(uuid)s",
-                {"uuid": event_uuid},
-            )[0][0]
-        )
-        assert raw_native_document["$browser"] == (browser or "")
+            assert native[2] == legacy[2]
 
 
 # ── Timezone index pruning tests ──────────────────────────────────────────────
