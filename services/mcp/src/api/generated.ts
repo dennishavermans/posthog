@@ -42309,6 +42309,7 @@ export namespace Schemas {
      * * `task_model` - task_model
      * * `task_repository` - task_repository
      * * `task_mcp_installations` - task_mcp_installations
+     * * `signals_scout` - signals_scout
      */
     export type InputsSchemaItemTypeEnum = typeof InputsSchemaItemTypeEnum[keyof typeof InputsSchemaItemTypeEnum];
 
@@ -42334,6 +42335,7 @@ export namespace Schemas {
       TaskModel: 'task_model',
       TaskRepository: 'task_repository',
       TaskMcpInstallations: 'task_mcp_installations',
+      SignalsScout: 'signals_scout',
     } as const;
 
     export type InputsSchemaItemChoicesItem = { [key: string]: unknown };
