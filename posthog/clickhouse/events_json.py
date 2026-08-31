@@ -596,8 +596,6 @@ PERSON_PROPERTIES_JSON_SUBCOLUMNS = PERSON_PROPERTIES_JSON_SUBCOLUMN_DECLARED_TY
 
 def EVENTS_JSON_DATA_TABLE_INDEXES() -> str:
     indexes = [
-        "INDEX properties_allpaths_bf JSONAllPaths(properties) TYPE bloom_filter GRANULARITY 1",
-        "INDEX person_properties_allpaths_bf JSONAllPaths(person_properties) TYPE bloom_filter GRANULARITY 1",
         "INDEX bloom_filter_distinct_id distinct_id TYPE bloom_filter GRANULARITY 1",
         "INDEX bloom_filter_uuid uuid TYPE bloom_filter GRANULARITY 1",
         "INDEX bloom_filter_person_id person_id TYPE bloom_filter GRANULARITY 1",
