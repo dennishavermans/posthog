@@ -25,7 +25,7 @@ CREATE TABLE posthog.kafka_billing_usage_records (
   quantity Int64,
   timestamp DateTime64(6, 'UTC'),
   inserted_at DateTime64(6, 'UTC')
-) ENGINE = Kafka() SETTINGS date_time_input_format = 'best_effort', kafka_broker_list = 'warpstream_ingestion', kafka_format = 'kafka_format = \'JSONEachRow\'', kafka_group_name = 'kafka_group_name = \'clickhouse_billing_usage_records\'', kafka_topic_list = 'kafka_topic_list = \'clickhouse_billing_usage_records\'';
+) ENGINE = Kafka() SETTINGS date_time_input_format = 'best_effort', kafka_broker_list = 'warpstream_shared', kafka_format = 'kafka_format = \'JSONEachRow\'', kafka_group_name = 'kafka_group_name = \'clickhouse_billing_usage_records\'', kafka_topic_list = 'kafka_topic_list = \'clickhouse_billing_usage_records\'';
 CREATE TABLE posthog.kafka_duplicate_events (
   team_id Int64,
   distinct_id String,
@@ -44,6 +44,20 @@ CREATE TABLE posthog.kafka_duplicate_events (
   distinct_fields String,
   inserted_at DateTime64(3, 'UTC')
 ) ENGINE = Kafka() SETTINGS kafka_broker_list = 'msk_cluster', kafka_format = 'kafka_format = \'JSONEachRow\'', kafka_group_name = 'kafka_group_name = \'clickhouse_duplicate_events\'', kafka_topic_list = 'kafka_topic_list = \'clickhouse_ingestion_events_duplicates\'';
+CREATE TABLE posthog.kafka_error_tracking_fingerprint_issue_state_ws (
+  team_id Int64,
+  fingerprint String,
+  issue_id UUID,
+  issue_name Nullable(String),
+  issue_description Nullable(String),
+  issue_status String,
+  issue_severity Nullable(String),
+  assigned_user_id Nullable(Int64),
+  assigned_role_id Nullable(UUID),
+  first_seen DateTime64(3, 'UTC'),
+  is_deleted Int8,
+  version Int64
+) ENGINE = Kafka() SETTINGS kafka_broker_list = 'warpstream_ingestion', kafka_format = 'kafka_format = \'JSONEachRow\'', kafka_group_name = 'kafka_group_name = \'clickhouse_error_tracking_fingerprint_issue_state_ws\'', kafka_topic_list = 'kafka_topic_list = \'clickhouse_error_tracking_fingerprint_issue_state\'';
 CREATE TABLE posthog.kafka_error_tracking_issue_fingerprint_embeddings (
   team_id Int64,
   model_name LowCardinality(String),
@@ -341,6 +355,23 @@ CREATE TABLE posthog.writable_duplicate_events (
   _offset UInt64,
   _partition UInt64
 ) ENGINE = Distributed('posthog_single_shard', 'posthog', 'duplicate_events');
+CREATE TABLE posthog.writable_error_tracking_fingerprint_issue_state (
+  team_id Int64,
+  fingerprint String,
+  issue_id UUID,
+  issue_name Nullable(String),
+  issue_description Nullable(String),
+  issue_status String,
+  issue_severity Nullable(String),
+  assigned_user_id Nullable(Int64),
+  assigned_role_id Nullable(UUID),
+  first_seen DateTime64(3, 'UTC'),
+  is_deleted Int8,
+  version Int64,
+  _timestamp DateTime,
+  _offset UInt64,
+  _partition UInt64
+) ENGINE = Distributed('aux', 'posthog', 'raw_error_tracking_fingerprint_issue_state');
 CREATE TABLE posthog.writable_error_tracking_issue_fingerprint_embeddings (
   team_id Int64,
   model_name LowCardinality(String),
@@ -584,6 +615,23 @@ CREATE MATERIALIZED VIEW posthog.duplicate_events_mv TO posthog.writable_duplica
   _offset,
   _partition
 FROM posthog.kafka_duplicate_events;
+CREATE MATERIALIZED VIEW posthog.error_tracking_fingerprint_issue_state_ws_mv TO posthog.writable_error_tracking_fingerprint_issue_state (team_id Int64, fingerprint String, issue_id UUID, issue_name Nullable(String), issue_description Nullable(String), issue_status String, issue_severity Nullable(String), assigned_user_id Nullable(Int64), assigned_role_id Nullable(UUID), first_seen DateTime64(3, 'UTC'), is_deleted Int8, version Int64, _timestamp Nullable(DateTime), _offset UInt64, _partition UInt64) AS SELECT
+  team_id,
+  fingerprint,
+  issue_id,
+  issue_name,
+  issue_description,
+  issue_status,
+  issue_severity,
+  assigned_user_id,
+  assigned_role_id,
+  first_seen,
+  is_deleted,
+  version,
+  _timestamp,
+  _offset,
+  _partition
+FROM posthog.kafka_error_tracking_fingerprint_issue_state_ws;
 CREATE MATERIALIZED VIEW posthog.error_tracking_issue_fingerprint_embeddings_mv TO posthog.writable_error_tracking_issue_fingerprint_embeddings (team_id Int64, model_name LowCardinality(String), embedding_version Int64, fingerprint String, inserted_at Nullable(DateTime), embeddings Array(Float64), _timestamp Nullable(DateTime), _offset UInt64, _partition UInt64) AS SELECT
   team_id,
   model_name,
