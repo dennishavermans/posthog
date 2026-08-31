@@ -270,11 +270,14 @@ def _capture_terminal_analytics(task_run: TaskRun, input: UpdateTaskRunStatusInp
         usage = state.get("token_usage")
         if isinstance(usage, dict):
             adapter = state.get("runtime_adapter")
+            model = state.get("model")
             record_run_token_usage(
                 usage,
                 origin_product=task_run.task.origin_product,
                 run_environment=task_run.environment,
                 rtk_enabled=task_run.effective_rtk(),
+                benjamin_enabled=task_run.effective_benjamin(),
+                model=model if isinstance(model, str) else None,
                 runtime_adapter=adapter if isinstance(adapter, str) else None,
                 status=input.status,
             )

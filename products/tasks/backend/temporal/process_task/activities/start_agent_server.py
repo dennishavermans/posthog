@@ -522,6 +522,7 @@ def _invoke_start_agent_server(
             repo_ready_file=repo_ready_file,
             wait_for_health=wait_for_health,
             rtk_enabled=ctx.rtk_enabled,
+            benjamin_enabled=ctx.benjamin_enabled,
             peer_messaging=ctx.peer_messaging_enabled,
         )
 
@@ -530,13 +531,16 @@ def _invoke_start_agent_server(
         if params.mcp_configs and params.actor_user_id is not None:
             mark_sandbox_mcp_session(sandbox.id, params.actor_user_id)
 
-        # Persist the effective rtk posture the agent launched with, so terminal
-        # analytics can cohort runs by it (the state override alone misses the
+        # Persist the effective toggle postures the agent launched with, so terminal
+        # analytics can cohort runs by them (the state override alone misses the
         # kill-switch flag). Best-effort: never fail the launch over it.
         try:
-            TaskRun.update_state_atomic(ctx.run_id, updates={"rtk_effective": ctx.rtk_enabled})
+            TaskRun.update_state_atomic(
+                ctx.run_id,
+                updates={"rtk_effective": ctx.rtk_enabled, "benjamin_effective": ctx.benjamin_enabled},
+            )
         except Exception:
-            logger.warning("persist_rtk_effective_failed", run_id=ctx.run_id, exc_info=True)
+            logger.warning("persist_effective_toggles_failed", run_id=ctx.run_id, exc_info=True)
     except Exception as e:
         if params.agentsh_domains is not None:
             _emit_agentsh_log_tail(ctx, sandbox)
