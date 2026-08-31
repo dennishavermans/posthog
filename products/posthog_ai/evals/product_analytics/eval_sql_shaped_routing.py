@@ -12,7 +12,7 @@ from products.posthog_ai.eval_harness.base import SandboxedPublicEval
 from products.posthog_ai.eval_harness.config import SandboxedEvalCase
 from products.posthog_ai.eval_harness.harness.context import EvalContext
 from products.posthog_ai.eval_harness.scorers import NoToolCall
-from products.posthog_ai.evals.cli_mcp.scorers import CalledTargetTool
+from products.posthog_ai.evals.cli_mcp.scorers import LastTargetTool
 from products.posthog_ai.evals.product_analytics.scorers import INSIGHT_WRITE_TOOLS
 
 TYPED_QUERY_TOOLS = frozenset({"query-trends", "query-funnel", "query-retention"})
@@ -22,7 +22,7 @@ def _routing_case(*, name: str, prompt: str, target_tool: str) -> SandboxedEvalC
     return SandboxedEvalCase(
         name=name,
         prompt=prompt,
-        expected={"called_target_tool": {"tool": target_tool}},
+        expected={"last_target_tool": {"tool": target_tool}},
     )
 
 
@@ -87,7 +87,7 @@ async def eval_sql_shaped_typed_query_routing(ctx: EvalContext) -> None:
         scorers=[
             NoToolCall(forbidden=INSIGHT_WRITE_TOOLS, name="no_persistent_insight_save"),
             NoToolCall(forbidden={"execute-sql"}, name="no_execute_sql"),
-            CalledTargetTool(),
+            LastTargetTool(),
         ],
         ctx=ctx,
     )
@@ -119,7 +119,7 @@ async def eval_sql_shaped_sql_controls(ctx: EvalContext) -> None:
         scorers=[
             NoToolCall(forbidden=INSIGHT_WRITE_TOOLS, name="no_persistent_insight_save"),
             NoToolCall(forbidden=TYPED_QUERY_TOOLS, name="no_typed_query_runner"),
-            CalledTargetTool(),
+            LastTargetTool(),
         ],
         ctx=ctx,
     )

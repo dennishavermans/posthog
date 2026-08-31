@@ -13,6 +13,8 @@ unrelated cases don't drag the rollup down.
 
 * ``CalledTargetTool`` — did the agent successfully invoke
   ``expected[<scorer_name>]["tool"]`` at least once? Returns 1.0/0.0.
+* ``LastTargetTool`` — did the agent's final successful tool call match
+  ``expected[<scorer_name>]["tool"]``? Returns 1.0/0.0.
 * ``RecoveredToCorrectTool`` — when prompted to use a wrong tool name
   (deprecated or typo'd), did the agent end up calling a correct
   replacement?
@@ -41,6 +43,7 @@ __all__ = [
     "DrilledIntoSchema",
     "ExecBeforeRender",
     "InfoBeforeCall",
+    "LastTargetTool",
     "PreferredSearchOverTools",
     "RanPythonPostProcessing",
     "RecoveredToCorrectTool",
@@ -137,6 +140,34 @@ class CalledTargetTool(Scorer):
             name=self._name(),
             score=0.0,
             metadata={"reason": f"Tool '{target}' was never successfully called", "tool": target},
+        )
+
+
+class LastTargetTool(Scorer):
+    """Binary: did the final successful tool call match the expected target?"""
+
+    def _name(self) -> str:
+        return "last_target_tool"
+
+    def _run_eval_sync(self, output: dict | None, expected: dict | None = None, **kwargs) -> Score:
+        target = _read_tool(expected, self._name())
+        if not target:
+            return Score(name=self._name(), score=None, metadata={"reason": f"No {self._name()}.tool on case"})
+
+        parser = _build_parser(output)
+        if parser is None:
+            return Score(name=self._name(), score=0.0, metadata={"reason": "No raw log", "tool": target})
+
+        successful = [call for call in parser.get_tool_calls() if not call.is_error]
+        if not successful:
+            return Score(name=self._name(), score=0.0, metadata={"reason": "No successful tool calls", "tool": target})
+
+        last = successful[-1]
+        score = 1.0 if last.name == target else 0.0
+        return Score(
+            name=self._name(),
+            score=score,
+            metadata={"expected_tool": target, "last_tool": last.name, "call_id": last.call_id},
         )
 
 

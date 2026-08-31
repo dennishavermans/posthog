@@ -74,15 +74,16 @@ def _log_conversation_spans(hooks: CaseHooks, parsed: ParsedLog) -> None:
         else:
             display_content = str(content)
 
+        if role == "assistant" and tool_calls:
+            for tool_call in tool_calls:
+                with hooks.start_span(f"tool_call: {tool_call['tool']}", "function") as span:
+                    span.log(input=[tool_call], output=display_content)
+            continue
+
         span_type: SpanKind
         if role == "assistant":
-            span_type = "function" if tool_calls else "llm"
-            # Naming the span after the resolved tool keeps the trace tree scannable;
-            # every single-exec call would otherwise read as an undifferentiated "exec".
-            if len(tool_calls) == 1:
-                name = f"tool_call: {tool_calls[0]['tool']}"
-            else:
-                name = "tool_call" if tool_calls else "agent"
+            span_type = "llm"
+            name = "agent"
         elif role == "user":
             has_tool_result = isinstance(content, list) and any(
                 isinstance(b, dict) and b.get("type") == "tool_result" for b in content
@@ -97,12 +98,7 @@ def _log_conversation_spans(hooks: CaseHooks, parsed: ParsedLog) -> None:
             if role == "user":
                 span.log(input=display_content)
             elif role == "assistant":
-                # Logged untruncated: the arguments are the only record of what the
-                # agent asked for, and a query payload is easy to cut short.
-                if tool_calls:
-                    span.log(input=tool_calls, output=display_content)
-                else:
-                    span.log(output=display_content)
+                span.log(output=display_content)
             else:
                 span.log(metadata={"message": display_content})
 
