@@ -1,3 +1,4 @@
+from typing import cast
 from uuid import UUID
 
 from django.http import JsonResponse
@@ -17,6 +18,7 @@ from posthog.api.utils import action
 from posthog.helpers.impersonation import is_impersonated
 from posthog.models.activity_logging.activity_log import load_activity
 from posthog.models.activity_logging.activity_page import activity_page_response
+from posthog.models.user import User
 
 from products.error_tracking.backend.facade import (
     api as facade_api,
@@ -228,7 +230,7 @@ class ErrorTrackingIssueViewSet(TeamAndOrgViewSetMixin, ForbidDestroyModel, view
                 self.team.id,
                 UUID(str(pk)),
                 ids,
-                user=request.user,
+                user=cast(User, request.user),
                 was_impersonated=is_impersonated(request),
             )
         except IssueNotFoundError:
@@ -251,7 +253,7 @@ class ErrorTrackingIssueViewSet(TeamAndOrgViewSetMixin, ForbidDestroyModel, view
                 self.team.id,
                 UUID(str(pk)),
                 fingerprints,
-                user=request.user,
+                user=cast(User, request.user),
                 was_impersonated=is_impersonated(request),
             )
         except IssueNotFoundError:
