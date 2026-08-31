@@ -516,6 +516,130 @@ def _map_value_read(blob: ast.Expr, key: str) -> ast.Expr:
     )
 
 
+def _is_events_properties(field_type: ast.FieldType, context: HogQLContext) -> bool:
+    table_type = _unwrap_to_table_type(field_type)
+    field = field_type.resolve_database_field(context)
+    return (
+        table_type is not None
+        and table_type.table.to_printed_clickhouse(context) in ("events", DISTRIBUTED_EVENTS_JSON_TABLE)
+        and isinstance(field, DatabaseField)
+        and field.name == "properties"
+    )
+
+
+def _feature_flags_map(field_type: ast.FieldType, context: HogQLContext) -> ast.Expr | None:
+    if context.uses_new_events_schema():
+        source = resolve_json_subcolumn_source(
+            field_type, DISTRIBUTED_EVENTS_JSON_TABLE, "properties", "$feature_flags", context
+        )
+        assert source is not None
+        return _json_subcolumn_access(field_type, ["$feature_flags"], source=source, is_nullable=False)
+
+    column = next(iter(property_groups.get_property_group_columns("events", "properties", "$feature/")), None)
+    return _synthetic_column_field(field_type, column, is_nullable=False) if column is not None else None
+
+
+def _nonempty_container_json(value: ast.Expr) -> ast.Expr:
+    return ast.Call(
+        name="if",
+        args=[
+            ast.Call(name="empty", args=[clone_expr(value)]),
+            ast.Constant(value=None, type=ast.StringType(nullable=True)),
+            ast.Call(name="toJSONString", args=[value]),
+        ],
+        type=ast.StringType(nullable=True),
+    )
+
+
+def _active_feature_flag_keys(feature_flags: ast.Expr) -> ast.Expr:
+    return ast.Call(
+        name="mapKeys",
+        args=[
+            ast.Call(
+                name="mapFilter",
+                args=[
+                    ast.Lambda(
+                        args=["key", "value"],
+                        expr=ast.Call(
+                            name="notIn",
+                            args=[
+                                _lambda_string_arg("value"),
+                                ast.Tuple(exprs=[ast.Constant(value=""), ast.Constant(value="false")]),
+                            ],
+                        ),
+                    ),
+                    feature_flags,
+                ],
+            )
+        ],
+    )
+
+
+def _feature_flag_compatibility_read(
+    node: ast.PropertyAccess, field_type: ast.FieldType, context: HogQLContext
+) -> ast.Expr | None:
+    if not _is_events_properties(field_type, context):
+        return None
+
+    first_key = str(node.keys[0])
+    deeper_keys = list(node.keys[1:])
+    if context.uses_new_events_schema():
+        if (
+            first_key != "$active_feature_flags"
+            and first_key != "$feature_flags"
+            and not first_key.startswith("$feature/")
+        ):
+            return None
+    elif first_key != "$feature_flags":
+        return None
+
+    feature_flags = _feature_flags_map(field_type, context)
+    if feature_flags is None:
+        return None
+
+    if context.uses_new_events_schema() and first_key.startswith("$feature/"):
+        value = _map_value_read(feature_flags, first_key.removeprefix("$feature/"))
+        return ast.PropertyAccess(expr=value, keys=deeper_keys) if deeper_keys else value
+
+    if context.uses_new_events_schema() and first_key == "$active_feature_flags":
+        return _nonempty_container_json(_active_feature_flag_keys(feature_flags))
+
+    if first_key != "$feature_flags":
+        return None
+    if deeper_keys:
+        value = _map_value_read(
+            feature_flags,
+            str(deeper_keys[0]) if context.uses_new_events_schema() else f"$feature/{deeper_keys[0]}",
+        )
+        return ast.PropertyAccess(expr=value, keys=deeper_keys[1:]) if len(deeper_keys) > 1 else value
+    if context.uses_new_events_schema():
+        return None
+
+    compact_map = ast.Call(
+        name="mapApply",
+        args=[
+            ast.Lambda(
+                args=["key", "value"],
+                expr=ast.Tuple(
+                    exprs=[
+                        ast.Call(
+                            name="substring",
+                            args=[
+                                _lambda_string_arg("key"),
+                                ast.Constant(value=10),
+                                ast.Call(name="length", args=[_lambda_string_arg("key")]),
+                            ],
+                        ),
+                        _lambda_string_arg("value"),
+                    ]
+                ),
+            ),
+            feature_flags,
+        ],
+    )
+    return _nonempty_container_json(compact_map)
+
+
 def _substitute_value_read(node: ast.PropertyAccess, context: HogQLContext) -> ast.Expr | None:
     """The backing-column read for a `PropertyAccess`, or None to leave it as the JSON extract.
 
@@ -538,6 +662,11 @@ def _substitute_value_read(node: ast.PropertyAccess, context: HogQLContext) -> a
     if first_key in restricted_property_keys_for_table_type(field_type.table_type, context):
         _record_property_usage(context, None)
         return ast.Constant(value=None, type=ast.StringType(nullable=True))
+
+    feature_flag_read = _feature_flag_compatibility_read(node, field_type, context)
+    if feature_flag_read is not None:
+        _record_property_usage(context, "json_subcolumn" if context.uses_new_events_schema() else "property_group")
+        return feature_flag_read
 
     source = resolve_materialized_property_source(field_type, first_key, context)
     if source is None:
@@ -841,7 +970,9 @@ class ClickHousePropertyResolver(CloningVisitor):
         if node is not None and len(node.keys) == 1:
             field_type = _blob_field_type_of(node)
             if field_type is not None:
-                return field_type, str(node.keys[0])
+                property_name = str(node.keys[0])
+                if not self._is_virtual_feature_flag_property(field_type, property_name):
+                    return field_type, property_name
 
         # The operand can also carry the property on its resolved type rather than as a bare `PropertyAccess`: a
         # reference to a select alias over a property read (`SELECT properties.x AS a ... WHERE a = 'v'`) resolves
@@ -857,11 +988,19 @@ class ClickHousePropertyResolver(CloningVisitor):
             and len(prop_type.chain) == 1
             and prop_type.joined_subquery is None
             and self._property_table_in_scope(prop_type.field_type)
+            and not self._is_virtual_feature_flag_property(prop_type.field_type, str(prop_type.chain[0]))
         ):
             return prop_type.field_type, str(prop_type.chain[0])
         if isinstance(expr, ast.Call) and expr.name.lower() == "tobool" and len(expr.args) == 1:
             return self._single_key_property_from_boolean_conversion(expr.args[0])
         return None
+
+    def _is_virtual_feature_flag_property(self, field_type: ast.FieldType, property_name: str) -> bool:
+        if not _is_events_properties(field_type, self.context):
+            return False
+        if self.context.uses_new_events_schema():
+            return property_name == "$active_feature_flags" or property_name.startswith("$feature/")
+        return property_name == "$feature_flags"
 
     def _single_key_property_from_boolean_conversion(self, expr: ast.Expr) -> tuple[ast.FieldType, str] | None:
         expr = expr.expr if isinstance(expr, ast.Alias) else expr
@@ -894,7 +1033,9 @@ class ClickHousePropertyResolver(CloningVisitor):
         if json_extract_on_events_json is not None:
             return json_extract_on_events_json
 
-        optimized_json_has = self._optimize_json_has_on_events_json(node)
+        optimized_json_has = self._rewrite_feature_flag_json_has(node)
+        if optimized_json_has is None:
+            optimized_json_has = self._optimize_json_has_on_events_json(node)
         if optimized_json_has is not None:
             return optimized_json_has
 
@@ -923,6 +1064,59 @@ class ClickHousePropertyResolver(CloningVisitor):
 
         return super().visit_call(node)
 
+    def _rewrite_feature_flag_json_has(self, node: ast.Call) -> ast.Expr | None:
+        if node.name != "JSONHas" or len(node.args) < 2 or not isinstance(node.args[1], ast.Constant):
+            return None
+        field_type = resolve_field_type(node.args[0])
+        if not isinstance(field_type, ast.FieldType) or not _is_events_properties(field_type, self.context):
+            return None
+        first_key = node.args[1].value
+        if not isinstance(first_key, str):
+            return None
+        if first_key in restricted_property_keys_for_table_type(field_type.table_type, self.context):
+            return ast.Constant(value=False, type=ast.BooleanType(nullable=False))
+        if self.context.uses_new_events_schema():
+            if first_key != "$active_feature_flags" and not first_key.startswith("$feature/"):
+                return None
+        elif first_key != "$feature_flags":
+            return None
+
+        feature_flags = _feature_flags_map(field_type, self.context)
+        if feature_flags is None:
+            return None
+        if self.context.uses_new_events_schema() and first_key.startswith("$feature/"):
+            value_key = first_key.removeprefix("$feature/")
+            if len(node.args) > 2:
+                return ast.Call(
+                    name="JSONHas",
+                    args=[
+                        ast.Call(name="ifNull", args=[_map_value_read(feature_flags, value_key), _sentinel("")]),
+                        *[self.visit(arg) for arg in node.args[2:]],
+                    ],
+                )
+        elif not self.context.uses_new_events_schema() and first_key == "$feature_flags" and len(node.args) > 2:
+            map_key = node.args[2]
+            if not isinstance(map_key, ast.Constant) or not isinstance(map_key.value, str):
+                return None
+            value_key = f"$feature/{map_key.value}"
+            if len(node.args) > 3:
+                return ast.Call(
+                    name="JSONHas",
+                    args=[
+                        ast.Call(name="ifNull", args=[_map_value_read(feature_flags, value_key), _sentinel("")]),
+                        *[self.visit(arg) for arg in node.args[3:]],
+                    ],
+                )
+        else:
+            value_key = None
+        if value_key is not None:
+            return ast.Call(name="has", args=[feature_flags, ast.Constant(value=value_key)])
+        if self.context.uses_new_events_schema() and first_key == "$active_feature_flags":
+            return ast.Call(name="notEmpty", args=[_active_feature_flag_keys(feature_flags)])
+        if not self.context.uses_new_events_schema() and first_key == "$feature_flags":
+            return ast.Call(name="notEmpty", args=[feature_flags])
+        return None
+
     def _rewrite_to_json_string_on_events_json_subcolumn(self, node: ast.Call) -> ast.Expr | None:
         if not self.context.uses_new_events_schema() or node.name != "toJSONString" or len(node.args) != 1:
             return None
@@ -936,6 +1130,8 @@ class ClickHousePropertyResolver(CloningVisitor):
             return None
 
         property_name = str(property_access.keys[0])
+        if self._is_virtual_feature_flag_property(field_type, property_name):
+            return self.visit_property_access(property_access)
         source = resolve_materialized_property_source(field_type, property_name, self.context)
         if source is None or source.kind != "json_subcolumn":
             return None
@@ -973,6 +1169,8 @@ class ClickHousePropertyResolver(CloningVisitor):
             return None
 
         property_name = str(property_access.keys[0])
+        if self._is_virtual_feature_flag_property(field_type, property_name):
+            return None
         source = resolve_materialized_property_source(field_type, property_name, self.context)
         if source is None or source.kind != "json_subcolumn":
             return None
@@ -1201,6 +1399,31 @@ class ClickHousePropertyResolver(CloningVisitor):
             source=source,
         )
 
+    def _string_array_expr(self, expr: ast.Expr, *, allow_to_string: bool = False) -> ast.Expr | None:
+        unwrapped = expr
+        if (
+            allow_to_string
+            and isinstance(unwrapped, ast.Call)
+            and unwrapped.name == "toString"
+            and len(unwrapped.args) == 1
+        ):
+            unwrapped = unwrapped.args[0]
+        property_access = self._lowered_property_operand(unwrapped)
+        if property_access is not None and len(property_access.keys) == 1:
+            field_type = _blob_field_type_of(property_access)
+            if (
+                field_type is not None
+                and str(property_access.keys[0]) == "$active_feature_flags"
+                and self.context.uses_new_events_schema()
+                and _is_events_properties(field_type, self.context)
+            ):
+                feature_flags = _feature_flags_map(field_type, self.context)
+                assert feature_flags is not None
+                return _active_feature_flag_keys(feature_flags)
+
+        prop = self._materialized_string_array_property(expr, allow_to_string=allow_to_string)
+        return prop.bare_column() if prop is not None else None
+
     def _property_group_property(self, expr: ast.Expr) -> _OptimizableProperty | None:
         """A single-key property backed by a property group, only under OPTIMIZED mode."""
         if self.context.modifiers.propertyGroupsMode != PropertyGroupsMode.OPTIMIZED:
@@ -1341,47 +1564,47 @@ class ClickHousePropertyResolver(CloningVisitor):
 
     def _optimize_materialized_array_compare(self, node: ast.CompareOperation) -> ast.Expr | None:
         if node.op in (ast.CompareOperationOp.Eq, ast.CompareOperationOp.NotEq):
-            prop: _OptimizableProperty | None = None
+            array_expr: ast.Expr | None = None
             constant_expr: ast.Constant | None = None
-            if (p := self._materialized_string_array_property(node.left)) and isinstance(node.right, ast.Constant):
-                prop, constant_expr = p, node.right
-            elif (p := self._materialized_string_array_property(node.right)) and isinstance(node.left, ast.Constant):
-                prop, constant_expr = p, node.left
-            if prop is None or constant_expr is None:
+            if (value := self._string_array_expr(node.left)) is not None and isinstance(node.right, ast.Constant):
+                array_expr, constant_expr = value, node.right
+            elif (value := self._string_array_expr(node.right)) is not None and isinstance(node.left, ast.Constant):
+                array_expr, constant_expr = value, node.left
+            if array_expr is None or constant_expr is None:
                 return None
 
             if constant_expr.value is None:
-                is_set = _call("notEmpty", [prop.bare_column()])
-                return is_set if node.op == ast.CompareOperationOp.NotEq else _call("empty", [prop.bare_column()])
+                is_set = _call("notEmpty", [clone_expr(array_expr)])
+                return is_set if node.op == ast.CompareOperationOp.NotEq else _call("empty", [array_expr])
             if not isinstance(constant_expr.value, str):
                 return None
-            contains = _call("has", [prop.bare_column(), _const(constant_expr.value)])
+            contains = _call("has", [array_expr, _const(constant_expr.value)])
             return contains if node.op == ast.CompareOperationOp.Eq else _call("not", [contains])
 
         if node.op not in (ast.CompareOperationOp.In, ast.CompareOperationOp.NotIn):
             return None
-        prop = self._materialized_string_array_property(node.left)
-        if prop is None:
+        array_expr = self._string_array_expr(node.left)
+        if array_expr is None:
             return None
         values = self._extract_string_constants(node.right)
         if values is None:
             return None
-        contains_any = _call("hasAny", [prop.bare_column(), ast.Array(exprs=[_const(v) for v in values])])
+        contains_any = _call("hasAny", [array_expr, ast.Array(exprs=[_const(v) for v in values])])
         return contains_any if node.op == ast.CompareOperationOp.In else _call("not", [contains_any])
 
     def _optimize_materialized_array_ilike(self, node: ast.CompareOperation) -> ast.Expr | None:
         if node.op not in (ast.CompareOperationOp.ILike, ast.CompareOperationOp.NotILike):
             return None
-        prop = self._materialized_string_array_property(node.left, allow_to_string=True)
+        array_expr = self._string_array_expr(node.left, allow_to_string=True)
         pattern = _string_pattern_constant(node.right)
-        if prop is None or pattern is None:
+        if array_expr is None or pattern is None:
             return None
 
         contains = _call(
             "arrayExists",
             [
                 ast.Lambda(args=["v"], expr=_call("ilike", [_lambda_string_arg("v"), _const(pattern.value)])),
-                prop.bare_column(),
+                array_expr,
             ],
         )
         return contains if node.op == ast.CompareOperationOp.ILike else _call("not", [contains])
@@ -1396,9 +1619,9 @@ class ClickHousePropertyResolver(CloningVisitor):
         if len(node.left.args) != 2:
             return None
 
-        prop = self._materialized_string_array_property(node.left.args[0], allow_to_string=True)
+        array_expr = self._string_array_expr(node.left.args[0], allow_to_string=True)
         values = self._extract_string_constants(node.left.args[1])
-        if prop is None or values is None:
+        if array_expr is None or values is None:
             return None
 
         search = _call(
@@ -1409,7 +1632,7 @@ class ClickHousePropertyResolver(CloningVisitor):
             "arrayExists",
             [
                 ast.Lambda(args=["v"], expr=_call("greater", [search, _const(0)])),
-                prop.bare_column(),
+                array_expr,
             ],
         )
         return contains if node.op == ast.CompareOperationOp.Gt else _call("not", [contains])

@@ -1,4 +1,5 @@
 import re
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
@@ -74,17 +75,22 @@ def _normalize_snapshot_sql(sql: str) -> str:
 
 
 class TestNewEventsSchemaPropertySubcolumns(SimpleTestCase):
-    def _context(self) -> HogQLContext:
+    def _context(self, use_new_events_schema: bool | None = None) -> HogQLContext:
         team = Team(id=1, project_id=1)
-        context = HogQLContext(team_id=team.id, team=team, enable_select_queries=True)
+        context = HogQLContext(
+            team_id=team.id,
+            team=team,
+            enable_select_queries=True,
+            use_new_events_schema=use_new_events_schema,
+        )
         context.database = Database()
         context.restricted_properties = set()
         context.property_swapper = PropertySwapper("UTC", {}, {}, {}, context, True)
         return context
 
-    def _print_select(self, select: str) -> str:
+    def _print_select(self, select: str, use_new_events_schema: bool | None = None) -> str:
         expr = parse_select(select)
-        context = self._context()
+        context = self._context(use_new_events_schema)
         with patch("posthog.hogql.printer.utils.build_property_swapper"):
             query, _ = prepare_and_print_ast(
                 expr,
@@ -102,15 +108,52 @@ class TestNewEventsSchemaPropertySubcolumns(SimpleTestCase):
         assert plan is not None
         return plan
 
+    @parameterized.expand(
+        [
+            ("$active_feature_flags", "checkout"),
+            ("$exception_types", "TypeError"),
+        ]
+    )
     @override_settings(CLICKHOUSE_HOGQL_USE_NEW_EVENTS_SCHEMA=True)
-    def test_property_comparison_planner_uses_json_array_subcolumn_type(self) -> None:
-        plan = self._plan_where_comparison("select count() from events where properties.$exception_types = 'TypeError'")
+    def test_property_comparison_planner_uses_json_array_subcolumn_type(self, property_name: str, value: str) -> None:
+        plan = self._plan_where_comparison(f"select count() from events where properties.{property_name} = '{value}'")
 
         assert plan.access.source.kind == PropertySourceKind.JSON
         assert plan.access.source.is_nullable is False
         assert isinstance(plan.access.source.physical_type, ast.ArrayType)
         assert isinstance(plan.access.source.physical_type.item_type, ast.StringType)
         assert plan.access.source.has_bloom_filter_index is False
+
+    def test_feature_flag_property_compatibility_uses_the_schema_backed_map(self) -> None:
+        legacy = self._print_select(
+            "SELECT properties.$feature_flags, properties.$feature_flags.checkout, "
+            "JSONHas(properties, '$feature_flags', 'checkout') FROM events",
+            use_new_events_schema=False,
+        )
+        native = self._print_select(
+            "SELECT properties.`$feature/checkout`, properties.$active_feature_flags, "
+            "JSONHas(properties, '$feature/checkout') FROM events",
+            use_new_events_schema=True,
+        )
+
+        assert "events.properties_group_feature_flags" in legacy, legacy
+        assert "substring(" in legacy, legacy
+        assert "events.properties.`$feature_flags`" in native, native
+        assert "mapFilter(" in native, native
+        assert "events.properties.`$feature/checkout`" not in native, native
+
+        active_comparison = self._print_select(
+            "SELECT count() FROM events WHERE properties.$active_feature_flags = 'checkout'",
+            use_new_events_schema=True,
+        )
+        assert "has(mapKeys(mapFilter(" in active_comparison, active_comparison
+
+        raw_active_flags = self._print_select(
+            "SELECT JSONExtractRaw(properties, '$active_feature_flags') FROM events",
+            use_new_events_schema=True,
+        )
+        assert "events.properties.`$feature_flags`" in raw_active_flags, raw_active_flags
+        assert "events.properties.`$active_feature_flags`" not in raw_active_flags, raw_active_flags
 
     @override_settings(CLICKHOUSE_HOGQL_USE_NEW_EVENTS_SCHEMA=True)
     def test_exception_types_use_array_subcolumn(self) -> None:
@@ -960,11 +1003,16 @@ class TestJSONExtractToMaterializedColumn(ClickhouseTestMixin, BaseTest):
             assert "JSONExtractKeysAndValuesRaw" not in response.clickhouse
 
     def test_jsonextractraw_typed_array_preserves_missing_default(self):
+        feature_flag_properties = (
+            {"$feature_flags": {"flag": "true"}}
+            if settings.CLICKHOUSE_HOGQL_USE_NEW_EVENTS_SCHEMA
+            else {"$active_feature_flags": ["flag"]}
+        )
         _create_event(
             team=self.team,
             distinct_id="array-set",
             event="jsonextract-array",
-            properties={"tag": "set", "$exception_types": ["TypeError"]},
+            properties={"tag": "set", **feature_flag_properties},
         )
         _create_event(
             team=self.team,
@@ -975,15 +1023,16 @@ class TestJSONExtractToMaterializedColumn(ClickhouseTestMixin, BaseTest):
         flush_persons_and_events()
 
         response = execute_hogql_query(
-            "SELECT properties.tag, JSONExtractRaw(properties, '$exception_types') FROM events "
+            "SELECT properties.tag, JSONExtractRaw(properties, '$active_feature_flags') FROM events "
             "WHERE event = 'jsonextract-array' ORDER BY properties.tag",
             team=self.team,
         )
 
-        assert response.results == [("missing", ""), ("set", '["TypeError"]')]
+        assert response.results == [("missing", ""), ("set", '["flag"]')]
         if settings.CLICKHOUSE_HOGQL_USE_NEW_EVENTS_SCHEMA:
             assert response.clickhouse is not None
-            assert "events.properties.`$exception_types`" in response.clickhouse
+            assert "events.properties.`$feature_flags`" in response.clickhouse
+            assert "events.properties.`$active_feature_flags`" not in response.clickhouse
             assert "JSONExtractKeysAndValuesRaw" not in response.clickhouse
 
     def _seed_edge_case_events(self):
@@ -1163,6 +1212,40 @@ class TestEventsSchemaPropertyParity(ClickhouseTestMixin, HypothesisDjangoTestCa
             assert native[2] == 0
         else:
             assert native[2] == legacy[2]
+
+    def test_feature_flag_interfaces_work_across_event_schemas(self) -> None:
+        legacy_uuid = _create_event(
+            team=self.team,
+            distinct_id="legacy-flags",
+            event="schema-parity",
+            properties={"$feature/checkout": True, "$feature/variant": "control"},
+        )
+        native_uuid = _create_event(
+            team=self.team,
+            distinct_id="native-flags",
+            event="schema-parity",
+            properties={"$feature_flags": {"checkout": "true", "disabled": "false", "variant": "control"}},
+        )
+        flush_persons_and_events()
+
+        legacy = execute_hogql_query(
+            "SELECT properties.$feature_flags, properties.$feature_flags.checkout "
+            f"FROM events WHERE uuid = '{legacy_uuid}'",
+            team=self.team,
+            context=HogQLContext(team_id=self.team.pk, enable_select_queries=True, use_new_events_schema=False),
+        )
+        native = execute_hogql_query(
+            "SELECT properties.`$feature/checkout`, properties.`$feature/variant`, "
+            "properties.$active_feature_flags "
+            f"FROM events WHERE uuid = '{native_uuid}'",
+            team=self.team,
+            context=HogQLContext(team_id=self.team.pk, enable_select_queries=True, use_new_events_schema=True),
+        )
+
+        assert legacy.results is not None
+        assert json.loads(legacy.results[0][0]) == {"checkout": "true", "variant": "control"}
+        assert legacy.results[0][1] == "true"
+        assert native.results == [("true", "control", '["checkout","variant"]')]
 
 
 # ── Timezone index pruning tests ──────────────────────────────────────────────
