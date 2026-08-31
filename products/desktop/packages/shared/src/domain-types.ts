@@ -92,8 +92,6 @@ export interface Task {
   json_schema?: Record<string, unknown> | null;
   signal_report?: string | null;
   internal?: boolean;
-  /** Key of the server-side flow that created the task, e.g. `desktop_onboarding_session:<user_id>`. */
-  origin_key?: string | null;
   runtime?: AgentRuntime;
   /** Backend channel (tasks product Channel UUID) this task is owned by. */
   channel?: string | null;
@@ -129,6 +127,7 @@ export interface TaskChannel {
   starred: boolean;
   github_integration?: number | null;
   repositories?: string[];
+  auto_archive_after_days?: 1 | 3 | 7 | 14 | 30 | null;
   created_at: string;
   created_by?: UserBasic | null;
   system_role?: "personal" | "general" | null;

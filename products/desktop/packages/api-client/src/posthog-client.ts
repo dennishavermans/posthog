@@ -79,20 +79,18 @@ import {
   decorateFlagPreview,
   decorateSurveyPreview,
   type EvidencePreview,
-  type ExperimentMetricQueryResult,
-  experimentMetricQueries,
+  exposureFact,
   formatDay,
   gridRows,
   hogqlEscape,
+  pivotDailyGroups,
   shapeActionPreview,
   shapeCohortPreview,
   shapeDashboardPreview,
   shapeErrorIssuePreview,
   shapeEvaluationPreview,
   shapeEventDefinitionPreview,
-  shapeExperimentExposureChart,
   shapeExperimentPreview,
-  shapeExperimentResults,
   shapeFlagPreview,
   shapePersonPreview,
   shapeRecordingPreview,
@@ -3032,6 +3030,28 @@ export class PostHogAPIClient {
     if (!response.ok) {
       throw new Error(
         `Failed to update space repositories: ${response.statusText}`,
+      );
+    }
+    return (await response.json()) as TaskChannel;
+  }
+
+  async updateTaskChannelAutoArchive(
+    id: string,
+    inactivityDays: 1 | 3 | 7 | 14 | 30 | null,
+  ): Promise<TaskChannel> {
+    const teamId = await this.getTeamId();
+    const urlPath = `/api/projects/${teamId}/task_channels/${encodeURIComponent(id)}/`;
+    const response = await this.api.fetcher.fetch({
+      method: "patch",
+      url: new URL(`${this.api.baseUrl}${urlPath}`),
+      path: urlPath,
+      overrides: {
+        body: JSON.stringify({ auto_archive_after_days: inactivityDays }),
+      },
+    });
+    if (!response.ok) {
+      throw new Error(
+        `Failed to update automatic archiving: ${response.statusText}`,
       );
     }
     return (await response.json()) as TaskChannel;
@@ -6578,20 +6598,25 @@ export class PostHogAPIClient {
     return { results: data.results ?? [], columns: data.columns ?? [] };
   }
 
+  /**
+   * Runs an arbitrary typed query node (TrendsQuery, HogQLQuery, ...) against
+   * the team's project and returns the raw response. `refresh: "blocking"`
+   * serves a fresh-enough cached result and computes synchronously otherwise —
+   * the same mode PostHog insights use. Backs inbox report charts, whose query
+   * nodes are scout-authored and arrive unparsed.
+   */
   async runQuery(
     query: Record<string, unknown>,
-    options?: { refresh?: "blocking" | false },
   ): Promise<Record<string, unknown>> {
     const teamId = await this.getTeamId();
     const path = `/api/projects/${teamId}/query/`;
     const url = new URL(`${this.api.baseUrl}${path}`);
-    const refresh = options?.refresh === false ? null : "blocking";
     const response = await this.api.fetcher.fetch({
       method: "post",
       url,
       path,
       overrides: {
-        body: JSON.stringify({ query, ...(refresh ? { refresh } : {}) }),
+        body: JSON.stringify({ query, refresh: "blocking" }),
       },
     });
     const data = (await response.json()) as Record<string, unknown>;
@@ -6696,74 +6721,54 @@ export class PostHogAPIClient {
           { path: { project_id: projectId, id: numericId } },
         );
         const preview = shapeExperimentPreview(experiment);
-        const primaryQueries = experimentMetricQueries(experiment, "primary");
-        const secondaryQueries = experimentMetricQueries(
-          experiment,
-          "secondary",
-        );
-        if (!experiment.start_date) {
-          return {
-            ...preview,
-            experimentResults: shapeExperimentResults(experiment, null, [], []),
-          };
+        // Depth: unique persons exposed per variant, showing the experiment
+        // is collecting and roughly balanced.
+        if (!experiment.start_date || !experiment.feature_flag_key) {
+          return preview;
         }
-
-        const runMetricQuery = async (
-          metric: unknown,
-        ): Promise<ExperimentMetricQueryResult> => {
-          if (!metric || typeof metric !== "object") {
-            return { response: null };
-          }
-          try {
-            const response = await this.runQuery(
-              {
-                kind: "ExperimentQuery",
-                metric,
-                experiment_id: numericId,
-              },
-              { refresh: false },
-            );
-            return {
-              response: response as Schemas.ExperimentQueryResponse,
-            };
-          } catch {
-            return { response: null };
-          }
-        };
-
-        const exposureQuery = experiment.feature_flag
-          ? this.runQuery(
-              {
-                kind: "ExperimentExposureQuery",
-                experiment_id: numericId,
-                experiment_name: experiment.name,
-                exposure_criteria: experiment.exposure_criteria,
-                feature_flag: experiment.feature_flag,
-                start_date: experiment.start_date,
-                end_date: experiment.end_date,
-                holdout: experiment.holdout,
-              },
-              { refresh: false },
-            ).catch(() => null)
-          : Promise.resolve(null);
-        const [exposureResponse, primaryResults, secondaryResults] =
-          await Promise.all([
-            exposureQuery,
-            Promise.all(primaryQueries.map(runMetricQuery)),
-            Promise.all(secondaryQueries.map(runMetricQuery)),
-          ]);
-
-        const experimentExposureResponse =
-          exposureResponse as Schemas.ExperimentExposureQueryResponse | null;
+        const until = experiment.end_date
+          ? ` AND timestamp <= parseDateTimeBestEffort('${hogqlEscape(experiment.end_date)}')`
+          : "";
+        const scope = `event = '$feature_flag_called' AND properties.$feature_flag = '${hogqlEscape(experiment.feature_flag_key)}' AND timestamp >= parseDateTimeBestEffort('${hogqlEscape(experiment.start_date)}')${until}`;
+        const [exposures, dailyExposures] = await Promise.all([
+          this.runQuery({
+            kind: "HogQLQuery",
+            query: `SELECT toString(properties.$feature_flag_response) AS variant, uniq(person_id) FROM events WHERE ${scope} GROUP BY variant ORDER BY variant`,
+          }).catch(() => ({})),
+          this.runQuery({
+            kind: "HogQLQuery",
+            query: `SELECT toDate(timestamp) AS day, toString(properties.$feature_flag_response) AS variant, uniq(person_id) FROM events WHERE ${scope} GROUP BY day, variant ORDER BY day`,
+          }).catch(() => ({})),
+        ]);
+        const fact = exposureFact(gridRows(exposures));
+        // "false" rows are flag evaluations outside the experiment, not a variant.
+        const pivot = pivotDailyGroups(
+          gridRows(dailyExposures).filter((row) => String(row[1]) !== "false"),
+        );
+        const variantStats = gridRows(exposures)
+          .filter((row) => typeof row[0] === "string" && row[0] !== "false")
+          .slice(0, 4)
+          .map((row) => ({
+            label: `${row[0]} exposed`,
+            value: compactCount(Number(row[1]) || 0),
+          }));
         return {
           ...preview,
-          experimentResults: shapeExperimentResults(
-            experiment,
-            experimentExposureResponse,
-            primaryResults,
-            secondaryResults,
-          ),
-          chart: shapeExperimentExposureChart(experimentExposureResponse),
+          facts: fact ? [...(preview.facts ?? []), fact] : preview.facts,
+          stats: [...(preview.stats ?? []), ...variantStats],
+          chart: pivot
+            ? {
+                title:
+                  pivot.omittedGroups > 0
+                    ? `Daily exposed users by variant (top ${pivot.series.length} of ${
+                        pivot.series.length + pivot.omittedGroups
+                      })`
+                    : "Daily exposed users by variant",
+                labels: pivot.labels,
+                series: pivot.series,
+                render: "line" as const,
+              }
+            : undefined,
         };
       }
       case "error": {
